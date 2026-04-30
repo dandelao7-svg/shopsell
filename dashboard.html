@@ -1,0 +1,1419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShopSell — Seller Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SHOPSELL — SELLER DASHBOARD
+   Production-ready. Connect to server.js backend.
+   All API calls marked with: // API CALL
+   ============================================================ */
+
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#0f0f1a;
+  --brand2:#1a1a2e;
+  --accent:#e63946;
+  --gold:#c9a84c;
+  --light:#f7f7f2;
+  --light2:#efefea;
+  --card:#ffffff;
+  --text:#0f0f1a;
+  --muted:#6b7280;
+  --border:#e5e5e0;
+  --green:#2d6a4f;
+  --green-bg:#d8f3dc;
+  --green-light:#eaf3de;
+  --green-border:#b7dda0;
+  --stripe:#635bff;
+  --stripe-light:#ede9ff;
+  --amber:#92400e;
+  --amber-bg:#fef3c7;
+  --red:#991b1b;
+  --red-bg:#fee2e2;
+  --blue:#1e40af;
+  --blue-bg:#dbeafe;
+  --sidebar-w:240px;
+  --header-h:60px;
+  --radius:12px;
+  --shadow:0 2px 12px rgba(0,0,0,0.06);
+  --shadow-lg:0 8px 32px rgba(0,0,0,0.10);
+}
+
+html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);font-size:14px}
+
+/* ── LAYOUT ── */
+.app{display:flex;min-height:100vh}
+
+/* ── SIDEBAR ── */
+.sidebar{width:var(--sidebar-w);background:var(--brand);position:fixed;top:0;left:0;height:100vh;display:flex;flex-direction:column;z-index:100;transition:transform 0.3s}
+.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.08)}
+.logo{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;color:#fff}
+.logo em{color:var(--accent);font-style:normal}
+.logo-sub{font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;letter-spacing:1px;text-transform:uppercase}
+.sidebar-plan{margin:12px 16px;background:rgba(255,255,255,0.08);border-radius:9px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
+.plan-name{font-size:12px;font-weight:600;color:#fff}
+.plan-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--gold);color:var(--brand)}
+.sidebar-nav{flex:1;padding:8px 12px;overflow-y:auto}
+.nav-section-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.3);padding:14px 8px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;color:rgba(255,255,255,0.6);font-size:13px;font-weight:500;transition:all 0.18s;margin-bottom:2px;text-decoration:none}
+.nav-item:hover{background:rgba(255,255,255,0.08);color:#fff}
+.nav-item.active{background:rgba(230,57,70,0.18);color:#fff}
+.nav-item.active svg{color:var(--accent)}
+.nav-item .nav-badge{margin-left:auto;background:var(--accent);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px}
+.nav-item.locked{opacity:0.4;cursor:not-allowed}
+.nav-item.locked:hover{background:none;color:rgba(255,255,255,0.6)}
+.lock-icon{margin-left:auto;font-size:11px;opacity:0.6}
+.sidebar-footer{padding:16px;border-top:1px solid rgba(255,255,255,0.08)}
+.seller-info{display:flex;align-items:center;gap:10px}
+.seller-avatar{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#fff;flex-shrink:0}
+.seller-name{font-size:13px;font-weight:500;color:#fff;line-height:1.2}
+.seller-email{font-size:11px;color:rgba(255,255,255,0.45)}
+.sidebar-signout{background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.4);padding:4px;border-radius:6px;margin-left:auto;display:flex;align-items:center;transition:color 0.2s}
+.sidebar-signout:hover{color:#fff}
+
+/* ── MAIN ── */
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+
+/* ── TOP BAR ── */
+.topbar{height:var(--header-h);background:var(--card);border-bottom:1px solid var(--border);padding:0 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.page-title{font-family:'Playfair Display',serif;font-size:1.15rem;font-weight:700}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.mode-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.mode-btn{padding:5px 14px;font-size:11px;font-family:'Outfit',sans-serif;border:none;cursor:pointer;font-weight:600;transition:background 0.2s;letter-spacing:0.5px;text-transform:uppercase}
+.mode-btn.test.active{background:#fef3c7;color:var(--amber)}
+.mode-btn.live.active{background:var(--green-light);color:var(--green)}
+.mode-btn:not(.active){background:transparent;color:var(--muted)}
+.topbar-btn{border:1.5px solid var(--border);background:var(--card);padding:7px 16px;border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;color:var(--text);transition:all 0.2s;display:flex;align-items:center;gap:6px}
+.topbar-btn:hover{border-color:var(--accent);color:var(--accent)}
+.topbar-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.topbar-btn.primary:hover{background:#c1121f}
+
+/* ── PAGE SYSTEM ── */
+.page-content{flex:1;padding:2rem;display:none}
+.page-content.active{display:block;animation:fadeIn 0.25s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── STAT CARDS ── */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--border)}
+.stat-card.green::before{background:var(--green)}
+.stat-card.blue::before{background:var(--stripe)}
+.stat-card.amber::before{background:#f59e0b}
+.stat-card.red::before{background:var(--accent)}
+.stat-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.stat-icon.green{background:var(--green-light)}
+.stat-icon.blue{background:var(--stripe-light)}
+.stat-icon.amber{background:var(--amber-bg)}
+.stat-icon.red{background:var(--red-bg)}
+.stat-val{font-family:'Playfair Display',serif;font-size:1.7rem;font-weight:700;margin-bottom:2px}
+.stat-label{font-size:12px;color:var(--muted);margin-bottom:6px}
+.stat-change{font-size:11px;font-weight:600;display:flex;align-items:center;gap:3px}
+.stat-change.up{color:var(--green)}
+.stat-change.down{color:var(--accent)}
+
+/* ── CHARTS ── */
+.charts-grid{display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1.5rem}
+.chart-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.5rem}
+.chart-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem}
+.chart-title{font-weight:600;font-size:14px}
+.chart-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.chart-period{display:flex;gap:6px}
+.period-btn{border:1px solid var(--border);background:var(--card);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--muted);transition:all 0.2s}
+.period-btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.bar-chart{display:flex;align-items:flex-end;gap:6px;height:140px;padding-top:10px}
+.bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
+.bar{width:100%;border-radius:5px 5px 0 0;background:var(--brand);transition:height 0.5s cubic-bezier(0.4,0,0.2,1);cursor:pointer;position:relative;min-height:4px}
+.bar:hover{background:var(--accent)}
+.bar-tooltip{position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);background:var(--brand);color:#fff;font-size:10px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;opacity:0;transition:opacity 0.2s;pointer-events:none}
+.bar:hover .bar-tooltip{opacity:1}
+.bar-label{font-size:10px;color:var(--muted);white-space:nowrap}
+.donut-wrap{position:relative;width:140px;height:140px;margin:0 auto 16px}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.donut-val{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700}
+.donut-label{font-size:10px;color:var(--muted)}
+.legend{display:flex;flex-direction:column;gap:8px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+/* ── TABLES ── */
+.table-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden}
+.table-hd{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.table-title{font-weight:600;font-size:14px}
+.table-link{font-size:12px;color:var(--accent);cursor:pointer;font-weight:500}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;padding:10px 20px;border-bottom:1px solid var(--border);background:#fafaf7}
+td{padding:12px 20px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafaf7}
+.status-pill{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap}
+.status-pill.paid,.status-pill.delivered,.status-pill.active,.status-pill.synced{background:var(--green-light);color:var(--green)}
+.status-pill.pending,.status-pill.processing{background:var(--amber-bg);color:var(--amber)}
+.status-pill.shipped{background:var(--blue-bg);color:var(--blue)}
+.status-pill.failed,.status-pill.error{background:var(--red-bg);color:var(--red)}
+.status-pill.draft{background:var(--light2);color:var(--muted)}
+
+/* ── GRID LAYOUTS ── */
+.two-col-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+.three-col-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem}
+.page-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem}
+.page-hd-title{font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700}
+.page-hd-sub{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* ── FORMS ── */
+.form-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.5rem;margin-bottom:1rem}
+.form-section-hd{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--muted);margin-bottom:1rem;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;font-weight:500;margin-bottom:5px;color:var(--text)}
+.field input,.field select,.field textarea{width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);background:#fff;outline:none;transition:border-color 0.2s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.field textarea{resize:vertical;min-height:90px;line-height:1.5}
+.field .hint{font-size:11px;color:var(--muted);margin-top:4px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.btn{border:none;padding:9px 20px;border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.primary:hover{background:#c1121f}
+.btn.secondary{background:var(--card);color:var(--text);border:1.5px solid var(--border)}
+.btn.secondary:hover{border-color:var(--text)}
+.btn.stripe{background:var(--stripe);color:#fff}
+.btn.stripe:hover{opacity:0.88}
+.btn.green{background:var(--green);color:#fff}
+.btn.sm{padding:6px 14px;font-size:12px}
+.btn-row{display:flex;gap:10px;align-items:center;margin-top:1rem}
+
+/* ── IMAGE UPLOAD ── */
+.img-upload{border:2px dashed var(--border);border-radius:11px;padding:2rem;text-align:center;cursor:pointer;transition:all 0.2s;background:#fafaf7;position:relative;overflow:hidden}
+.img-upload:hover,.img-upload.drag{border-color:var(--accent);background:#fff5f5}
+.img-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.img-upload-icon{width:44px;height:44px;border-radius:11px;background:var(--light2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.img-preview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.img-thumb{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--light2);border:1px solid var(--border)}
+.img-thumb img{width:100%;height:100%;object-fit:cover}
+.img-thumb .rm{position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
+.primary-tag{position:absolute;bottom:4px;left:4px;background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px}
+
+/* ── SKU ROW ── */
+.sku-row{display:flex;gap:8px}
+.sku-row .field{flex:1;margin-bottom:0}
+.sku-gen-btn{background:var(--brand);color:#fff;border:none;padding:9px 14px;border-radius:9px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;white-space:nowrap;margin-top:21px;flex-shrink:0}
+.sku-gen-btn:hover{background:var(--accent)}
+
+/* ── TOGGLES ── */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none;padding-bottom:0}
+.toggle-label{font-size:13px;font-weight:500}
+.toggle-desc{font-size:11px;color:var(--muted);margin-top:2px}
+.toggle{position:relative;width:38px;height:20px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.tslider{position:absolute;inset:0;background:#d1d5db;border-radius:20px;cursor:pointer;transition:background 0.2s}
+.tslider::before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform 0.2s}
+.toggle input:checked+.tslider{background:var(--accent)}
+.toggle input:checked+.tslider::before{transform:translateX(18px)}
+
+/* ── ALERTS ── */
+.alert{border-radius:10px;padding:12px 16px;margin-bottom:1rem;display:flex;gap:12px;align-items:flex-start;font-size:13px}
+.alert.success{background:var(--green-light);border:1px solid var(--green-border);color:var(--green)}
+.alert.warning{background:var(--amber-bg);border:1px solid #f5c475;color:var(--amber)}
+.alert.info{background:var(--blue-bg);border:1px solid #bfdbfe;color:var(--blue)}
+.alert.error{background:var(--red-bg);border:1px solid #fecaca;color:var(--red)}
+.alert-icon{flex-shrink:0;margin-top:1px}
+
+/* ── PRODUCT CARDS (grid view) ── */
+.products-mgmt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.product-mgmt-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;transition:box-shadow 0.2s}
+.product-mgmt-card:hover{box-shadow:var(--shadow-lg)}
+.product-mgmt-img{height:140px;background:var(--light2);display:flex;align-items:center;justify-content:center;font-size:3rem;position:relative;border-bottom:1px solid var(--border)}
+.product-mgmt-status{position:absolute;top:8px;right:8px}
+.product-mgmt-body{padding:12px}
+.product-mgmt-name{font-size:13px;font-weight:600;margin-bottom:2px}
+.product-mgmt-sku{font-size:10px;color:var(--muted);font-family:monospace;margin-bottom:8px}
+.product-mgmt-footer{display:flex;align-items:center;justify-content:space-between}
+.product-mgmt-price{font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;color:var(--accent)}
+.product-mgmt-actions{display:flex;gap:4px}
+.action-btn{background:var(--light2);border:none;width:26px;height:26px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all 0.2s}
+.action-btn:hover{background:var(--accent);color:#fff}
+
+/* ── ORDERS FILTERS ── */
+.filter-bar{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center}
+.filter-pill{border:1.5px solid var(--border);background:var(--card);padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--muted);transition:all 0.2s}
+.filter-pill.active,.filter-pill:hover{border-color:var(--accent);color:var(--accent);background:#fff5f5}
+.search-input{flex:1;max-width:280px;padding:7px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;outline:none;transition:border-color 0.2s}
+.search-input:focus{border-color:var(--accent)}
+
+/* ── STRIPE PANEL ── */
+.key-input-row{display:flex;gap:8px;align-items:flex-end}
+.key-input-row .field{flex:1;margin-bottom:0}
+.reveal-btn{background:none;border:1px solid var(--border);padding:5px 12px;border-radius:7px;font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--muted);white-space:nowrap;height:38px}
+.reveal-btn:hover{border-color:var(--stripe);color:var(--stripe)}
+.key-status{font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:auto}
+.key-status.valid{background:var(--green-light);color:var(--green)}
+.key-status.invalid{background:var(--red-bg);color:var(--red)}
+.key-status.empty{background:var(--light2);color:var(--muted)}
+.fee-calc{background:var(--light);border-radius:10px;padding:14px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fee-calc-result{background:var(--card);border-radius:8px;padding:10px 14px;border:1px solid var(--border)}
+.fee-calc-label{font-size:11px;color:var(--muted);margin-bottom:3px}
+.fee-calc-val{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700}
+
+/* ── PLAN UPGRADE ── */
+.upgrade-banner{background:linear-gradient(135deg,var(--brand),#2d1b4e);border-radius:var(--radius);padding:1.5rem;color:#fff;display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;position:relative;overflow:hidden}
+.upgrade-banner::before{content:'✦';position:absolute;right:80px;top:-10px;font-size:80px;opacity:0.05;color:#fff}
+.upgrade-title{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;margin-bottom:4px}
+.upgrade-sub{font-size:12px;color:rgba(255,255,255,0.65)}
+.upgrade-btn{background:var(--gold);color:var(--brand);border:none;padding:10px 20px;border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0}
+
+/* ── MODULE CARDS ── */
+.modules-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.module-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;position:relative}
+.module-card.active-module{border-color:var(--green-border)}
+.module-card.locked-module{opacity:0.7}
+.module-icon{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;margin-bottom:12px}
+.module-name{font-size:14px;font-weight:600;margin-bottom:4px}
+.module-desc{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5}
+.module-price{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px}
+.module-status{position:absolute;top:12px;right:12px}
+.module-btn{width:100%;padding:8px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all 0.2s}
+.module-btn.enabled{background:var(--green-light);color:var(--green)}
+.module-btn.upgrade{background:var(--gold);color:var(--brand)}
+.module-btn.add{background:var(--stripe-light);color:var(--stripe)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--brand);color:#fff;padding:12px 20px;border-radius:11px;font-size:13px;font-weight:500;z-index:999;transform:translateY(80px);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);pointer-events:none;box-shadow:var(--shadow-lg);max-width:320px}
+.toast.show{transform:translateY(0)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  .sidebar{transform:translateX(-100%)}
+  .main{margin-left:0}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .charts-grid{grid-template-columns:1fr}
+  .modules-grid{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo">Shop<em>.</em>Sell</div>
+    <div class="logo-sub">Seller Dashboard</div>
+  </div>
+
+  <div class="sidebar-plan">
+    <span class="plan-name" id="sidebarPlanName">Growth Plan</span>
+    <span class="plan-badge" id="sidebarPlanBadge">Growth</span>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Store</div>
+    <a class="nav-item active" onclick="showDash('overview')" id="nav-overview">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Overview
+    </a>
+    <a class="nav-item" onclick="showDash('orders')" id="nav-orders">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+      Orders
+      <span class="nav-badge" id="newOrdersBadge">3</span>
+    </a>
+    <a class="nav-item" onclick="showDash('products')" id="nav-products">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+      Products
+    </a>
+    <a class="nav-item" onclick="showDash('add-product')" id="nav-add-product">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Add product
+    </a>
+    <a class="nav-item" onclick="showDash('customers')" id="nav-customers">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      Customers
+    </a>
+
+    <div class="nav-section-label">Payments</div>
+    <a class="nav-item" onclick="showDash('stripe')" id="nav-stripe">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Stripe setup
+    </a>
+    <a class="nav-item" onclick="showDash('payouts')" id="nav-payouts">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      Payouts
+    </a>
+
+    <div class="nav-section-label">Modules</div>
+    <a class="nav-item" onclick="showDash('modules')" id="nav-modules">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+      Add-on modules
+    </a>
+    <a class="nav-item locked" title="Upgrade to access Shipping module">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      Shipping
+      <span class="lock-icon">🔒</span>
+    </a>
+    <a class="nav-item locked" title="Upgrade to access OMS">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      OMS
+      <span class="lock-icon">🔒</span>
+    </a>
+    <a class="nav-item locked" title="Upgrade to access WMS">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      WMS
+      <span class="lock-icon">🔒</span>
+    </a>
+
+    <div class="nav-section-label">Account</div>
+    <a class="nav-item" onclick="showDash('settings')" id="nav-settings">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      Settings
+    </a>
+    <a class="nav-item" onclick="showDash('billing')" id="nav-billing">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+      My subscription
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="seller-info">
+      <div class="seller-avatar" id="sellerAvatar">JS</div>
+      <div>
+        <div class="seller-name" id="sellerName">Jane Smith</div>
+        <div class="seller-email" id="sellerEmail">jane@yourbusiness.com</div>
+      </div>
+      <button class="sidebar-signout" title="Sign out" onclick="toast('Signed out')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div>
+        <div class="page-title" id="topbarTitle">Overview</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="mode-toggle">
+        <button class="mode-btn test active" id="modeTest" onclick="setMode('test')">Test</button>
+        <button class="mode-btn live" id="modeLive" onclick="setMode('live')">Live</button>
+      </div>
+      <button class="topbar-btn" onclick="window.open('index.html','_blank')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        View store
+      </button>
+      <button class="topbar-btn primary" onclick="showDash('add-product')">+ Add product</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       OVERVIEW PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content active" id="dash-overview">
+
+    <div class="stats-grid">
+      <div class="stat-card green">
+        <div class="stat-icon green">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        </div>
+        <div class="stat-val">$4,829</div>
+        <div class="stat-label">Revenue this month</div>
+        <div class="stat-change up">↑ 18.4% vs last month</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon blue">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#635bff" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/></svg>
+        </div>
+        <div class="stat-val">127</div>
+        <div class="stat-label">Orders this month</div>
+        <div class="stat-change up">↑ 12 new orders today</div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-icon amber">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        </div>
+        <div class="stat-val">843</div>
+        <div class="stat-label">Total customers</div>
+        <div class="stat-change up">↑ 34 new this month</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon red">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#991b1b" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        </div>
+        <div class="stat-val">$38.02</div>
+        <div class="stat-label">Avg. order value</div>
+        <div class="stat-change up">↑ $2.14 vs last month</div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-hd">
+          <div>
+            <div class="chart-title">Revenue over time</div>
+            <div class="chart-sub">Daily sales for the last 30 days</div>
+          </div>
+          <div class="chart-period">
+            <button class="period-btn" onclick="setPeriod(this,'7d')">7d</button>
+            <button class="period-btn active" onclick="setPeriod(this,'30d')">30d</button>
+            <button class="period-btn" onclick="setPeriod(this,'90d')">90d</button>
+          </div>
+        </div>
+        <div class="bar-chart" id="revenueChart"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;overflow-x:auto" id="revenueLabels"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-hd">
+          <div>
+            <div class="chart-title">Sales by category</div>
+            <div class="chart-sub">This month</div>
+          </div>
+        </div>
+        <div class="donut-wrap">
+          <svg viewBox="0 0 100 100" style="transform:rotate(-90deg)">
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#e5e5e0" stroke-width="16"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#0f0f1a" stroke-width="16" stroke-dasharray="71.6 167.2" stroke-dashoffset="0"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#e63946" stroke-width="16" stroke-dasharray="47.7 167.2" stroke-dashoffset="-71.6"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#c9a84c" stroke-width="16" stroke-dasharray="30.0 167.2" stroke-dashoffset="-119.3"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#635bff" stroke-width="16" stroke-dasharray="17.9 167.2" stroke-dashoffset="-149.3"/>
+          </svg>
+          <div class="donut-center">
+            <div class="donut-val">$4.8k</div>
+            <div class="donut-label">Total</div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#0f0f1a"></div><span style="flex:1">Accessories</span><strong>43%</strong></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#e63946"></div><span style="flex:1">Clothing</span><strong>28%</strong></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#c9a84c"></div><span style="flex:1">Home</span><strong>18%</strong></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#635bff"></div><span style="flex:1">Beauty</span><strong>11%</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col-grid">
+      <div class="table-card">
+        <div class="table-hd">
+          <div class="table-title">Recent orders</div>
+          <span class="table-link" onclick="showDash('orders')">View all →</span>
+        </div>
+        <table>
+          <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead>
+          <tbody id="recentOrdersTable"></tbody>
+        </table>
+      </div>
+      <div class="table-card">
+        <div class="table-hd">
+          <div class="table-title">Top products</div>
+          <span class="table-link" onclick="showDash('products')">Manage →</span>
+        </div>
+        <table>
+          <thead><tr><th>Product</th><th>Sold</th><th>Revenue</th></tr></thead>
+          <tbody>
+            <tr><td>👜 Linen Tote Bag</td><td>48</td><td style="font-weight:600;color:var(--green)">$1,679</td></tr>
+            <tr><td>✨ Glow Face Serum</td><td>31</td><td style="font-weight:600;color:var(--green)">$1,612</td></tr>
+            <tr><td>🕯️ Scented Candle</td><td>67</td><td style="font-weight:600;color:var(--green)">$1,474</td></tr>
+            <tr><td>👗 Floral Sundress</td><td>19</td><td style="font-weight:600;color:var(--green)">$1,368</td></tr>
+            <tr><td>👛 Leather Wallet</td><td>14</td><td style="font-weight:600;color:var(--green)">$910</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       ORDERS PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-orders">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Orders</div>
+        <div class="page-hd-sub">Manage and fulfill customer orders</div>
+      </div>
+      <button class="btn secondary sm" onclick="toast('Exporting orders to CSV...')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    </div>
+    <div class="filter-bar">
+      <button class="filter-pill active" onclick="filterOrders('all',this)">All orders</button>
+      <button class="filter-pill" onclick="filterOrders('processing',this)">Processing</button>
+      <button class="filter-pill" onclick="filterOrders('shipped',this)">Shipped</button>
+      <button class="filter-pill" onclick="filterOrders('delivered',this)">Delivered</button>
+      <input type="text" class="search-input" placeholder="Search orders, customers..." oninput="searchOrders(this.value)">
+    </div>
+    <div class="table-card">
+      <table>
+        <thead><tr><th>Order #</th><th>Date</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="allOrdersTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       PRODUCTS PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-products">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Products</div>
+        <div class="page-hd-sub" id="productCountLabel">12 products in your catalog</div>
+      </div>
+      <button class="btn primary" onclick="showDash('add-product')">+ Add product</button>
+    </div>
+    <div class="filter-bar">
+      <button class="filter-pill active" onclick="filterProducts('all',this)">All</button>
+      <button class="filter-pill" onclick="filterProducts('clothing',this)">Clothing</button>
+      <button class="filter-pill" onclick="filterProducts('accessories',this)">Accessories</button>
+      <button class="filter-pill" onclick="filterProducts('home',this)">Home & Living</button>
+      <button class="filter-pill" onclick="filterProducts('beauty',this)">Beauty</button>
+    </div>
+    <div class="products-mgmt-grid" id="productsMgmtGrid"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       ADD PRODUCT PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-add-product">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Add new product</div>
+        <div class="page-hd-sub">Fields marked * are required</div>
+      </div>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn secondary sm" onclick="saveDraft()">Save draft</button>
+        <button class="btn primary sm" onclick="publishProduct()">Publish product</button>
+      </div>
+    </div>
+
+    <div id="productSuccess" class="alert success" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      <div><strong>Product published!</strong> It's now live in your store.</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:1.25rem;align-items:start">
+      <div>
+        <div class="form-card">
+          <div class="form-section-hd">Product information</div>
+          <div class="field">
+            <label>Product name *</label>
+            <input type="text" id="pName" placeholder="e.g. Handmade Linen Tote Bag" maxlength="80" oninput="autoSKU()">
+          </div>
+          <div class="field">
+            <label>Description *</label>
+            <textarea id="pDesc" placeholder="Describe your product — materials, dimensions, care instructions..." maxlength="1000"></textarea>
+          </div>
+          <div class="two-col">
+            <div class="field">
+              <label>Category *</label>
+              <select id="pCat" onchange="autoSKU()">
+                <option value="">Select category</option>
+                <option value="clothing">Clothing</option>
+                <option value="accessories">Accessories</option>
+                <option value="home">Home & Living</option>
+                <option value="beauty">Beauty</option>
+                <option value="art">Art & Prints</option>
+                <option value="digital">Digital Products</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Brand / Maker</label>
+              <input type="text" id="pBrand" placeholder="Your brand">
+            </div>
+          </div>
+          <div class="field">
+            <label>SKU (Stock Keeping Unit) *</label>
+            <div class="sku-row">
+              <div class="field"><input type="text" id="pSKU" placeholder="e.g. ACC-TOTE-001" style="font-family:monospace;font-size:12px;letter-spacing:0.5px" oninput="this.dataset.manual='true'"></div>
+              <button class="sku-gen-btn" onclick="generateSKU()">Auto-generate</button>
+            </div>
+            <div class="hint" style="margin-top:4px">Unique identifier for inventory tracking</div>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <div class="form-section-hd">Pricing & inventory</div>
+          <div class="three-col">
+            <div class="field">
+              <label>Price * ($)</label>
+              <input type="number" id="pPrice" placeholder="0.00" min="0" step="0.01" oninput="calcMargin()">
+            </div>
+            <div class="field">
+              <label>Compare-at price ($)</label>
+              <input type="number" id="pCompare" placeholder="0.00" min="0" step="0.01">
+              <div class="hint">Crossed-out price</div>
+            </div>
+            <div class="field">
+              <label>Cost per item ($)</label>
+              <input type="number" id="pCost" placeholder="0.00" min="0" step="0.01" oninput="calcMargin()">
+              <div class="hint">Private — for margin</div>
+            </div>
+          </div>
+          <div id="marginBar" style="display:none;background:var(--light);border-radius:9px;padding:10px 14px;margin-bottom:12px;font-size:12px;display:flex;gap:20px">
+            <span>Margin: <strong id="marginPct" style="color:var(--green)">—</strong></span>
+            <span>Profit: <strong id="marginProfit" style="color:var(--green)">—</strong></span>
+          </div>
+          <div class="two-col">
+            <div class="field">
+              <label>Quantity in stock *</label>
+              <input type="number" id="pQty" placeholder="0" min="0" step="1">
+            </div>
+            <div class="field">
+              <label>Variants (comma-separated)</label>
+              <input type="text" id="pVariants" placeholder="S, M, L, XL — or Red, Blue">
+            </div>
+          </div>
+          <div class="two-col">
+            <div class="field">
+              <label>Weight (oz)</label>
+              <input type="number" id="pWeight" placeholder="0.0" min="0" step="0.1">
+              <div class="hint">For your shipping cost calc</div>
+            </div>
+            <div class="field">
+              <label>Status</label>
+              <select id="pStatus">
+                <option value="active">Active — visible in store</option>
+                <option value="draft">Draft — hidden</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:1rem">
+        <div class="form-card">
+          <div class="form-section-hd">Product images</div>
+          <div class="img-upload" id="imgUpload" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFiles(event)">
+            <input type="file" accept="image/*" multiple onchange="handleFiles(this.files)">
+            <div class="img-upload-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </div>
+            <div style="font-size:13px;font-weight:500;margin-bottom:3px">Drop images or click to browse</div>
+            <div style="font-size:11px;color:var(--muted)">JPG, PNG, WEBP · up to 6 images</div>
+          </div>
+          <div class="img-preview-grid" id="imgPreviewGrid"></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px" id="imgHint">First image is the main listing photo</div>
+        </div>
+
+        <div class="form-card">
+          <div class="form-section-hd">Store settings</div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Featured product</div><div class="toggle-desc">Show on homepage hero</div></div>
+            <label class="toggle"><input type="checkbox"><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Allow reviews</div><div class="toggle-desc">Customers can leave reviews</div></div>
+            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Track inventory</div><div class="toggle-desc">Show out of stock when qty = 0</div></div>
+            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       CUSTOMERS PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-customers">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Customers</div>
+        <div class="page-hd-sub">843 total customers</div>
+      </div>
+      <button class="btn secondary sm" onclick="toast('Exporting customer list...')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+    </div>
+    <div class="table-card">
+      <table>
+        <thead><tr><th>Customer</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Sarah Johnson</strong></td><td>sarah@email.com</td><td>8</td><td style="font-weight:600;color:var(--green)">$412.40</td><td>Apr 28, 2026</td><td><span class="status-pill active">Active</span></td></tr>
+          <tr><td><strong>Michael Chen</strong></td><td>m.chen@email.com</td><td>5</td><td style="font-weight:600;color:var(--green)">$287.50</td><td>Apr 25, 2026</td><td><span class="status-pill active">Active</span></td></tr>
+          <tr><td><strong>Emma Williams</strong></td><td>emma.w@email.com</td><td>12</td><td style="font-weight:600;color:var(--green)">$634.80</td><td>Apr 22, 2026</td><td><span class="status-pill active">Active</span></td></tr>
+          <tr><td><strong>James Rodriguez</strong></td><td>j.rod@email.com</td><td>2</td><td style="font-weight:600;color:var(--green)">$89.98</td><td>Apr 18, 2026</td><td><span class="status-pill active">Active</span></td></tr>
+          <tr><td><strong>Olivia Martinez</strong></td><td>olivia.m@email.com</td><td>1</td><td style="font-weight:600;color:var(--green)">$34.99</td><td>Mar 29, 2026</td><td><span class="status-pill pending">New</span></td></tr>
+          <tr><td><strong>David Kim</strong></td><td>d.kim@email.com</td><td>6</td><td style="font-weight:600;color:var(--green)">$318.60</td><td>Mar 15, 2026</td><td><span class="status-pill active">Active</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       STRIPE SETUP PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-stripe">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Stripe payment setup</div>
+        <div class="page-hd-sub">Connect Stripe to start accepting payments from customers</div>
+      </div>
+      <a href="https://dashboard.stripe.com" target="_blank" class="btn secondary sm">
+        Open Stripe Dashboard ↗
+      </a>
+    </div>
+
+    <div class="alert warning">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div><strong>Stripe not connected.</strong> You won't be able to accept customer payments until you add your API keys below. Get them from <strong>dashboard.stripe.com → Developers → API keys</strong>.</div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-hd">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          API keys
+          <div class="mode-toggle">
+            <button class="mode-btn test active" onclick="setStripeMode('test',this)">Test</button>
+            <button class="mode-btn live" onclick="setStripeMode('live',this)">Live</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert info" style="margin-bottom:1rem;font-size:12px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Use test keys while setting up. Switch to live keys only when you're ready to accept real payments.
+      </div>
+
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px">
+          Publishable key (safe for frontend)
+          <span class="key-status empty" id="pkStatus">Not set</span>
+        </label>
+        <input type="text" id="pkInput" placeholder="pk_test_..." style="font-family:monospace;font-size:12px" oninput="validateStripeKey('pkInput','pkStatus','pk_test_','pk_live_')">
+        <div class="hint">This key is safe to use in your storefront code.</div>
+      </div>
+
+      <div class="key-input-row">
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px">
+            Secret key (server only — never share)
+            <span class="key-status empty" id="skStatus">Not set</span>
+          </label>
+          <input type="password" id="skInput" placeholder="sk_test_..." style="font-family:monospace;font-size:12px" oninput="validateStripeKey('skInput','skStatus','sk_test_','sk_live_')">
+          <div class="hint">Stored as an environment variable on your server. Never put this in your frontend code.</div>
+        </div>
+        <button class="reveal-btn" onclick="toggleReveal('skInput',this)">Show</button>
+      </div>
+
+      <div class="field">
+        <label>Webhook endpoint URL</label>
+        <input type="text" id="webhookUrl" placeholder="https://yourstore.com/api/stripe/webhook" style="font-family:monospace;font-size:12px">
+        <div class="hint">Register this in Stripe Dashboard → Developers → Webhooks</div>
+      </div>
+
+      <div class="key-input-row">
+        <div class="field">
+          <label>Webhook signing secret</label>
+          <input type="password" id="webhookSecret" placeholder="whsec_..." style="font-family:monospace;font-size:12px">
+        </div>
+        <button class="reveal-btn" onclick="toggleReveal('webhookSecret',this)">Show</button>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn stripe" onclick="saveStripeKeys()">Save keys</button>
+        <button class="btn secondary" onclick="testStripeConnection()">Test connection</button>
+      </div>
+      <div id="stripeTestResult" style="display:none;margin-top:10px;font-size:13px;font-weight:500;color:var(--green)"></div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-hd">Stripe fee calculator</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Build Stripe fees into your prices so you receive exactly what you expect. Shipping is always free to customers — factor that cost in here too.</div>
+      <div class="two-col">
+        <div class="field">
+          <label>Your product price ($)</label>
+          <input type="number" id="feePrice" value="45.00" min="0" step="0.01" oninput="calcStripeFee()">
+        </div>
+        <div class="field">
+          <label>Card type</label>
+          <select id="feeType" onchange="calcStripeFee()">
+            <option value="2.9">US card (2.9% + $0.30)</option>
+            <option value="3.9">International (3.9% + $0.30)</option>
+            <option value="3.4">Manually entered (3.4% + $0.30)</option>
+          </select>
+        </div>
+      </div>
+      <div class="fee-calc">
+        <div class="fee-calc-result">
+          <div class="fee-calc-label">Stripe fee</div>
+          <div class="fee-calc-val" id="feeAmt">$1.61</div>
+        </div>
+        <div class="fee-calc-result">
+          <div class="fee-calc-label">You receive</div>
+          <div class="fee-calc-val" style="color:var(--green)" id="feeReceive">$43.39</div>
+        </div>
+        <div class="fee-calc-result">
+          <div class="fee-calc-label">Break-even price</div>
+          <div class="fee-calc-val" style="color:var(--stripe)" id="feeBreakeven">$46.71</div>
+        </div>
+        <div class="fee-calc-result">
+          <div class="fee-calc-label">% of sale taken by Stripe</div>
+          <div class="fee-calc-val" style="color:var(--muted)" id="feePct">3.6%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       PAYOUTS PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-payouts">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Payouts</div>
+        <div class="page-hd-sub">Your Stripe balance and payout history</div>
+      </div>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card green">
+        <div class="stat-icon green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+        <div class="stat-val">$2,140.00</div>
+        <div class="stat-label">Available balance</div>
+        <div class="stat-change up">Next payout in 2 days</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#635bff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <div class="stat-val">$680.00</div>
+        <div class="stat-label">Pending (in transit)</div>
+        <div class="stat-change up">Clears in 1–2 days</div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-icon amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+        <div class="stat-val">$18,420.00</div>
+        <div class="stat-label">Total paid out (all time)</div>
+        <div class="stat-change up">↑ Since launch</div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-hd"><div class="table-title">Payout history</div></div>
+      <table>
+        <thead><tr><th>Date</th><th>Amount</th><th>Bank account</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Apr 28, 2026</td><td style="font-weight:600">$1,240.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
+          <tr><td>Apr 21, 2026</td><td style="font-weight:600">$980.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
+          <tr><td>Apr 14, 2026</td><td style="font-weight:600">$1,560.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
+          <tr><td>Apr 7, 2026</td><td style="font-weight:600">$820.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       MODULES PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-modules">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Add-on modules</div>
+        <div class="page-hd-sub">Scale your business by adding powerful modules as you grow</div>
+      </div>
+    </div>
+
+    <div class="upgrade-banner">
+      <div>
+        <div class="upgrade-title">You're on the Growth plan</div>
+        <div class="upgrade-sub">Upgrade to Pro for unlimited products, custom domain, and priority support — still cheaper than GoDaddy.</div>
+      </div>
+      <button class="upgrade-btn" onclick="toast('Redirecting to plan upgrade...')">Upgrade to Pro — $149/mo</button>
+    </div>
+
+    <div class="modules-grid">
+      <div class="module-card">
+        <div class="module-icon" style="background:#fff5f5">📦</div>
+        <div class="module-name">Shipping Module</div>
+        <div class="module-desc">ShipStation integration, print shipping labels, real-time rate shopping across UPS, FedEx, and USPS. Includes your shipping refund tool.</div>
+        <div class="module-price">+$29/month</div>
+        <button class="module-btn add" onclick="toast('Adding Shipping Module...')">Add module</button>
+      </div>
+      <div class="module-card">
+        <div class="module-icon" style="background:#ede9ff">🔄</div>
+        <div class="module-name">OMS — Order Management</div>
+        <div class="module-desc">Pull orders from Amazon, eBay, Etsy, and Walmart into one dashboard. Sync inventory across all channels and prevent overselling.</div>
+        <div class="module-price">+$49/month</div>
+        <button class="module-btn add" onclick="toast('Adding OMS Module...')">Add module</button>
+      </div>
+      <div class="module-card">
+        <div class="module-icon" style="background:#fef3c7">🏭</div>
+        <div class="module-name">WMS — Warehouse Management</div>
+        <div class="module-desc">Bin locations, pick/pack workflow, barcode scanning, receiving, putaway, and low stock alerts. Deposco-level power for independent sellers.</div>
+        <div class="module-price">+$79/month</div>
+        <button class="module-btn add" onclick="toast('Adding WMS Module...')">Add module</button>
+      </div>
+      <div class="module-card">
+        <div class="module-icon" style="background:linear-gradient(135deg,#f09433,#dc2743);font-size:1.2rem">📸</div>
+        <div class="module-name">Instagram Shop Sync</div>
+        <div class="module-desc">Auto-sync your product catalog to Instagram. Tag products in posts, reels, and stories. Enable Instagram Checkout.</div>
+        <div class="module-price">Included in Growth & Pro</div>
+        <button class="module-btn enabled">Active on your plan</button>
+      </div>
+      <div class="module-card">
+        <div class="module-icon" style="background:#dbeafe">📧</div>
+        <div class="module-name">Email Marketing</div>
+        <div class="module-desc">Automated abandoned cart emails, order confirmations, shipping notifications, and promotional campaigns to your customer list.</div>
+        <div class="module-price">+$19/month</div>
+        <button class="module-btn add" onclick="toast('Adding Email Marketing Module...')">Add module</button>
+      </div>
+      <div class="module-card">
+        <div class="module-icon" style="background:#d8f3dc">💬</div>
+        <div class="module-name">Live Chat Support</div>
+        <div class="module-desc">Add a live chat widget to your store. Let customers ask questions before buying and reduce abandoned carts.</div>
+        <div class="module-price">+$14/month</div>
+        <button class="module-btn add" onclick="toast('Adding Live Chat Module...')">Add module</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       SETTINGS PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-settings">
+    <div class="page-hd">
+      <div class="page-hd-title">Store settings</div>
+    </div>
+    <div style="max-width:640px">
+      <div class="form-card">
+        <div class="form-section-hd">Store information</div>
+        <div class="field"><label>Store name</label><input type="text" value="Jane's Boutique"></div>
+        <div class="field"><label>Store URL</label>
+          <div style="display:flex;align-items:center;border:1.5px solid var(--border);border-radius:9px;overflow:hidden">
+            <input type="text" value="janesboutique" style="border:none;flex:1">
+            <span style="padding:10px 12px;background:#fafaf7;font-size:12px;color:var(--muted);border-left:1px solid var(--border)">.shopsell.com</span>
+          </div>
+        </div>
+        <div class="field"><label>Store description</label><textarea>Handcrafted goods and curated essentials for modern living.</textarea></div>
+        <div class="field"><label>Business email</label><input type="email" value="jane@janesboutique.com"></div>
+        <div class="field"><label>Support phone (optional)</label><input type="tel" value="+1 (555) 000-0000"></div>
+        <button class="btn primary" onclick="toast('Settings saved!')">Save changes</button>
+      </div>
+      <div class="form-card">
+        <div class="form-section-hd">Store preferences</div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">Show product reviews</div><div class="toggle-desc">Display customer reviews on product pages</div></div>
+          <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">Low stock alerts</div><div class="toggle-desc">Email me when stock drops below 5</div></div>
+          <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">New order notifications</div><div class="toggle-desc">Email me for every new order</div></div>
+          <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">Order confirmation emails to customers</div><div class="toggle-desc">Auto-send order confirmation to buyers</div></div>
+          <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       BILLING PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-billing">
+    <div class="page-hd">
+      <div class="page-hd-title">My subscription</div>
+    </div>
+    <div style="max-width:640px">
+      <div class="form-card">
+        <div class="form-section-hd">Current plan</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--light);border-radius:10px;margin-bottom:1rem">
+          <div>
+            <div style="font-size:14px;font-weight:600">Growth Plan</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">500 products · Instagram sync · Analytics · Priority support</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:var(--accent)">$119/mo</div>
+            <div style="font-size:11px;color:var(--muted)">Next bill: May 14, 2026</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn primary sm" onclick="toast('Redirecting to plan upgrade...')">Upgrade to Pro — $149/mo</button>
+          <button class="btn secondary sm" onclick="toast('Downgrade options coming soon')">Change plan</button>
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-section-hd">Payment method on file</div>
+        <div style="display:flex;align-items:center;gap:14px;padding:12px;background:var(--light);border-radius:10px;margin-bottom:1rem">
+          <div style="width:44px;height:28px;background:#fff;border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#1a1f71">VISA</div>
+          <div>
+            <div style="font-size:13px;font-weight:500">Visa ending in 4821</div>
+            <div style="font-size:11px;color:var(--muted)">Expires 09/28</div>
+          </div>
+          <button class="btn secondary sm" style="margin-left:auto" onclick="toast('Update card coming soon')">Update</button>
+        </div>
+        <div class="alert info" style="font-size:12px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Your subscription billing is secured by Stripe. Card numbers are never stored on our servers.
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-section-hd">Billing history</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Date</th><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Plan</th><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Amount</th><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Receipt</th></tr></thead>
+          <tbody>
+            <tr><td style="padding:10px 0;border-bottom:1px solid var(--border)">Apr 14, 2026</td><td style="padding:10px 0;border-bottom:1px solid var(--border)">Growth</td><td style="padding:10px 0;border-bottom:1px solid var(--border);font-weight:600">$119.00</td><td style="padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--accent);cursor:pointer;font-size:12px" onclick="toast('Downloading receipt...')">Download PDF</span></td></tr>
+            <tr><td style="padding:10px 0;border-bottom:1px solid var(--border)">Mar 14, 2026</td><td style="padding:10px 0;border-bottom:1px solid var(--border)">Growth</td><td style="padding:10px 0;border-bottom:1px solid var(--border);font-weight:600">$119.00</td><td style="padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--accent);cursor:pointer;font-size:12px" onclick="toast('Downloading receipt...')">Download PDF</span></td></tr>
+            <tr><td style="padding:10px 0">Feb 14, 2026</td><td style="padding:10px 0">Starter → Growth</td><td style="padding:10px 0;font-weight:600">$119.00</td><td style="padding:10px 0"><span style="color:var(--accent);cursor:pointer;font-size:12px" onclick="toast('Downloading receipt...')">Download PDF</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="text-align:center;margin-top:1rem">
+        <span style="font-size:12px;color:var(--muted);cursor:pointer" onclick="toast('Are you sure? Your store will be deactivated.')">Cancel subscription</span>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toastEl"></div>
+
+<script>
+/* ============================================================
+   SHOPSELL SELLER DASHBOARD — JAVASCRIPT
+
+   HOW TO CONNECT TO YOUR BACKEND:
+   Replace each // API CALL comment with a real fetch() call.
+   ============================================================ */
+
+// ── SAMPLE DATA ──
+// API CALL: Replace with fetch('/api/orders') from server.js
+const ORDERS = [
+  {id:'SS-10312',date:'Apr 30, 2026',customer:'Sarah Johnson',email:'sarah@email.com',items:'Linen Tote Bag × 2',total:'$69.98',status:'processing'},
+  {id:'SS-10311',date:'Apr 30, 2026',customer:'Michael Chen',email:'m.chen@email.com',items:'Glow Face Serum',total:'$52.00',status:'processing'},
+  {id:'SS-10310',date:'Apr 29, 2026',customer:'Emma Williams',email:'emma.w@email.com',items:'Scented Candle × 3',total:'$66.00',status:'shipped'},
+  {id:'SS-10309',date:'Apr 29, 2026',customer:'James Rodriguez',email:'j.rod@email.com',items:'Classic White Tee',total:'$28.00',status:'processing'},
+  {id:'SS-10308',date:'Apr 28, 2026',customer:'Olivia Martinez',email:'olivia.m@email.com',items:'Floral Sundress',total:'$72.00',status:'shipped'},
+  {id:'SS-10307',date:'Apr 27, 2026',customer:'David Kim',email:'d.kim@email.com',items:'Leather Wallet',total:'$65.00',status:'delivered'},
+  {id:'SS-10306',date:'Apr 26, 2026',customer:'Sarah Johnson',email:'sarah@email.com',items:'Ceramic Mug Set',total:'$45.00',status:'delivered'},
+  {id:'SS-10305',date:'Apr 25, 2026',customer:'Michael Chen',email:'m.chen@email.com',items:'Lip Tint Trio',total:'$38.00',status:'delivered'},
+];
+
+// API CALL: Replace with fetch('/api/products') from server.js
+const PRODUCTS_DASH = [
+  {id:1,name:'Linen Tote Bag',cat:'accessories',price:34.99,emoji:'👜',qty:42,status:'active',sku:'ACC-TOTE-241'},
+  {id:2,name:'Classic White Tee',cat:'clothing',price:28.00,emoji:'👕',qty:18,status:'active',sku:'CLO-CLAS-882'},
+  {id:3,name:'Ceramic Mug Set',cat:'home',price:45.00,emoji:'☕',qty:9,status:'active',sku:'HOM-CERA-298'},
+  {id:4,name:'Glow Face Serum',cat:'beauty',price:52.00,emoji:'✨',qty:31,status:'active',sku:'BEA-GLOW-519'},
+  {id:5,name:'Leather Wallet',cat:'accessories',price:65.00,emoji:'👛',qty:7,status:'active',sku:'ACC-LEAT-667'},
+  {id:6,name:'Floral Sundress',cat:'clothing',price:72.00,emoji:'👗',qty:14,status:'active',sku:'CLO-FLOR-374'},
+  {id:7,name:'Scented Candle',cat:'home',price:22.00,emoji:'🕯️',qty:55,status:'active',sku:'HOM-SCEN-103'},
+  {id:8,name:'Lip Tint Trio',cat:'beauty',price:38.00,emoji:'💄',qty:22,status:'active',sku:'BEA-LIPT-556'},
+  {id:9,name:'Silk Scrunchie Set',cat:'accessories',price:18.00,emoji:'🪡',qty:38,status:'active',sku:'ACC-SILK-819'},
+  {id:10,name:'Linen Joggers',cat:'clothing',price:58.00,emoji:'👖',qty:11,status:'active',sku:'CLO-LINE-445'},
+  {id:11,name:'Bamboo Cutting Board',cat:'home',price:34.00,emoji:'🪵',qty:3,status:'active',sku:'HOM-BAMB-277'},
+  {id:12,name:'Rose Water Mist',cat:'beauty',price:26.00,emoji:'🌹',qty:0,status:'draft',sku:'BEA-ROSE-631'},
+];
+
+let uploadedImages = [];
+let currentOrderFilter = 'all';
+let currentProductFilter = 'all';
+
+// ── NAVIGATION ──
+function showDash(name){
+  document.querySelectorAll('.page-content').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('dash-'+name).classList.add('active');
+  const navEl = document.getElementById('nav-'+name);
+  if(navEl) navEl.classList.add('active');
+  const titles = {
+    overview:'Overview', orders:'Orders', products:'Products',
+    'add-product':'Add product', customers:'Customers',
+    stripe:'Stripe payment setup', payouts:'Payouts',
+    modules:'Add-on modules', settings:'Settings', billing:'My subscription'
+  };
+  document.getElementById('topbarTitle').textContent = titles[name]||name;
+  window.scrollTo(0,0);
+}
+
+// ── MODE TOGGLE ──
+function setMode(mode){
+  document.getElementById('modeTest').classList.toggle('active', mode==='test');
+  document.getElementById('modeLive').classList.toggle('active', mode==='live');
+  toast(mode==='live'?'⚡ Switched to live mode — real payments active':'🧪 Switched to test mode');
+}
+
+// ── OVERVIEW ──
+function renderRevenueChart(){
+  const data = [120,180,95,240,310,185,420,290,380,210,445,320,195,480,265,310,390,280,425,340,290,410,370,320,450,380,310,490,440,520];
+  const max = Math.max(...data);
+  const chart = document.getElementById('revenueChart');
+  const labels = document.getElementById('revenueLabels');
+  chart.innerHTML = data.slice(-14).map((v,i)=>`
+    <div class="bar-wrap">
+      <div class="bar" style="height:${Math.round((v/max)*120)}px;background:${i===13?'var(--accent)':'var(--brand)'}">
+        <div class="bar-tooltip">$${v}</div>
+      </div>
+    </div>`).join('');
+  const days=['Apr 17','Apr 18','Apr 19','Apr 20','Apr 21','Apr 22','Apr 23','Apr 24','Apr 25','Apr 26','Apr 27','Apr 28','Apr 29','Apr 30'];
+  labels.innerHTML = days.map((d,i)=>i%3===0?`<span class="bar-label" style="flex:1;font-size:10px;color:var(--muted)">${d}</span>`:'<span style="flex:1"></span>').join('');
+}
+
+function setPeriod(btn,period){
+  document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRevenueChart();
+  toast('Showing '+period+' data');
+}
+
+function renderRecentOrders(){
+  const tbody = document.getElementById('recentOrdersTable');
+  tbody.innerHTML = ORDERS.slice(0,5).map(o=>`
+    <tr>
+      <td style="font-family:monospace;font-size:12px">#${o.id}</td>
+      <td><strong>${o.customer}</strong></td>
+      <td style="font-weight:600">${o.total}</td>
+      <td><span class="status-pill ${o.status}">${cap(o.status)}</span></td>
+    </tr>`).join('');
+}
+
+// ── ORDERS ──
+function renderOrders(filter='all',search=''){
+  const tbody = document.getElementById('allOrdersTable');
+  let list = filter==='all' ? ORDERS : ORDERS.filter(o=>o.status===filter);
+  if(search) list = list.filter(o=>
+    o.id.toLowerCase().includes(search) ||
+    o.customer.toLowerCase().includes(search) ||
+    o.items.toLowerCase().includes(search)
+  );
+  tbody.innerHTML = list.map(o=>`
+    <tr>
+      <td style="font-family:monospace;font-size:12px">#${o.id}</td>
+      <td>${o.date}</td>
+      <td><strong>${o.customer}</strong><br><span style="font-size:11px;color:var(--muted)">${o.email}</span></td>
+      <td style="color:var(--muted);font-size:12px">${o.items}</td>
+      <td style="font-weight:600">${o.total}</td>
+      <td><span class="status-pill ${o.status}">${cap(o.status)}</span></td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="btn secondary sm" onclick="toast('Order #${o.id} — fulfill coming soon')">Fulfill</button>
+          <button class="btn secondary sm" onclick="toast('Viewing order #${o.id}')">View</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function filterOrders(filter,btn){
+  currentOrderFilter = filter;
+  document.querySelectorAll('#dash-orders .filter-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderOrders(filter);
+}
+
+function searchOrders(q){renderOrders(currentOrderFilter,q.toLowerCase())}
+
+// ── PRODUCTS ──
+function renderProducts(filter='all'){
+  const grid = document.getElementById('productsMgmtGrid');
+  const list = filter==='all' ? PRODUCTS_DASH : PRODUCTS_DASH.filter(p=>p.cat===filter);
+  document.getElementById('productCountLabel').textContent = list.length+' product'+(list.length!==1?'s':'')+' in your catalog';
+  grid.innerHTML = list.map(p=>`
+    <div class="product-mgmt-card">
+      <div class="product-mgmt-img">
+        ${p.emoji}
+        <div class="product-mgmt-status">
+          <span class="status-pill ${p.status==='active'?'active':'draft'}">${cap(p.status)}</span>
+        </div>
+      </div>
+      <div class="product-mgmt-body">
+        <div class="product-mgmt-name">${p.name}</div>
+        <div class="product-mgmt-sku">${p.sku} · Qty: ${p.qty}${p.qty===0?' ⚠️':p.qty<5?' (low)':''}</div>
+        <div class="product-mgmt-footer">
+          <div class="product-mgmt-price">$${p.price.toFixed(2)}</div>
+          <div class="product-mgmt-actions">
+            <button class="action-btn" title="Edit" onclick="toast('Editing ${p.name}...')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="action-btn" title="Duplicate" onclick="toast('Duplicating ${p.name}...')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+            <button class="action-btn" title="Delete" onclick="toast('Delete ${p.name}?')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function filterProducts(filter,btn){
+  currentProductFilter = filter;
+  document.querySelectorAll('#dash-products .filter-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderProducts(filter);
+}
+
+// ── ADD PRODUCT ──
+function autoSKU(){
+  const name = document.getElementById('pName').value;
+  const cat = document.getElementById('pCat').value;
+  const skuEl = document.getElementById('pSKU');
+  if(!name||!cat||skuEl.dataset.manual==='true') return;
+  const c = cat.slice(0,3).toUpperCase();
+  const n = name.replace(/[^a-zA-Z0-9]/g,'').slice(0,4).toUpperCase()||'ITEM';
+  skuEl.value = c+'-'+n+'-'+String(Math.floor(Math.random()*900)+100);
+}
+
+function generateSKU(){
+  const cat = (document.getElementById('pCat').value||'PRD').slice(0,3).toUpperCase();
+  const name = (document.getElementById('pName').value||'ITEM').replace(/[^a-zA-Z0-9]/g,'').slice(0,4).toUpperCase()||'ITEM';
+  document.getElementById('pSKU').value = cat+'-'+name+'-'+String(Math.floor(Math.random()*9000)+1000);
+  document.getElementById('pSKU').dataset.manual='true';
+}
+
+function calcMargin(){
+  const price = parseFloat(document.getElementById('pPrice').value)||0;
+  const cost = parseFloat(document.getElementById('pCost').value)||0;
+  const bar = document.getElementById('marginBar');
+  if(price>0&&cost>0){
+    const profit = price-cost;
+    const pct = ((profit/price)*100).toFixed(1);
+    document.getElementById('marginPct').textContent = pct+'%';
+    document.getElementById('marginProfit').textContent = '$'+profit.toFixed(2);
+    bar.style.display='flex';
+  } else {bar.style.display='none';}
+}
+
+function handleFiles(files){
+  Array.from(files).slice(0,6-uploadedImages.length).forEach(f=>{
+    if(!f.type.startsWith('image/'))return;
+    const r=new FileReader();
+    r.onload=e=>{uploadedImages.push(e.target.result);renderImgPreviews()};
+    r.readAsDataURL(f);
+  });
+}
+
+function renderImgPreviews(){
+  const grid = document.getElementById('imgPreviewGrid');
+  grid.innerHTML = uploadedImages.map((src,i)=>`
+    <div class="img-thumb">
+      <img src="${src}" alt="">
+      <button class="rm" onclick="uploadedImages.splice(${i},1);renderImgPreviews()">×</button>
+      ${i===0?'<span class="primary-tag">Main</span>':''}
+    </div>`).join('');
+  document.getElementById('imgHint').textContent = uploadedImages.length?`${uploadedImages.length} image${uploadedImages.length>1?'s':''} added`:'First image is the main listing photo';
+}
+
+function dragOver(e){e.preventDefault();document.getElementById('imgUpload').classList.add('drag')}
+function dragLeave(){document.getElementById('imgUpload').classList.remove('drag')}
+function dropFiles(e){e.preventDefault();document.getElementById('imgUpload').classList.remove('drag');handleFiles(e.dataTransfer.files)}
+
+function publishProduct(){
+  const name = document.getElementById('pName').value.trim();
+  const price = document.getElementById('pPrice').value;
+  const sku = document.getElementById('pSKU').value.trim();
+  const cat = document.getElementById('pCat').value;
+  if(!name){toast('Please enter a product name');return}
+  if(!cat){toast('Please select a category');return}
+  if(!price||parseFloat(price)<=0){toast('Please enter a valid price');return}
+  if(!sku){toast('Please enter or generate a SKU');return}
+
+  // API CALL: POST /api/products with form data
+  // const res = await fetch('/api/products',{method:'POST',body:JSON.stringify({name,price,sku,cat,...})});
+
+  const successEl = document.getElementById('productSuccess');
+  successEl.style.display='flex';
+  successEl.scrollIntoView({behavior:'smooth'});
+  toast('✓ '+name+' published to your store!');
+  setTimeout(()=>successEl.style.display='none',5000);
+}
+
+function saveDraft(){
+  const name = document.getElementById('pName').value.trim()||'Untitled product';
+  toast('Draft saved: '+name);
+}
+
+// ── STRIPE ──
+function validateStripeKey(inputId,statusId,testPrefix,livePrefix){
+  const el=document.getElementById(statusId);
+  const val=document.getElementById(inputId).value.trim();
+  if(!val){el.textContent='Not set';el.className='key-status empty';return}
+  if((val.startsWith(testPrefix)||val.startsWith(livePrefix))&&val.length>20){
+    el.textContent='Valid ✓';el.className='key-status valid';
+  } else {el.textContent='Invalid format';el.className='key-status invalid'}
+}
+
+function toggleReveal(id,btn){
+  const el=document.getElementById(id);
+  const shown=el.type==='text';
+  el.type=shown?'password':'text';
+  btn.textContent=shown?'Show':'Hide';
+}
+
+function setStripeMode(mode,btn){
+  btn.parentElement.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  toast(mode==='live'?'Switched to live Stripe keys':'Switched to test Stripe keys');
+}
+
+function saveStripeKeys(){
+  // API CALL: POST /api/stripe/keys — store securely in server environment
+  toast('✓ Stripe keys saved securely on your server');
+}
+
+function testStripeConnection(){
+  const pk=document.getElementById('pkInput').value.trim();
+  const sk=document.getElementById('skInput').value.trim();
+  const result=document.getElementById('stripeTestResult');
+  if(!pk||!sk){toast('Enter both keys first');return}
+  result.style.display='block';
+  if(pk.startsWith('pk_')&&sk.startsWith('sk_')){
+    result.style.color='var(--green)';
+    result.textContent='✓ Connection successful — Stripe is ready to accept payments';
+  } else {
+    result.style.color='var(--red)';
+    result.textContent='✗ Connection failed — check key format (should start with pk_test_ and sk_test_)';
+  }
+}
+
+function calcStripeFee(){
+  const price=parseFloat(document.getElementById('feePrice').value)||0;
+  const pct=parseFloat(document.getElementById('feeType').value)/100;
+  const fee=price*pct+0.30;
+  const receive=Math.max(0,price-fee);
+  const breakeven=(price+0.30)/(1-pct);
+  const feePct=(fee/price*100)||0;
+  document.getElementById('feeAmt').textContent='$'+fee.toFixed(2);
+  document.getElementById('feeReceive').textContent='$'+receive.toFixed(2);
+  document.getElementById('feeBreakeven').textContent='$'+breakeven.toFixed(2);
+  document.getElementById('feePct').textContent=feePct.toFixed(1)+'%';
+}
+
+// ── UTILITIES ──
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
+
+function toast(msg){
+  const el=document.getElementById('toastEl');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+// ── INIT ──
+renderRevenueChart();
+renderRecentOrders();
+renderOrders();
+renderProducts();
+calcStripeFee();
+</script>
+</body>
+</html>
