@@ -36,17 +36,17 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ── SECURITY MIDDLEWARE ───────────────────────────────────────
-// helmet sets secure HTTP headers automatically
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "https://js.stripe.com", "'unsafe-inline'"],
-      frameSrc:   ["https://js.stripe.com"],
-      connectSrc: ["'self'", "https://api.stripe.com"],
-      imgSrc:     ["'self'", "data:", "https:"],
-      styleSrc:   ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
-      fontSrc:    ["'self'", "https://fonts.gstatic.com"],
+      defaultSrc:    ["'self'"],
+      scriptSrc:     ["'self'", "https://js.stripe.com", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+      frameSrc:      ["https://js.stripe.com"],
+      connectSrc:    ["'self'", "https://api.stripe.com"],
+      imgSrc:        ["'self'", "data:", "https:"],
+      styleSrc:      ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
+      fontSrc:       ["'self'", "https://fonts.gstatic.com"],
     },
   },
 }));
@@ -66,16 +66,15 @@ app.use(cors({
 }));
 
 // ── RATE LIMITING ─────────────────────────────────────────────
-// Prevents brute-force attacks on login/signup
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,                   // 20 attempts per window
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   message: { error: 'Too many attempts. Please try again in 15 minutes.' },
 });
 
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 100,            // 100 requests per minute per IP
+  windowMs: 60 * 1000,
+  max: 100,
   message: { error: 'Too many requests. Please slow down.' },
 });
 
@@ -100,8 +99,7 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-// Serve the seller dashboard (protected — auth check happens client-side,
-// real protection is on all /api/seller/* routes via requireAuth middleware)
+// Serve the seller dashboard
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
@@ -115,7 +113,7 @@ function requireAuth(req, res, next) {
   const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.seller = decoded; // { sellerId, email, plan }
+    req.seller = decoded;
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Session expired. Please log in again.' });
@@ -123,7 +121,6 @@ function requireAuth(req, res, next) {
 }
 
 // ── MODULE ACCESS MIDDLEWARE ──────────────────────────────────
-// Check if seller's plan includes a given module
 function requirePlan(...allowedPlans) {
   return (req, res, next) => {
     if (!allowedPlans.includes(req.seller.plan)) {
@@ -140,31 +137,24 @@ function requirePlan(...allowedPlans) {
    ── AUTH ROUTES ──────────────────────────────────────────────
    POST /api/auth/signup   — create seller account
    POST /api/auth/login    — seller login
-   POST /api/auth/logout   — invalidate token (client-side)
    GET  /api/auth/me       — get current seller info
    ============================================================ */
 
-// SIGNUP — creates seller account + Stripe customer for subscription billing
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { firstName, lastName, email, password, phone, storeName, storeSlug, plan } = req.body;
 
-    // Validate required fields
     if (!firstName || !lastName || !email || !password || !storeName || !storeSlug || !plan) {
       return res.status(400).json({ error: 'All required fields must be filled in.' });
     }
 
-    // Check email not already registered
     const existing = await db.getSellerByEmail(email);
     if (existing) {
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
-    // Hash password — NEVER store plain text passwords
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create Stripe customer for subscription billing
-    // This is YOUR Stripe account (platform) — NOT the seller's Stripe account
     const stripeCustomer = await stripe.customers.create({
       email,
       name: `${firstName} ${lastName}`,
@@ -172,23 +162,19 @@ app.post('/api/auth/signup', async (req, res) => {
       metadata: { storeName, storeSlug, plan },
     });
 
-    // Map plan name to Stripe Price ID
-    // Create these Price IDs in your Stripe Dashboard → Products
     const PLAN_PRICE_IDS = {
-      starter: process.env.STRIPE_PRICE_STARTER, // $79/mo
-      growth:  process.env.STRIPE_PRICE_GROWTH,  // $119/mo
-      pro:     process.env.STRIPE_PRICE_PRO,      // $149/mo
+      starter: process.env.STRIPE_PRICE_STARTER,
+      growth:  process.env.STRIPE_PRICE_GROWTH,
+      pro:     process.env.STRIPE_PRICE_PRO,
     };
 
-    // Create subscription with 14-day trial
     const subscription = await stripe.subscriptions.create({
-      customer:       stripeCustomer.id,
-      items:          [{ price: PLAN_PRICE_IDS[plan] }],
+      customer:          stripeCustomer.id,
+      items:             [{ price: PLAN_PRICE_IDS[plan] }],
       trial_period_days: 14,
-      metadata:       { sellerId: storeSlug },
+      metadata:          { sellerId: storeSlug },
     });
 
-    // Save seller to database
     const seller = await db.createSeller({
       firstName,
       lastName,
@@ -198,11 +184,10 @@ app.post('/api/auth/signup', async (req, res) => {
       storeName,
       storeSlug,
       plan,
-      stripeCustomerId:   stripeCustomer.id,
+      stripeCustomerId:     stripeCustomer.id,
       stripeSubscriptionId: subscription.id,
     });
 
-    // Issue JWT token
     const token = jwt.sign(
       { sellerId: seller.id, email: seller.email, plan: seller.plan },
       process.env.JWT_SECRET,
@@ -230,7 +215,6 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-// LOGIN
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -249,12 +233,11 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Check subscription is still active
     const subscription = await stripe.subscriptions.retrieve(seller.stripeSubscriptionId);
     const isActive = ['active', 'trialing'].includes(subscription.status);
     if (!isActive) {
       return res.status(403).json({
-        error: 'Your subscription is inactive. Please update your billing at /dashboard#billing.',
+        error: 'Your subscription is inactive. Please update your billing.',
         subscriptionStatus: subscription.status,
       });
     }
@@ -284,7 +267,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// GET CURRENT SELLER
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     const seller = await db.getSellerById(req.seller.sellerId);
@@ -305,14 +287,13 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 
 /* ============================================================
    ── PRODUCTS ROUTES ──────────────────────────────────────────
-   GET    /api/products            — buyer: get all active products for a store
+   GET    /api/products            — buyer: get all active products
    GET    /api/seller/products     — seller: get all their products
    POST   /api/seller/products     — seller: create product
    PUT    /api/seller/products/:id — seller: update product
    DELETE /api/seller/products/:id — seller: delete product
    ============================================================ */
 
-// GET products for buyer store (public — no auth required)
 app.get('/api/products', async (req, res) => {
   try {
     const { storeSlug, category, sort, search } = req.query;
@@ -323,12 +304,10 @@ app.get('/api/products', async (req, res) => {
 
     let products = await db.getActiveProducts(storeSlug);
 
-    // Filter by category
     if (category && category !== 'all') {
       products = products.filter(p => p.category === category);
     }
 
-    // Search
     if (search) {
       const q = search.toLowerCase();
       products = products.filter(p =>
@@ -338,7 +317,6 @@ app.get('/api/products', async (req, res) => {
       );
     }
 
-    // Sort
     if (sort === 'price-asc')  products.sort((a,b) => a.price - b.price);
     if (sort === 'price-desc') products.sort((a,b) => b.price - a.price);
     if (sort === 'rating')     products.sort((a,b) => b.rating - a.rating);
@@ -351,7 +329,6 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// GET seller's own products (auth required)
 app.get('/api/seller/products', requireAuth, async (req, res) => {
   try {
     const products = await db.getProductsBySeller(req.seller.sellerId);
@@ -361,7 +338,6 @@ app.get('/api/seller/products', requireAuth, async (req, res) => {
   }
 });
 
-// CREATE product (auth required)
 app.post('/api/seller/products', requireAuth, async (req, res) => {
   try {
     const {
@@ -371,15 +347,13 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       status, imageUrls,
     } = req.body;
 
-    // Validate required fields
     if (!name || !category || !price || !sku) {
       return res.status(400).json({ error: 'Name, category, price, and SKU are required.' });
     }
 
-    // Check plan product limits
     const productCount = await db.getProductCountBySeller(req.seller.sellerId);
-    const PLAN_LIMITS = { starter: 50, growth: 500, pro: Infinity };
-    const limit = PLAN_LIMITS[req.seller.plan] || 50;
+    const PLAN_LIMITS  = { starter: 50, growth: 500, pro: Infinity };
+    const limit        = PLAN_LIMITS[req.seller.plan] || 50;
 
     if (productCount >= limit) {
       return res.status(403).json({
@@ -388,7 +362,6 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       });
     }
 
-    // Check SKU is unique for this seller
     const skuExists = await db.checkSKUExists(req.seller.sellerId, sku);
     if (skuExists) {
       return res.status(409).json({ error: `SKU "${sku}" already exists. Use a unique SKU.` });
@@ -402,13 +375,13 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       brand,
       price:          parseFloat(price),
       compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
-      costPerItem:    costPerItem ? parseFloat(costPerItem) : null,
+      costPerItem:    costPerItem    ? parseFloat(costPerItem)    : null,
       sku,
       quantity:       parseInt(quantity) || 0,
       weight:         weight ? parseFloat(weight) : null,
-      variants:       variants || [],
-      status:         status || 'active',
-      imageUrls:      imageUrls || [],
+      variants:       variants   || [],
+      status:         status     || 'active',
+      imageUrls:      imageUrls  || [],
     });
 
     res.status(201).json({ message: 'Product created!', product });
@@ -418,7 +391,6 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
   }
 });
 
-// UPDATE product
 app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
   try {
     const product = await db.getProductById(req.params.id);
@@ -426,7 +398,6 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
     if (product.sellerId !== req.seller.sellerId) {
       return res.status(403).json({ error: 'You do not own this product.' });
     }
-
     const updated = await db.updateProduct(req.params.id, req.body);
     res.json({ message: 'Product updated!', product: updated });
   } catch (err) {
@@ -434,7 +405,6 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
   }
 });
 
-// DELETE product
 app.delete('/api/seller/products/:id', requireAuth, async (req, res) => {
   try {
     const product = await db.getProductById(req.params.id);
@@ -442,7 +412,6 @@ app.delete('/api/seller/products/:id', requireAuth, async (req, res) => {
     if (product.sellerId !== req.seller.sellerId) {
       return res.status(403).json({ error: 'You do not own this product.' });
     }
-
     await db.deleteProduct(req.params.id);
     res.json({ message: 'Product deleted.' });
   } catch (err) {
@@ -452,14 +421,11 @@ app.delete('/api/seller/products/:id', requireAuth, async (req, res) => {
 
 /* ============================================================
    ── PAYMENT ROUTES (BUYER CHECKOUT) ─────────────────────────
-   POST /api/checkout/create-payment-intent — start Stripe payment
-   POST /api/checkout/confirm               — confirm order after payment
-   GET  /api/orders/:id                     — get order status
+   POST /api/checkout/create-payment-intent
+   POST /api/checkout/confirm
+   GET  /api/orders/:id
    ============================================================ */
 
-// CREATE PAYMENT INTENT
-// This is called when the buyer reaches the payment step.
-// Returns a clientSecret that Stripe.js uses to complete the payment in the browser.
 app.post('/api/checkout/create-payment-intent', async (req, res) => {
   try {
     const { cartItems, storeSlug, customerEmail } = req.body;
@@ -468,11 +434,9 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       return res.status(400).json({ error: 'Cart is empty.' });
     }
 
-    // Look up the seller for this store
     const seller = await db.getSellerBySlug(storeSlug);
     if (!seller) return res.status(404).json({ error: 'Store not found.' });
 
-    // Get fresh product prices from DB — never trust client-side prices
     let subtotal = 0;
     const verifiedItems = [];
     for (const item of cartItems) {
@@ -487,23 +451,20 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       verifiedItems.push({ ...item, price: product.price, name: product.name });
     }
 
-    const tax    = subtotal * 0.08; // 8% tax — adjust per state
-    const total  = Math.round((subtotal + tax) * 100); // Stripe uses cents
+    const tax   = subtotal * 0.08;
+    const total = Math.round((subtotal + tax) * 100);
 
-    // Create order record in DB with status 'pending'
     const order = await db.createOrder({
-      sellerId:    seller.id,
+      sellerId:      seller.id,
       storeSlug,
       customerEmail,
-      items:       verifiedItems,
+      items:         verifiedItems,
       subtotal,
       tax,
-      total:       subtotal + tax,
-      status:      'pending',
+      total:         subtotal + tax,
+      status:        'pending',
     });
 
-    // Create Stripe Payment Intent
-    // The seller's Stripe account receives the money
     const paymentIntent = await stripe.paymentIntents.create({
       amount:   total,
       currency: 'usd',
@@ -514,10 +475,6 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
         storeSlug,
         sellerId:  seller.id,
       },
-      // Stripe Connect: route payment to seller's Stripe account
-      // Uncomment when seller has connected their Stripe account:
-      // transfer_data: { destination: seller.stripeAccountId },
-      // application_fee_amount: Math.round(total * 0.02), // platform takes 2%
     });
 
     res.json({
@@ -532,35 +489,25 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
   }
 });
 
-// CONFIRM ORDER after successful payment
 app.post('/api/checkout/confirm', async (req, res) => {
   try {
     const { orderId, paymentIntentId, customerInfo } = req.body;
 
-    // Verify payment actually succeeded with Stripe
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (paymentIntent.status !== 'succeeded') {
       return res.status(400).json({ error: 'Payment not completed.' });
     }
 
-    // Update order status and save customer info
     const order = await db.updateOrder(orderId, {
-      status:       'processing',
+      status:         'processing',
       paymentIntentId,
       customerInfo,
-      paidAt:       new Date(),
+      paidAt:         new Date(),
     });
 
-    // Deduct inventory
     for (const item of order.items) {
       await db.decrementStock(item.productId, item.qty);
     }
-
-    // TODO: Send confirmation email to customer
-    // await sendEmail(customerInfo.email, 'order-confirmation', { order });
-
-    // TODO: Send new order notification to seller
-    // await sendEmail(order.sellerEmail, 'new-order', { order });
 
     res.json({
       message:     'Order confirmed!',
@@ -574,19 +521,16 @@ app.post('/api/checkout/confirm', async (req, res) => {
   }
 });
 
-// GET ORDER STATUS (for buyer tracking)
 app.get('/api/orders/:id', async (req, res) => {
   try {
     const order = await db.getOrderById(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found.' });
-
-    // Only return safe fields to buyer — never expose seller internals
     res.json({
-      id:          order.id,
-      status:      order.status,
-      total:       order.total,
-      items:       order.items.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
-      createdAt:   order.createdAt,
+      id:                order.id,
+      status:            order.status,
+      total:             order.total,
+      items:             order.items.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
+      createdAt:         order.createdAt,
       estimatedDelivery: '3–5 business days',
     });
   } catch (err) {
@@ -596,8 +540,8 @@ app.get('/api/orders/:id', async (req, res) => {
 
 /* ============================================================
    ── SELLER ORDERS ROUTES ─────────────────────────────────────
-   GET   /api/seller/orders     — seller: view all their orders
-   PATCH /api/seller/orders/:id — seller: update order status
+   GET   /api/seller/orders
+   PATCH /api/seller/orders/:id
    ============================================================ */
 
 app.get('/api/seller/orders', requireAuth, async (req, res) => {
@@ -617,9 +561,8 @@ app.get('/api/seller/orders', requireAuth, async (req, res) => {
       );
     }
 
-    // Simple pagination
-    const start  = (page - 1) * limit;
-    const paged  = orders.slice(start, start + parseInt(limit));
+    const start = (page - 1) * limit;
+    const paged = orders.slice(start, start + parseInt(limit));
 
     res.json({ orders: paged, total: orders.length, page: parseInt(page) });
   } catch (err) {
@@ -636,16 +579,12 @@ app.patch('/api/seller/orders/:id', requireAuth, async (req, res) => {
     }
 
     const { status, trackingNumber, trackingCarrier } = req.body;
-    const validStatuses = ['processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
+    const validStatuses = ['processing','shipped','delivered','cancelled','refunded'];
     if (status && !validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status.' });
     }
 
     const updated = await db.updateOrder(req.params.id, { status, trackingNumber, trackingCarrier });
-
-    // TODO: Email customer when status changes to 'shipped'
-    // if (status === 'shipped') await sendShippingEmail(order, trackingNumber, trackingCarrier);
-
     res.json({ message: 'Order updated!', order: updated });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update order.' });
@@ -654,14 +593,12 @@ app.patch('/api/seller/orders/:id', requireAuth, async (req, res) => {
 
 /* ============================================================
    ── SELLER STRIPE SETUP ROUTES ───────────────────────────────
-   POST /api/seller/stripe/keys     — save seller's Stripe keys
-   GET  /api/seller/stripe/keys     — get seller's Stripe config (masked)
-   POST /api/seller/stripe/test     — test seller's Stripe connection
-   GET  /api/seller/stripe/balance  — get Stripe balance
+   POST /api/seller/stripe/keys
+   GET  /api/seller/stripe/keys
+   POST /api/seller/stripe/test
+   GET  /api/seller/stripe/balance
    ============================================================ */
 
-// SAVE STRIPE KEYS
-// The seller enters their OWN Stripe keys so they can receive customer payments
 app.post('/api/seller/stripe/keys', requireAuth, async (req, res) => {
   try {
     const { publishableKey, secretKey, webhookSecret } = req.body;
@@ -670,15 +607,13 @@ app.post('/api/seller/stripe/keys', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Both publishable key and secret key are required.' });
     }
 
-    // Validate key format
     const validPK = publishableKey.startsWith('pk_test_') || publishableKey.startsWith('pk_live_');
     const validSK = secretKey.startsWith('sk_test_')     || secretKey.startsWith('sk_live_');
 
     if (!validPK || !validSK) {
-      return res.status(400).json({ error: 'Invalid Stripe key format. Keys should start with pk_ and sk_.' });
+      return res.status(400).json({ error: 'Invalid Stripe key format.' });
     }
 
-    // Test the key before saving — try a simple Stripe API call
     try {
       const testStripe = require('stripe')(secretKey);
       await testStripe.balance.retrieve();
@@ -686,13 +621,7 @@ app.post('/api/seller/stripe/keys', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Stripe rejected these keys. Double-check them in your Stripe dashboard.' });
     }
 
-    // Save keys — secretKey is stored encrypted (see database.js)
-    await db.saveStripeKeys(req.seller.sellerId, {
-      publishableKey,
-      secretKey,    // database.js encrypts this before storing
-      webhookSecret,
-    });
-
+    await db.saveStripeKeys(req.seller.sellerId, { publishableKey, secretKey, webhookSecret });
     res.json({ message: 'Stripe keys saved and verified!' });
   } catch (err) {
     console.error('Save Stripe keys error:', err);
@@ -700,15 +629,14 @@ app.post('/api/seller/stripe/keys', requireAuth, async (req, res) => {
   }
 });
 
-// GET STRIPE CONFIG (masked — never return secret key to frontend)
 app.get('/api/seller/stripe/keys', requireAuth, async (req, res) => {
   try {
     const config = await db.getStripeKeys(req.seller.sellerId);
     if (!config) return res.json({ connected: false });
     res.json({
-      connected:      true,
-      publishableKey: config.publishableKey,
-      secretKeyMasked: config.secretKey.slice(0,8)+'••••••••••••••••'+config.secretKey.slice(-4),
+      connected:        true,
+      publishableKey:   config.publishableKey,
+      secretKeyMasked:  config.secretKey.slice(0,8)+'••••••••••••••••'+config.secretKey.slice(-4),
       webhookConfigured: !!config.webhookSecret,
     });
   } catch (err) {
@@ -716,7 +644,6 @@ app.get('/api/seller/stripe/keys', requireAuth, async (req, res) => {
   }
 });
 
-// TEST STRIPE CONNECTION
 app.post('/api/seller/stripe/test', requireAuth, async (req, res) => {
   try {
     const config = await db.getStripeKeys(req.seller.sellerId);
@@ -736,7 +663,6 @@ app.post('/api/seller/stripe/test', requireAuth, async (req, res) => {
   }
 });
 
-// GET STRIPE BALANCE
 app.get('/api/seller/stripe/balance', requireAuth, async (req, res) => {
   try {
     const config = await db.getStripeKeys(req.seller.sellerId);
@@ -746,14 +672,8 @@ app.get('/api/seller/stripe/balance', requireAuth, async (req, res) => {
     const balance      = await sellerStripe.balance.retrieve();
 
     res.json({
-      available: balance.available.map(b => ({
-        amount:   (b.amount / 100).toFixed(2),
-        currency: b.currency.toUpperCase(),
-      })),
-      pending: balance.pending.map(b => ({
-        amount:   (b.amount / 100).toFixed(2),
-        currency: b.currency.toUpperCase(),
-      })),
+      available: balance.available.map(b => ({ amount: (b.amount/100).toFixed(2), currency: b.currency.toUpperCase() })),
+      pending:   balance.pending.map(b   => ({ amount: (b.amount/100).toFixed(2), currency: b.currency.toUpperCase() })),
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to retrieve balance.' });
@@ -762,9 +682,9 @@ app.get('/api/seller/stripe/balance', requireAuth, async (req, res) => {
 
 /* ============================================================
    ── SELLER SUBSCRIPTION ROUTES ───────────────────────────────
-   GET  /api/seller/subscription       — get subscription status
-   POST /api/seller/subscription/upgrade — upgrade plan
-   POST /api/seller/subscription/cancel  — cancel subscription
+   GET  /api/seller/subscription
+   POST /api/seller/subscription/upgrade
+   POST /api/seller/subscription/cancel
    ============================================================ */
 
 app.get('/api/seller/subscription', requireAuth, async (req, res) => {
@@ -773,11 +693,10 @@ app.get('/api/seller/subscription', requireAuth, async (req, res) => {
     const sub    = await stripe.subscriptions.retrieve(seller.stripeSubscriptionId);
 
     res.json({
-      status:       sub.status,
-      plan:         seller.plan,
-      trialEnd:     sub.trial_end    ? new Date(sub.trial_end * 1000)    : null,
-      currentPeriodEnd: sub.current_period_end
-        ? new Date(sub.current_period_end * 1000) : null,
+      status:            sub.status,
+      plan:              seller.plan,
+      trialEnd:          sub.trial_end         ? new Date(sub.trial_end * 1000)         : null,
+      currentPeriodEnd:  sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
       cancelAtPeriodEnd: sub.cancel_at_period_end,
     });
   } catch (err) {
@@ -801,15 +720,12 @@ app.post('/api/seller/subscription/upgrade', requireAuth, async (req, res) => {
     const seller = await db.getSellerById(req.seller.sellerId);
     const sub    = await stripe.subscriptions.retrieve(seller.stripeSubscriptionId);
 
-    // Update Stripe subscription to new price
     await stripe.subscriptions.update(seller.stripeSubscriptionId, {
       items: [{ id: sub.items.data[0].id, price: PLAN_PRICE_IDS[newPlan] }],
-      proration_behavior: 'create_prorations', // charges/credits difference immediately
+      proration_behavior: 'create_prorations',
     });
 
-    // Update plan in DB
     await db.updateSeller(req.seller.sellerId, { plan: newPlan });
-
     res.json({ message: `Plan upgraded to ${newPlan}!` });
   } catch (err) {
     res.status(500).json({ error: 'Failed to upgrade plan.' });
@@ -819,13 +735,10 @@ app.post('/api/seller/subscription/upgrade', requireAuth, async (req, res) => {
 app.post('/api/seller/subscription/cancel', requireAuth, async (req, res) => {
   try {
     const seller = await db.getSellerById(req.seller.sellerId);
-
-    // Cancel at end of billing period — seller keeps access until then
     await stripe.subscriptions.update(seller.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
-
-    res.json({ message: 'Subscription will be cancelled at the end of your billing period. You keep access until then.' });
+    res.json({ message: 'Subscription will be cancelled at the end of your billing period.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to cancel subscription.' });
   }
@@ -833,7 +746,7 @@ app.post('/api/seller/subscription/cancel', requireAuth, async (req, res) => {
 
 /* ============================================================
    ── CUSTOMER ROUTES ──────────────────────────────────────────
-   GET /api/seller/customers — seller views their customer list
+   GET /api/seller/customers
    ============================================================ */
 
 app.get('/api/seller/customers', requireAuth, async (req, res) => {
@@ -847,31 +760,28 @@ app.get('/api/seller/customers', requireAuth, async (req, res) => {
 
 /* ============================================================
    ── ANALYTICS ROUTES ─────────────────────────────────────────
-   GET /api/seller/analytics — revenue, orders, top products
+   GET /api/seller/analytics
    ============================================================ */
 
 app.get('/api/seller/analytics', requireAuth, async (req, res) => {
   try {
     const { period = '30d' } = req.query;
-
-    const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+    const days  = period === '7d' ? 7 : period === '90d' ? 90 : 30;
     const since = new Date();
     since.setDate(since.getDate() - days);
 
     const orders = await db.getOrdersBySeller(req.seller.sellerId, since);
 
-    const revenue     = orders.reduce((s,o) => s + o.total, 0);
-    const orderCount  = orders.length;
-    const avgOrder    = orderCount ? revenue / orderCount : 0;
+    const revenue    = orders.reduce((s,o) => s + o.total, 0);
+    const orderCount = orders.length;
+    const avgOrder   = orderCount ? revenue / orderCount : 0;
 
-    // Revenue by day
     const byDay = {};
     orders.forEach(o => {
       const day = new Date(o.createdAt).toISOString().slice(0,10);
       byDay[day] = (byDay[day] || 0) + o.total;
     });
 
-    // Top products
     const productTotals = {};
     orders.forEach(o => {
       o.items.forEach(item => {
@@ -896,20 +806,13 @@ app.get('/api/seller/analytics', requireAuth, async (req, res) => {
 /* ============================================================
    ── STRIPE WEBHOOK ───────────────────────────────────────────
    POST /api/stripe/webhook
-   
-   This endpoint receives events from Stripe and updates
-   order and subscription status automatically.
-   
-   IMPORTANT: Register this URL in Stripe Dashboard →
-   Developers → Webhooks → Add endpoint
    ============================================================ */
 
 app.post('/api/stripe/webhook', async (req, res) => {
-  const sig    = req.headers['stripe-signature'];
+  const sig = req.headers['stripe-signature'];
   let event;
 
   try {
-    // Verify the event came from Stripe (not a fake request)
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
@@ -925,39 +828,31 @@ app.post('/api/stripe/webhook', async (req, res) => {
   try {
     switch (event.type) {
 
-      // ── PAYMENT EVENTS ──────────────────────────────────────
-
       case 'payment_intent.succeeded': {
-        // Customer payment went through
-        const pi    = event.data.object;
+        const pi      = event.data.object;
         const orderId = pi.metadata?.orderId;
         if (orderId) {
           await db.updateOrder(orderId, {
-            status:         'processing',
+            status:          'processing',
             paymentIntentId: pi.id,
-            paidAt:         new Date(),
+            paidAt:          new Date(),
           });
-          // TODO: Send confirmation email to customer
-          // TODO: Send new order notification to seller
           console.log(`Order ${orderId} marked as paid`);
         }
         break;
       }
 
       case 'payment_intent.payment_failed': {
-        // Customer's payment failed
         const pi      = event.data.object;
         const orderId = pi.metadata?.orderId;
         if (orderId) {
           await db.updateOrder(orderId, { status: 'payment_failed' });
-          // TODO: Email customer to retry payment
           console.log(`Order ${orderId} payment failed`);
         }
         break;
       }
 
       case 'charge.refunded': {
-        // Refund issued
         const charge  = event.data.object;
         const orderId = charge.metadata?.orderId;
         if (orderId) {
@@ -968,30 +863,22 @@ app.post('/api/stripe/webhook', async (req, res) => {
       }
 
       case 'charge.dispute.created': {
-        // Customer filed a chargeback — alert seller
         const dispute = event.data.object;
         console.warn('Chargeback filed:', dispute.id, 'Amount:', dispute.amount);
-        // TODO: Email seller with dispute details and instructions
         break;
       }
 
-      // ── SUBSCRIPTION EVENTS (platform billing — seller pays you) ──
-
       case 'customer.subscription.updated': {
-        // Seller changed or renewed their plan
-        const sub = event.data.object;
+        const sub    = event.data.object;
         const seller = await db.getSellerByStripeCustomerId(sub.customer);
         if (seller) {
-          await db.updateSeller(seller.id, {
-            subscriptionStatus: sub.status,
-          });
+          await db.updateSeller(seller.id, { subscriptionStatus: sub.status });
           console.log(`Seller ${seller.email} subscription updated: ${sub.status}`);
         }
         break;
       }
 
       case 'customer.subscription.deleted': {
-        // Seller's subscription ended — deactivate their store
         const sub    = event.data.object;
         const seller = await db.getSellerByStripeCustomerId(sub.customer);
         if (seller) {
@@ -999,47 +886,38 @@ app.post('/api/stripe/webhook', async (req, res) => {
             subscriptionStatus: 'cancelled',
             storeActive:        false,
           });
-          // TODO: Email seller that their store has been deactivated
-          console.log(`Seller ${seller.email} subscription cancelled — store deactivated`);
+          console.log(`Seller ${seller.email} subscription cancelled`);
         }
         break;
       }
 
       case 'invoice.payment_succeeded': {
-        // Monthly subscription payment from a seller succeeded
         const invoice = event.data.object;
-        console.log(`Subscription payment received from customer: ${invoice.customer}, amount: $${invoice.amount_paid / 100}`);
-        // TODO: Send receipt email to seller
+        console.log(`Subscription payment received: $${invoice.amount_paid / 100}`);
         break;
       }
 
       case 'invoice.payment_failed': {
-        // Seller's monthly payment failed — warn them
         const invoice = event.data.object;
         const seller  = await db.getSellerByStripeCustomerId(invoice.customer);
         if (seller) {
-          console.warn(`Seller ${seller.email} payment failed — subscription at risk`);
-          // TODO: Email seller to update their payment method
+          console.warn(`Seller ${seller.email} payment failed`);
         }
         break;
       }
 
       default:
-        // Unhandled event type — safe to ignore
         break;
     }
   } catch (err) {
     console.error(`Error processing webhook ${event.type}:`, err);
-    // Still return 200 so Stripe doesn't retry
   }
 
-  // Always return 200 to Stripe so it knows we received the event
   res.json({ received: true });
 });
 
 /* ============================================================
    ── HEALTH CHECK ─────────────────────────────────────────────
-   GET /health — Railway uses this to know the server is running
    ============================================================ */
 
 app.get('/health', (req, res) => {
@@ -1051,16 +929,12 @@ app.get('/health', (req, res) => {
 });
 
 /* ============================================================
-   ── 404 HANDLER ──────────────────────────────────────────────
+   ── 404 & ERROR HANDLERS ─────────────────────────────────────
    ============================================================ */
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found.' });
 });
-
-/* ============================================================
-   ── GLOBAL ERROR HANDLER ─────────────────────────────────────
-   ============================================================ */
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
