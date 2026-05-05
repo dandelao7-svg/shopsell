@@ -1062,7 +1062,7 @@ app.post('/api/shipping/pickup', requireAuth, async (req, res) => {
 });
 
 // VALIDATE ADDRESS
-app.post('/api/shipping/validate-address', requireAuth, async (req, res) => {
+app.post('/api/shipping/validate-address', async (req, res) => {
   try {
     const { address1, city, state, zip } = req.body;
     if(!address1 || !city || !state || !zip) {
