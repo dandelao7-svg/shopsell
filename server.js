@@ -946,7 +946,7 @@ app.get('/api/shipping/carriers/test', async (req, res) => {
 });
 
 // CREATE SHIPPING LABEL
-app.post('/api/shipping/label', requireAuth, async (req, res) => {
+app.post('/api/shipping/label', async (req, res) => {
   try {
     const {
       carrier = 'ups',
@@ -1003,7 +1003,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
 });
 
 // CREATE RETURN LABEL
-app.post('/api/shipping/return-label', requireAuth, async (req, res) => {
+app.post('/api/shipping/return-label', async (req, res) => {
   try {
     const { carrier = 'ups', returnId, sellerAddress, customerAddress, pkg } = req.body;
 
@@ -1040,7 +1040,7 @@ app.get('/api/shipping/track/:carrier/:tracking', async (req, res) => {
 });
 
 // SCHEDULE UPS PICKUP
-app.post('/api/shipping/pickup', requireAuth, async (req, res) => {
+app.post('/api/shipping/pickup', async (req, res) => {
   try {
     const { pickupDate, earliestTime, latestTime, address, packageCount, totalWeight } = req.body;
 
