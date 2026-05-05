@@ -2542,14 +2542,7 @@ function printQSLabel(){
     return;
   }
 
-  // If FedEx label URL returned — open directly
-  if(qsLabelData.labelUrl){
-    const win = window.open(qsLabelData.labelUrl, '_blank');
-    if(win) win.focus();
-    return;
-  }
-
-  // Fallback — generate printable label from form data
+  // For FedEx and all others — generate a professional printable label
   const now    = new Date();
   const dateStr= now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 
