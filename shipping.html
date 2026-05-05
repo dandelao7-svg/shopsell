@@ -1106,6 +1106,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
               <input type="text" id="qs-to-name" placeholder="Jane Smith">
             </div>
             <div class="form-field">
+              <label>Company name (optional)</label>
+              <input type="text" id="qs-to-company" placeholder="Acme Corporation">
+            </div>
+            <div class="form-field">
               <label>Phone (optional)</label>
               <input type="tel" id="qs-to-phone" placeholder="555-000-0000">
             </div>
@@ -2133,6 +2137,7 @@ async function generateQuickShipLabel(){
     fromState: document.getElementById('qs-from-state').value,
     fromZip:   document.getElementById('qs-from-zip').value,
     toName,
+    toCompany: document.getElementById('qs-to-company').value.trim()||'',
     toAddr,
     toCity,
     toState:   document.getElementById('qs-to-state').value,
@@ -2161,6 +2166,7 @@ async function generateQuickShipLabel(){
     },
     recipient: {
       name:     toName,
+      company:  document.getElementById('qs-to-company').value.trim()||undefined,
       phone:    document.getElementById('qs-to-phone').value||'5550000000',
       address1: toAddr,
       city:     toCity,
@@ -2291,6 +2297,7 @@ function printQSLabel(){
           <div class="label-section-title">Ship To</div>
           <div class="label-addr" style="font-size:18px">
             ${qsLabelData.toName}<br>
+            ${qsLabelData.toCompany ? `<span style="font-size:14px;font-weight:400">${qsLabelData.toCompany}</span><br>` : ''}
             ${qsLabelData.toAddr}<br>
             ${qsLabelData.toCity}, ${qsLabelData.toState} ${qsLabelData.toZip}
           </div>
@@ -2317,7 +2324,7 @@ function resetQuickShip(){
   document.getElementById('qsForm').style.display='block';
   document.getElementById('qsResult').style.display='none';
   // Clear recipient fields only
-  ['qs-to-name','qs-to-phone','qs-to-addr','qs-to-city','qs-to-zip','qs-ref','qs-desc']
+  ['qs-to-name','qs-to-company','qs-to-phone','qs-to-addr','qs-to-city','qs-to-zip','qs-ref','qs-desc']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
 }
 
