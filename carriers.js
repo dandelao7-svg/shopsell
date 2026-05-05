@@ -11,7 +11,8 @@
    UPS_ACCOUNT_NUMBER=094D28
    FEDEX_API_KEY=l70dda9f5128074cb49159bfa6ce39fbba
    FEDEX_SECRET_KEY=your_fedex_secret_here
-   FEDEX_ACCOUNT_NUMBER=your_fedex_account_number
+   FEDEX_ACCOUNT_NUMBER=210378599
+   FEDEX_SANDBOX=true   (set to false when you have live FedEx credentials)
    ============================================================ */
 
 'use strict';
@@ -20,7 +21,7 @@ const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args
 
 /* ============================================================
    ── UPS API ──────────────────────────────────────────────────
-   Uses UPS OAuth 2.0 + Shipping API v2
+   Uses UPS OAuth 2.0 + Shipping API v2403
    ============================================================ */
 
 class UPSCarrier {
@@ -34,14 +35,12 @@ class UPSCarrier {
     this.tokenExpiry   = null;
   }
 
-  // Determine which base URL to use based on environment
+  // UPS: use sandbox only when explicitly set, otherwise always production
   get apiUrl(){
-    return process.env.NODE_ENV === 'production' ? this.baseUrl : this.sandboxUrl;
+    return process.env.UPS_SANDBOX === 'true' ? this.sandboxUrl : this.baseUrl;
   }
 
   // ── OAUTH TOKEN ─────────────────────────────────────────────
-  // UPS uses OAuth 2.0 client credentials flow
-  // Token expires in 14400 seconds (4 hours) — we refresh automatically
   async getAccessToken(){
     // Return cached token if still valid
     if(this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry){
@@ -68,7 +67,7 @@ class UPSCarrier {
     this.accessToken = data.access_token;
     // Set expiry 5 minutes before actual expiry for safety
     this.tokenExpiry = Date.now() + ((data.expires_in - 300) * 1000);
-    
+
     console.log('UPS: Access token obtained successfully');
     return this.accessToken;
   }
@@ -78,7 +77,7 @@ class UPSCarrier {
     shipper,      // { name, phone, address1, address2, city, state, zip, country }
     recipient,    // { name, phone, address1, address2, city, state, zip, country }
     package: pkg, // { weight, length, width, height, description }
-    serviceCode,  // '03' = Ground, '02' = 2nd Day Air, '01' = Next Day Air Saver
+    serviceCode,  // '03' = Ground, '02' = 2nd Day Air, '01' = Next Day Air
     labelFormat,  // 'GIF' or 'PNG' or 'PDF'
     reference,    // order ID for reference
   }){
@@ -93,9 +92,9 @@ class UPSCarrier {
         Shipment: {
           Description: pkg.description || 'Order shipment',
           Shipper: {
-            Name:                shipper.name,
-            ShipperNumber:       this.accountNumber,
-            Phone:               { Number: shipper.phone || '5550000000' },
+            Name:          shipper.name,
+            ShipperNumber: this.accountNumber,
+            Phone:         { Number: shipper.phone || '5550000000' },
             Address: {
               AddressLine:       [shipper.address1, shipper.address2].filter(Boolean),
               City:              shipper.city,
@@ -128,17 +127,17 @@ class UPSCarrier {
           },
           PaymentInformation: {
             ShipmentCharge: {
-              Type:           '01', // Transportation
+              Type:        '01',
               BillShipper: { AccountNumber: this.accountNumber },
             },
           },
           Service: {
-            Code:        serviceCode || '03', // Default: UPS Ground
+            Code:        serviceCode || '03',
             Description: this.getServiceName(serviceCode),
           },
           Package: {
-            Description:     pkg.description || 'Package',
-            Packaging:       { Code: '02' }, // Customer supplied package
+            Description: pkg.description || 'Package',
+            Packaging:   { Code: '02' },
             Dimensions: {
               UnitOfMeasurement: { Code: 'IN' },
               Length: String(pkg.length || 12),
@@ -175,13 +174,13 @@ class UPSCarrier {
       throw new Error(`UPS shipment failed: ${JSON.stringify(err)}`);
     }
 
-    const data = await res.json();
+    const data   = await res.json();
     const result = data.ShipmentResponse.ShipmentResults;
 
     return {
       carrier:        'ups',
       trackingNumber: result.ShipmentIdentificationNumber,
-      labelImage:     result.PackageResults?.ShippingLabel?.GraphicImage, // base64
+      labelImage:     result.PackageResults?.ShippingLabel?.GraphicImage,
       labelFormat:    labelFormat || 'GIF',
       serviceCode:    serviceCode || '03',
       serviceName:    this.getServiceName(serviceCode),
@@ -234,17 +233,17 @@ class UPSCarrier {
     }
 
     const data = await res.json();
-    const pkg   = data.trackResponse?.shipment?.[0]?.package?.[0];
+    const pkg  = data.trackResponse?.shipment?.[0]?.package?.[0];
 
     if(!pkg) throw new Error('Tracking info not found');
 
     return {
-      carrier:         'ups',
+      carrier:           'ups',
       trackingNumber,
-      status:          pkg.status?.description || 'Unknown',
-      statusCode:      pkg.status?.code,
+      status:            pkg.status?.description || 'Unknown',
+      statusCode:        pkg.status?.code,
       estimatedDelivery: pkg.deliveryDate?.[0]?.date,
-      activities:      (pkg.activity || []).map(a => ({
+      activities:        (pkg.activity || []).map(a => ({
         description: a.status?.description,
         location:    [a.location?.address?.city, a.location?.address?.stateProvince].filter(Boolean).join(', '),
         timestamp:   `${a.date} ${a.time}`,
@@ -254,10 +253,10 @@ class UPSCarrier {
 
   // ── SCHEDULE PICKUP ──────────────────────────────────────────
   async schedulePickup({
-    pickupDate,    // YYYYMMDD
-    earliestTime,  // HHMM e.g. '0900'
-    latestTime,    // HHMM e.g. '1700'
-    address,       // { name, address1, city, state, zip }
+    pickupDate,
+    earliestTime,
+    latestTime,
+    address,
     packageCount,
     totalWeight,
   }){
@@ -270,25 +269,25 @@ class UPSCarrier {
           Account: { AccountNumber: this.accountNumber, AccountCountryCode: 'US' },
         },
         PickupDateInfo: {
-          CloseTime:     latestTime  || '1700',
-          ReadyTime:     earliestTime || '0900',
-          PickupDate:    pickupDate,
+          CloseTime:  latestTime   || '1700',
+          ReadyTime:  earliestTime || '0900',
+          PickupDate: pickupDate,
         },
         PickupAddress: {
-          CompanyName:       address.name,
-          AddressLine:       address.address1,
-          City:              address.city,
-          StateProvince:     address.state,
-          PostalCode:        address.zip,
-          CountryCode:       'US',
+          CompanyName:          address.name,
+          AddressLine:          address.address1,
+          City:                 address.city,
+          StateProvince:        address.state,
+          PostalCode:           address.zip,
+          CountryCode:          'US',
           ResidentialIndicator: 'N',
         },
         TotalWeight: {
-          Weight: String(totalWeight || 10),
+          Weight:            String(totalWeight || 10),
           UnitOfMeasurement: 'LBS',
         },
-        OverweightIndicator: 'N',
-        PaymentMethod:       '00',
+        OverweightIndicator:  'N',
+        PaymentMethod:        '00',
         NumberOfBusinessDays: '1',
       },
     };
@@ -309,8 +308,8 @@ class UPSCarrier {
 
     const data = await res.json();
     return {
-      success:          true,
-      confirmationNumber: data.PickupCreationResponse?.PRN,
+      success:             true,
+      confirmationNumber:  data.PickupCreationResponse?.PRN,
       pickupDate,
       earliestTime,
       latestTime,
@@ -319,13 +318,11 @@ class UPSCarrier {
 
   // ── CREATE RETURN LABEL ──────────────────────────────────────
   async createReturnLabel({ shipper, recipient, pkg, reference }){
-    // For returns: shipper and recipient are swapped
-    // The customer is the new "shipper", seller is the recipient
     return this.createShipment({
-      shipper:     recipient, // Customer ships back
-      recipient:   shipper,   // To seller's address
+      shipper:     recipient,
+      recipient:   shipper,
       package:     pkg,
-      serviceCode: '03',      // UPS Ground for returns
+      serviceCode: '03',
       reference:   `RETURN-${reference}`,
     });
   }
@@ -348,21 +345,25 @@ class UPSCarrier {
 /* ============================================================
    ── FEDEX API ────────────────────────────────────────────────
    Uses FedEx OAuth 2.0 + Ship API v1
+   Set FEDEX_SANDBOX=true in Railway for sandbox credentials
+   Set FEDEX_SANDBOX=false when you have live FedEx credentials
    ============================================================ */
 
 class FedExCarrier {
   constructor(){
-    this.apiKey       = process.env.FEDEX_API_KEY;
-    this.secretKey    = process.env.FEDEX_SECRET_KEY;
+    this.apiKey        = process.env.FEDEX_API_KEY;
+    this.secretKey     = process.env.FEDEX_SECRET_KEY;
     this.accountNumber = process.env.FEDEX_ACCOUNT_NUMBER;
-    this.baseUrl      = 'https://apis.fedex.com';       // production
-    this.sandboxUrl   = 'https://apis-sandbox.fedex.com'; // sandbox
-    this.accessToken  = null;
-    this.tokenExpiry  = null;
+    this.baseUrl       = 'https://apis.fedex.com';        // production
+    this.sandboxUrl    = 'https://apis-sandbox.fedex.com'; // sandbox
+    this.accessToken   = null;
+    this.tokenExpiry   = null;
   }
 
+  // Use sandbox URL when FEDEX_SANDBOX=true in Railway Variables
+  // Switch to false when you have live production FedEx credentials
   get apiUrl(){
-    return process.env.NODE_ENV === 'production' ? this.baseUrl : this.sandboxUrl;
+    return process.env.FEDEX_SANDBOX === 'true' ? this.sandboxUrl : this.baseUrl;
   }
 
   // ── OAUTH TOKEN ─────────────────────────────────────────────
@@ -371,14 +372,16 @@ class FedExCarrier {
       return this.accessToken;
     }
 
+    const params = new URLSearchParams({
+      grant_type:    'client_credentials',
+      client_id:     this.apiKey,
+      client_secret: this.secretKey,
+    });
+
     const res = await fetch(`${this.apiUrl}/oauth/token`, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type:    'client_credentials',
-        client_id:     this.apiKey,
-        client_secret: this.secretKey,
-      }),
+      body:    params,
     });
 
     if(!res.ok){
@@ -399,8 +402,8 @@ class FedExCarrier {
     shipper,
     recipient,
     package: pkg,
-    serviceType, // 'FEDEX_GROUND', 'FEDEX_2_DAY', 'PRIORITY_OVERNIGHT'
-    labelFormat, // 'PDF', 'PNG', 'ZPLII'
+    serviceType,
+    labelFormat,
     reference,
   }){
     const token = await this.getAccessToken();
@@ -410,13 +413,13 @@ class FedExCarrier {
       requestedShipment: {
         shipper: {
           contact: {
-            personName:   shipper.name,
-            phoneNumber:  shipper.phone || '5550000000',
-            companyName:  shipper.company || shipper.name,
+            personName:  shipper.name,
+            phoneNumber: shipper.phone || '5550000000',
+            companyName: shipper.company || shipper.name,
           },
           address: {
-            streetLines:        [shipper.address1, shipper.address2].filter(Boolean),
-            city:               shipper.city,
+            streetLines:         [shipper.address1, shipper.address2].filter(Boolean),
+            city:                shipper.city,
             stateOrProvinceCode: shipper.state,
             postalCode:          shipper.zip,
             countryCode:         shipper.country || 'US',
@@ -436,10 +439,10 @@ class FedExCarrier {
             residential:         false,
           },
         }],
-        shipDatestamp:        new Date().toISOString().split('T')[0],
-        serviceType:          serviceType || 'FEDEX_GROUND',
-        packagingType:        'YOUR_PACKAGING',
-        pickupType:           'USE_SCHEDULED_PICKUP',
+        shipDatestamp: new Date().toISOString().split('T')[0],
+        serviceType:   serviceType || 'FEDEX_GROUND',
+        packagingType: 'YOUR_PACKAGING',
+        pickupType:    'USE_SCHEDULED_PICKUP',
         shippingChargesPayment: {
           paymentType: 'SENDER',
           payor: {
@@ -476,10 +479,10 @@ class FedExCarrier {
     const res = await fetch(`${this.apiUrl}/ship/v1/shipments`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type':  'application/json',
-        'x-customer-transaction-id': `nextlao-${Date.now()}`,
-        'x-locale': 'en_US',
+        'Authorization':               `Bearer ${token}`,
+        'Content-Type':                'application/json',
+        'x-customer-transaction-id':   `nextlao-${Date.now()}`,
+        'x-locale':                    'en_US',
       },
       body: JSON.stringify(payload),
     });
@@ -494,15 +497,14 @@ class FedExCarrier {
 
     if(!piece) throw new Error('FedEx: No shipment data returned');
 
-    const pkg_result = piece.pieceResponses?.[0];
+    const pkgResult = piece.pieceResponses?.[0];
 
     return {
       carrier:        'fedex',
-      trackingNumber: pkg_result?.trackingNumber,
-      labelUrl:       pkg_result?.packageDocuments?.[0]?.url,
+      trackingNumber: pkgResult?.trackingNumber,
+      labelUrl:       pkgResult?.packageDocuments?.[0]?.url,
       serviceType:    serviceType || 'FEDEX_GROUND',
       serviceName:    this.getServiceName(serviceType),
-      totalCharge:    piece.shipmentAdvisoryDetails?.regulatoryAdvisoryDetails?.regulatoryAdvisory?.[0]?.value,
     };
   }
 
@@ -512,9 +514,7 @@ class FedExCarrier {
 
     const payload = {
       includeDetailedScans: true,
-      trackingInfo: [{
-        trackingNumberInfo: { trackingNumber },
-      }],
+      trackingInfo: [{ trackingNumberInfo: { trackingNumber } }],
     };
 
     const res = await fetch(`${this.apiUrl}/track/v1/trackingnumbers`, {
@@ -579,13 +579,13 @@ class FedExCarrier {
 
   getServiceName(type){
     const services = {
-      'FEDEX_GROUND':       'FedEx Ground',
-      'FEDEX_2_DAY':        'FedEx 2Day',
-      'FEDEX_2_DAY_AM':     'FedEx 2Day A.M.',
-      'PRIORITY_OVERNIGHT': 'FedEx Priority Overnight',
-      'STANDARD_OVERNIGHT': 'FedEx Standard Overnight',
-      'FIRST_OVERNIGHT':    'FedEx First Overnight',
-      'FEDEX_EXPRESS_SAVER':'FedEx Express Saver',
+      'FEDEX_GROUND':        'FedEx Ground',
+      'FEDEX_2_DAY':         'FedEx 2Day',
+      'FEDEX_2_DAY_AM':      'FedEx 2Day A.M.',
+      'PRIORITY_OVERNIGHT':  'FedEx Priority Overnight',
+      'STANDARD_OVERNIGHT':  'FedEx Standard Overnight',
+      'FIRST_OVERNIGHT':     'FedEx First Overnight',
+      'FEDEX_EXPRESS_SAVER': 'FedEx Express Saver',
     };
     return services[type] || 'FedEx Ground';
   }
@@ -593,7 +593,7 @@ class FedExCarrier {
 
 /* ============================================================
    ── USPS API ─────────────────────────────────────────────────
-   Uses USPS Web Tools API
+   Uses USPS Web Tools API — tracking only for now
    ============================================================ */
 
 class USPSCarrier {
@@ -603,32 +603,34 @@ class USPSCarrier {
   }
 
   async trackShipment(trackingNumber){
+    if(!this.apiKey) throw new Error('USPS API key not configured');
+
     const xml = `<TrackFieldRequest USERID="${this.apiKey}">
       <TrackID ID="${trackingNumber}"/>
     </TrackFieldRequest>`;
 
-    const res = await fetch(`${this.baseUrl}?API=TrackV2&XML=${encodeURIComponent(xml)}`);
+    const res  = await fetch(`${this.baseUrl}?API=TrackV2&XML=${encodeURIComponent(xml)}`);
     const text = await res.text();
 
-    // Parse USPS XML response
-    const statusMatch    = text.match(/<EventCity>(.*?)<\/EventCity>/);
-    const eventMatch     = text.match(/<Event>(.*?)<\/Event>/);
-    const dateMatch      = text.match(/<EventDate>(.*?)<\/EventDate>/);
-    const timeMatch      = text.match(/<EventTime>(.*?)<\/EventTime>/);
+    const eventMatch = text.match(/<Event>(.*?)<\/Event>/);
+    const cityMatch  = text.match(/<EventCity>(.*?)<\/EventCity>/);
+    const dateMatch  = text.match(/<EventDate>(.*?)<\/EventDate>/);
+    const timeMatch  = text.match(/<EventTime>(.*?)<\/EventTime>/);
 
     return {
       carrier:       'usps',
       trackingNumber,
-      status:        eventMatch?.[1]    || 'In Transit',
-      location:      statusMatch?.[1]   || '',
+      status:        eventMatch?.[1] || 'In Transit',
+      location:      cityMatch?.[1]  || '',
       lastUpdate:    `${dateMatch?.[1] || ''} ${timeMatch?.[1] || ''}`.trim(),
     };
   }
 }
 
 /* ============================================================
-   ── CARRIER FACTORY ──────────────────────────────────────────
+   ── CARRIER SERVICE ──────────────────────────────────────────
    Single interface for all carriers
+   UPS is always primary — FedEx and USPS are fallbacks
    ============================================================ */
 
 class CarrierService {
@@ -638,31 +640,24 @@ class CarrierService {
     this.usps  = new USPSCarrier();
   }
 
-  // Get carrier instance by name
   getCarrier(carrier){
     const map = { ups: this.ups, fedex: this.fedex, usps: this.usps };
-    const c = map[carrier.toLowerCase()];
+    const c = map[carrier?.toLowerCase()];
     if(!c) throw new Error(`Unknown carrier: ${carrier}`);
     return c;
   }
 
-  // Create label — routes to correct carrier automatically
   async createLabel(carrier, shipmentData){
-    const c = this.getCarrier(carrier);
-    return c.createShipment(shipmentData);
+    return this.getCarrier(carrier).createShipment(shipmentData);
   }
 
-  // Track — works with any carrier
   async track(carrier, trackingNumber){
-    const c = this.getCarrier(carrier);
-    return c.trackShipment(trackingNumber);
+    return this.getCarrier(carrier).trackShipment(trackingNumber);
   }
 
-  // Create return label
   async createReturnLabel(carrier, shipmentData){
     const c = this.getCarrier(carrier);
     if(c.createReturnLabel) return c.createReturnLabel(shipmentData);
-    // Fallback: swap shipper/recipient
     return c.createShipment({
       ...shipmentData,
       shipper:   shipmentData.recipient,
@@ -670,10 +665,10 @@ class CarrierService {
     });
   }
 
-  // Test all carrier connections
+  // Test all carrier API connections
   async testConnections(){
     const results = {};
-    
+
     try {
       await this.ups.getAccessToken();
       results.ups = { connected: true, message: 'UPS API connected' };
@@ -690,12 +685,14 @@ class CarrierService {
 
     results.usps = {
       connected: !!process.env.USPS_API_KEY,
-      message: process.env.USPS_API_KEY ? 'USPS API key configured' : 'USPS API key not set',
+      message:   process.env.USPS_API_KEY
+        ? 'USPS API key configured'
+        : 'USPS API key not set',
     };
 
     return results;
   }
 }
 
-// Export singleton
+// Export singleton instance
 module.exports = new CarrierService();
