@@ -1070,13 +1070,16 @@ app.post('/api/shipping/validate-address', requireAuth, async (req, res) => {
     }
 
     const token = await carriers.ups.getAccessToken();
-    const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+    const nodeFetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
 
     const payload = {
       XAVRequest: {
-        Request: { RequestOption: '3' },
+        Request: {
+          RequestOption: '3',
+          TransactionReference: { CustomerContext: 'nextlao-addr-val' },
+        },
         AddressKeyFormat: {
-          AddressLine:       address1,
+          AddressLine:        address1,
           PoliticalDivision2: city,
           PoliticalDivision1: state,
           PostcodePrimaryLow: zip,
@@ -1085,7 +1088,7 @@ app.post('/api/shipping/validate-address', requireAuth, async (req, res) => {
       },
     };
 
-    const apiRes = await fetch(`${carriers.ups.apiUrl}/api/addressvalidation/v2/1`, {
+    const apiRes = await nodeFetch(`${carriers.ups.apiUrl}/api/addressvalidation/v2/1`, {
       method: 'POST',
       headers: {
         'Authorization':  `Bearer ${token}`,
@@ -1096,15 +1099,28 @@ app.post('/api/shipping/validate-address', requireAuth, async (req, res) => {
       body: JSON.stringify(payload),
     });
 
-    const data = await apiRes.json();
-    const candidate = data?.XAVResponse?.Candidate?.[0]?.AddressKeyFormat;
-    const quality   = data?.XAVResponse?.Candidate?.[0]?.AddressClassification?.Description;
-
-    if(!candidate) {
-      return res.json({ valid: false, message: 'Address not found in UPS database.' });
+    if(!apiRes.ok){
+      const errText = await apiRes.text();
+      console.error('UPS Address Validation error:', errText);
+      // Don't block shipping — return valid so label generation proceeds
+      return res.json({ valid: true, message: 'Validation unavailable — proceeding.' });
     }
 
-    // Build suggested address from UPS response
+    const data      = await apiRes.json();
+    const response  = data?.XAVResponse;
+    const candidate = response?.Candidate?.[0]?.AddressKeyFormat;
+    const quality   = response?.Candidate?.[0]?.AddressClassification?.Description;
+    const noCandidates = response?.NoCandidatesIndicator;
+
+    // No match found at all
+    if(noCandidates || !candidate){
+      return res.json({
+        valid: false,
+        message: 'Address not found. Please check the address and try again.',
+      });
+    }
+
+    // Build suggestion from UPS response
     const suggestion = {
       address1: Array.isArray(candidate.AddressLine)
         ? candidate.AddressLine[0]
@@ -1114,22 +1130,27 @@ app.post('/api/shipping/validate-address', requireAuth, async (req, res) => {
       zip:   candidate.PostcodePrimaryLow,
     };
 
-    // Check if it matches what was entered
-    const inputAddr  = address1.toLowerCase().replace(/\s+/g,'');
-    const suggestAddr= (suggestion.address1||'').toLowerCase().replace(/\s+/g,'');
-    const isExact    = inputAddr === suggestAddr &&
-                       city.toLowerCase() === (suggestion.city||'').toLowerCase() &&
-                       zip === suggestion.zip;
+    // Check for ambiguous indicator
+    const isAmbiguous = !!response?.AmbiguousAddressIndicator;
 
-    if(isExact || quality === 'Commercial' || quality === 'Residential') {
-      return res.json({ valid: true, message: 'Address verified ✓', suggestion });
-    } else {
-      return res.json({ valid: false, suggestion, message: 'Address could not be fully verified.' });
+    if(isAmbiguous){
+      return res.json({
+        valid: false,
+        suggestion,
+        message: 'Address is ambiguous — please verify.',
+      });
     }
 
+    // Good match
+    return res.json({
+      valid:   true,
+      message: `Address verified ✓ (${quality || 'Valid'})`,
+      suggestion,
+    });
+
   } catch(err) {
-    console.error('Address validation error:', err);
-    // Don't block shipping if validation fails — return null so frontend skips
+    console.error('Address validation error:', err.message);
+    // Never block shipping on validation errors
     res.json({ valid: true, message: 'Validation unavailable — proceeding.' });
   }
 });
