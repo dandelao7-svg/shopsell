@@ -48,7 +48,7 @@
   --header-h:56px;
   --radius:10px;
 }
- 
+
 html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden}
 
 /* ── LAYOUT ── */
@@ -1126,24 +1126,24 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             </div>
             <div class="form-field">
               <label>Full name</label>
-              <input type="text" id="qs-to-name" placeholder="Jane Smith">
+              <input type="text" id="qs-to-name" placeholder="Jane Smith" autocomplete="off">
             </div>
             <div class="form-field">
               <label>Company name (optional)</label>
-              <input type="text" id="qs-to-company" placeholder="Acme Corporation">
+              <input type="text" id="qs-to-company" placeholder="Acme Corporation" autocomplete="off">
             </div>
             <div class="form-field">
               <label>Phone (optional)</label>
-              <input type="tel" id="qs-to-phone" placeholder="555-000-0000">
+              <input type="tel" id="qs-to-phone" placeholder="555-000-0000" autocomplete="off">
             </div>
             <div class="form-field">
               <label>Street address</label>
-              <input type="text" id="qs-to-addr" placeholder="456 Oak Avenue">
+              <input type="text" id="qs-to-addr" placeholder="456 Oak Avenue" autocomplete="off">
             </div>
             <div class="two-col">
               <div class="form-field">
                 <label>City</label>
-                <input type="text" id="qs-to-city" placeholder="Austin">
+                <input type="text" id="qs-to-city" placeholder="Austin" autocomplete="off">
               </div>
               <div class="form-field">
                 <label>State</label>
@@ -1154,7 +1154,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             </div>
             <div class="form-field" style="margin-bottom:0">
               <label>ZIP code</label>
-              <input type="text" id="qs-to-zip" placeholder="78701" maxlength="5" oninput="onZipInput(this)">
+              <input type="text" id="qs-to-zip" placeholder="78701" maxlength="5" oninput="onZipInput(this)" autocomplete="off">
               <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none;display:flex;align-items:center;gap:5px"></div>
             </div>
           </div>
@@ -2035,115 +2035,45 @@ document.addEventListener('click', e=>{
     dd.style.display = 'none';
   }
 });
-// US ZIP code → city/state lookup table (common zips)
-const ZIP_DATA = {
-  '90001':['Los Angeles','CA'],'90015':['Los Angeles','CA'],'90210':['Beverly Hills','CA'],
-  '90001':['Los Angeles','CA'],'93063':['Simi Valley','CA'],'93065':['Simi Valley','CA'],
-  '10001':['New York','NY'],'10002':['New York','NY'],'10003':['New York','NY'],
-  '77001':['Houston','TX'],'75201':['Dallas','TX'],'78701':['Austin','TX'],'78201':['San Antonio','TX'],
-  '33101':['Miami','FL'],'32801':['Orlando','FL'],'33601':['Tampa','FL'],
-  '60601':['Chicago','IL'],'60602':['Chicago','IL'],'60603':['Chicago','IL'],
-  '85001':['Phoenix','AZ'],'85201':['Mesa','AZ'],'85301':['Glendale','AZ'],
-  '30301':['Atlanta','GA'],'30302':['Atlanta','GA'],'30303':['Atlanta','GA'],
-  '98101':['Seattle','WA'],'98102':['Seattle','WA'],'97201':['Portland','OR'],
-  '89101':['Las Vegas','NV'],'89102':['Las Vegas','NV'],'89103':['Las Vegas','NV'],
-  '80201':['Denver','CO'],'80202':['Denver','CO'],'80203':['Denver','CO'],
-  '37201':['Nashville','TN'],'37202':['Nashville','TN'],'28201':['Charlotte','NC'],
-  '23219':['Richmond','VA'],'20001':['Washington','DC'],'21201':['Baltimore','MD'],
-  '02101':['Boston','MA'],'02102':['Boston','MA'],'19101':['Philadelphia','PA'],
-  '15201':['Pittsburgh','PA'],'43201':['Columbus','OH'],'44101':['Cleveland','OH'],
-  '48201':['Detroit','MI'],'53201':['Milwaukee','WI'],'55101':['St. Paul','MN'],
-  '63101':['St. Louis','MO'],'64101':['Kansas City','MO'],'68101':['Omaha','NE'],
-  '73101':['Oklahoma City','OK'],'74101':['Tulsa','OK'],'70112':['New Orleans','LA'],
-  '71101':['Shreveport','LA'],'35203':['Birmingham','AL'],'39201':['Jackson','MS'],
-  '29201':['Columbia','SC'],'32601':['Gainesville','FL'],'85701':['Tucson','AZ'],
-  '94101':['San Francisco','CA'],'94102':['San Francisco','CA'],'94103':['San Francisco','CA'],
-  '92101':['San Diego','CA'],'90401':['Santa Monica','CA'],'91101':['Pasadena','CA'],
-  '95814':['Sacramento','CA'],'93701':['Fresno','CA'],'93301':['Bakersfield','CA'],
-};
-
+// US ZIP code → city/state lookup table (USPS verified)
+// ── ZIP CODE REAL-TIME LOOKUP ─────────────────────────────────
+// Uses server-side API — covers all 42,000+ US ZIP codes
 let zipValidTimer = null;
 
 async function onZipInput(el){
   const zip = el.value.trim();
   const msgEl = document.getElementById('zipValidMsg');
-
-  // Clear previous timer
   clearTimeout(zipValidTimer);
 
-  if(zip.length < 5){
-    msgEl.style.display = 'none';
-    return;
-  }
+  if(zip.length < 5){ msgEl.style.display='none'; return; }
 
-  // Check local ZIP database first
-  const localData = ZIP_DATA[zip];
-  if(localData){
-    const expectedCity  = localData[0].toLowerCase();
-    const expectedState = localData[1];
-    const enteredCity   = document.getElementById('qs-to-city').value.trim().toLowerCase();
-    const enteredState  = document.getElementById('qs-to-state').value.trim();
+  showZipMsg('checking','Looking up ZIP code...');
 
-    // Auto-fill if city is empty
-    if(!enteredCity){
-      document.getElementById('qs-to-city').value  = localData[0];
-      document.getElementById('qs-to-state').value = expectedState;
-      showZipMsg('success', `✓ ${localData[0]}, ${expectedState}`);
-      return;
-    }
-
-    // Check for mismatch
-    const cityMatch  = enteredCity.includes(expectedCity) || expectedCity.includes(enteredCity);
-    const stateMatch = enteredState === expectedState;
-
-    if(!cityMatch || !stateMatch){
-      showZipMsg('warning',
-        `⚠ ZIP ${zip} is ${localData[0]}, ${expectedState} — not ${document.getElementById('qs-to-city').value}, ${enteredState}`,
-        localData
-      );
-      return;
-    }
-
-    showZipMsg('success', `✓ ${localData[0]}, ${expectedState} confirmed`);
-    return;
-  }
-
-  // ZIP not in local database — validate via API after short delay
   zipValidTimer = setTimeout(async ()=>{
-    const city  = document.getElementById('qs-to-city').value.trim();
-    const state = document.getElementById('qs-to-state').value.trim();
-    const addr  = document.getElementById('qs-to-addr').value.trim();
-
-    if(!city || !addr) return;
-
-    showZipMsg('checking','Validating address...');
-
     try {
-      const res  = await fetch('/api/shipping/validate-address',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ address1: addr, city, state, zip }),
-      });
+      const res  = await fetch(`/api/shipping/zip-lookup?zip=${zip}`);
       const data = await res.json();
 
-      if(data.valid){
-        showZipMsg('success','✓ Address verified');
-        if(data.suggestion?.city && !city){
-          document.getElementById('qs-to-city').value  = data.suggestion.city;
-          document.getElementById('qs-to-state').value = data.suggestion.state;
+      if(data.city && data.state){
+        const enteredCity = document.getElementById('qs-to-city').value.trim().toLowerCase();
+        const changed     = enteredCity && enteredCity !== data.city.toLowerCase();
+
+        // USPS is always the authority — auto-fill city and state
+        document.getElementById('qs-to-city').value  = data.city;
+        document.getElementById('qs-to-state').value = data.state;
+
+        if(changed){
+          showZipMsg('warning', `⚠ Updated to USPS: ${data.city}, ${data.state}`);
+        } else {
+          showZipMsg('success', `✓ ${data.city}, ${data.state}`);
         }
-      } else if(data.suggestion){
-        showZipMsg('warning',
-          `⚠ Did you mean: ${data.suggestion.address1||addr}, ${data.suggestion.city}, ${data.suggestion.state} ${data.suggestion.zip}?`,
-          [data.suggestion.city, data.suggestion.state]
-        );
       } else {
-        showZipMsg('error','✗ Address not found — please verify');
+        showZipMsg('error','✗ ZIP code not found — please verify');
       }
     } catch(e){
       msgEl.style.display = 'none';
     }
-  }, 600);
+  }, 400);
 }
 
 function showZipMsg(type, msg, suggestion){
