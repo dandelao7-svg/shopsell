@@ -1,7 +1,7 @@
 {
   "name": "shopsell",
   "version": "1.0.0",
-  "description": "ShopSell — Modern ecommerce platform for independent sellers",
+  "description": "NextLao — Modern ecommerce platform with integrated shipping",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -19,11 +19,12 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2",
     "stripe": "^14.21.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
   },
-  "keywords": ["ecommerce", "stripe", "shopsell"],
+  "keywords": ["ecommerce", "shipping", "ups", "fedex", "nextlao"],
   "license": "UNLICENSED"
 }
