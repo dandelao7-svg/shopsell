@@ -933,7 +933,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
    ============================================================ */
 
 // TEST CARRIER CONNECTIONS
-app.get('/api/shipping/carriers/test', requireAuth, async (req, res) => {
+app.get('/api/shipping/carriers/test', async (req, res) => {
   try {
     const results = await carriers.testConnections();
     res.json(results);
