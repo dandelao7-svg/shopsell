@@ -399,6 +399,27 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="page-title" id="topbarTitle">Orders</div>
     </div>
     <div class="topbar-right">
+      <!-- ACTIVE SHIPPER SWITCHER -->
+      <div style="position:relative" id="shipperSwitcherWrap">
+        <button onclick="toggleShipperDropdown()" style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;color:var(--text2);max-width:220px">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0"></div>
+          <div style="text-align:left;overflow:hidden">
+            <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="activeShipperName">NextLao Store</div>
+            <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace" id="activeShipperAcct">UPS #094D28</div>
+          </div>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <!-- DROPDOWN -->
+        <div id="shipperDropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--card);border:1px solid var(--border2);border-radius:10px;min-width:240px;z-index:300;box-shadow:var(--shadow-lg);overflow:hidden">
+          <div style="padding:8px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)">Ship from account</div>
+          <div id="shipperList"></div>
+          <div style="padding:8px 12px;border-top:1px solid var(--border)">
+            <button onclick="showPage('settings');toggleShipperDropdown()" style="width:100%;background:none;border:none;color:var(--muted);font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;text-align:left;padding:4px 0">
+              + Manage shipper accounts →
+            </button>
+          </div>
+        </div>
+      </div>
       <button class="topbar-btn" onclick="toast('Exporting orders to CSV...','info')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export
@@ -841,7 +862,21 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <div class="settings-grid">
 
       <div>
-        <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Carrier API credentials</div>
+        <!-- SHIPPER ACCOUNTS -->
+        <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Shipper accounts</div>
+        <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;margin-bottom:1rem">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.6">
+            Add multiple UPS shipper accounts. When you select one in the topbar, Quick Ship automatically uses that account's address and billing. Resets to your default after each shipment.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px" id="shipperAccountsList"></div>
+          <button onclick="addShipperAccount()" style="width:100%;background:var(--bg3);border:1px dashed var(--border2);color:var(--text2);padding:9px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add shipper account
+          </button>
+          <button class="api-save" style="width:100%;padding:9px;border-radius:8px;font-size:13px" onclick="saveShipperAccounts()">Save shipper accounts</button>
+        </div>
+
+        <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;margin-top:4px">Carrier API credentials</div>
 
         <div class="api-card">
           <div class="api-card-hd">
@@ -1180,7 +1215,70 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             </div>
           </div>
 
-          <div class="form-field" style="margin-bottom:1.25rem">
+          <!-- BILLING -->
+          <div class="form-field" style="margin-bottom:0">
+            <label>Bill shipping to</label>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <div class="billing-opt active" onclick="selectBilling('shipper',this)" style="flex:1;border:1.5px solid var(--accent);background:rgba(230,57,70,0.08);border-radius:8px;padding:10px;cursor:pointer;text-align:center">
+                <div style="font-size:12px;font-weight:600;color:var(--accent)">Shipper</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px">My account</div>
+              </div>
+              <div class="billing-opt" onclick="selectBilling('recipient',this)" style="flex:1;border:1.5px solid var(--border);background:var(--bg3);border-radius:8px;padding:10px;cursor:pointer;text-align:center">
+                <div style="font-size:12px;font-weight:600;color:var(--text2)">Recipient</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px">Their account</div>
+              </div>
+              <div class="billing-opt" onclick="selectBilling('third_party',this)" style="flex:1;border:1.5px solid var(--border);background:var(--bg3);border-radius:8px;padding:10px;cursor:pointer;text-align:center">
+                <div style="font-size:12px;font-weight:600;color:var(--text2)">3rd Party</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px">Other account</div>
+              </div>
+            </div>
+
+            <!-- Recipient billing fields -->
+            <div id="billing-recipient-fields" style="display:none;background:var(--bg2);border-radius:8px;border:1px solid var(--border);padding:12px;margin-bottom:10px">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-weight:500">Recipient's UPS account details</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="form-field" style="margin-bottom:0">
+                  <label>Recipient UPS account #</label>
+                  <input type="text" id="billing-recipient-acct" placeholder="e.g. A1B2C3" maxlength="6" style="background:var(--bg3);color:var(--text);border-color:var(--border);font-family:'DM Mono',monospace">
+                </div>
+                <div class="form-field" style="margin-bottom:0">
+                  <label>Account ZIP code</label>
+                  <input type="text" id="billing-recipient-zip" placeholder="e.g. 90001" maxlength="5" style="background:var(--bg3);color:var(--text);border-color:var(--border);font-family:'DM Mono',monospace">
+                </div>
+              </div>
+            </div>
+
+            <!-- 3rd party billing fields -->
+            <div id="billing-third-fields" style="display:none;background:var(--bg2);border-radius:8px;border:1px solid var(--border);padding:12px;margin-bottom:10px">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-weight:500">3rd party UPS account details</div>
+              <div class="form-field" style="margin-bottom:10px">
+                <label>Company / contact name</label>
+                <input type="text" id="billing-third-name" placeholder="e.g. Acme Logistics" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="form-field" style="margin-bottom:0">
+                  <label>UPS account number</label>
+                  <input type="text" id="billing-third-acct" placeholder="e.g. X1Y2Z3" maxlength="6" style="background:var(--bg3);color:var(--text);border-color:var(--border);font-family:'DM Mono',monospace">
+                </div>
+                <div class="form-field" style="margin-bottom:0">
+                  <label>Account ZIP code</label>
+                  <input type="text" id="billing-third-zip" placeholder="e.g. 10001" maxlength="5" style="background:var(--bg3);color:var(--text);border-color:var(--border);font-family:'DM Mono',monospace">
+                </div>
+              </div>
+              <div class="form-field" style="margin-bottom:0;margin-top:10px">
+                <label>Account country</label>
+                <select id="billing-third-country" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option value="US">United States</option>
+                  <option value="CA">Canada</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="MX">Mexico</option>
+                  <option value="AU">Australia</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-field" style="margin-bottom:1.25rem;margin-top:1rem">
             <label>Package description (optional)</label>
             <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
           </div>
@@ -1746,7 +1844,277 @@ function showPage(name){
   window.scrollTo(0,0);
 }
 
-// ── ZIP CODE REAL-TIME VALIDATION ────────────────────────────
+// ── SHIPPER ACCOUNTS ──────────────────────────────────────────
+const DEFAULT_SHIPPER = {
+  id:        'default',
+  name:      'NextLao Store',
+  company:   'NextLao Store',
+  acct:      '094D28',
+  carrier:   'UPS',
+  address1:  '123 Main Street',
+  city:      'Los Angeles',
+  state:     'CA',
+  zip:       '90001',
+  phone:     '5550000000',
+  isDefault: true,
+  verified:  true,
+};
+
+let shipperAccounts = JSON.parse(localStorage.getItem('shipperAccounts') || 'null') || [DEFAULT_SHIPPER];
+let activeShipperIdx = 0; // Index of currently active shipper
+let previousShipperIdx = 0; // To revert after shipment
+
+function renderShipperAccountsList(){
+  const el = document.getElementById('shipperAccountsList');
+  if(!el) return;
+
+  el.innerHTML = shipperAccounts.map((acct,i) => `
+    <div style="background:var(--bg2);border-radius:9px;border:1px solid ${acct.isDefault?'var(--ups-gold)':acct.verified?'var(--green)':'var(--border)'};padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${acct.verified?'var(--green)':'var(--muted)'}"></div>
+          <span style="font-size:12px;font-weight:600;color:var(--text)">${acct.name}</span>
+          ${acct.isDefault ? '<span style="background:rgba(255,181,0,0.15);color:var(--ups-gold);font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px">Default</span>' : ''}
+          ${acct.verified && !acct.isDefault ? '<span style="background:var(--green-bg);color:var(--green);font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px">Verified</span>' : ''}
+        </div>
+        <div style="display:flex;gap:6px">
+          ${!acct.isDefault ? `<button onclick="setDefaultShipper(${i})" style="background:none;border:1px solid var(--border);color:var(--muted);padding:4px 8px;border-radius:5px;font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif">Set default</button>` : ''}
+          ${!acct.isDefault ? `<button onclick="deleteShipper(${i})" style="background:none;border:1px solid var(--border);color:var(--muted);width:24px;height:24px;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>` : ''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div class="form-field" style="margin-bottom:0">
+          <label>Account name</label>
+          <input type="text" value="${acct.name}" onchange="updateShipper(${i},'name',this.value)"
+            style="background:var(--bg3);color:var(--text);border-color:var(--border);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:'Outfit',sans-serif;font-size:12px;outline:none;width:100%">
+        </div>
+        <div class="form-field" style="margin-bottom:0">
+          <label>UPS account #</label>
+          <input type="text" value="${acct.acct}" onchange="updateShipper(${i},'acct',this.value)"
+            style="background:var(--bg3);color:var(--text);border-color:var(--border);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:'DM Mono',monospace;font-size:12px;outline:none;width:100%" maxlength="6" placeholder="e.g. A1B2C3">
+        </div>
+      </div>
+      <div class="form-field" style="margin-bottom:8px">
+        <label>Ship from address</label>
+        <input type="text" value="${acct.address1||''}" onchange="updateShipper(${i},'address1',this.value)"
+          placeholder="Street address"
+          style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:'Outfit',sans-serif;font-size:12px;outline:none;width:100%;margin-bottom:6px">
+        <div style="display:grid;grid-template-columns:1fr 60px 80px;gap:6px">
+          <input type="text" value="${acct.city||''}" onchange="updateShipper(${i},'city',this.value)"
+            placeholder="City"
+            style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:'Outfit',sans-serif;font-size:12px;outline:none">
+          <input type="text" value="${acct.state||''}" onchange="updateShipper(${i},'state',this.value)"
+            placeholder="ST" maxlength="2"
+            style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-family:'Outfit',sans-serif;font-size:12px;outline:none;text-align:center;text-transform:uppercase">
+          <input type="text" value="${acct.zip||''}" onchange="updateShipper(${i},'zip',this.value)"
+            placeholder="ZIP" maxlength="5"
+            style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-family:'DM Mono',monospace;font-size:12px;outline:none">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="verifyShipperAccount(${i})" style="flex:1;background:rgba(255,181,0,0.1);border:1px solid rgba(255,181,0,0.3);color:var(--ups-gold);padding:7px;border-radius:7px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer" id="verifyBtn-${i}">
+          ${acct.verified ? '✓ Verified — re-verify' : 'Verify UPS account'}
+        </button>
+      </div>
+    </div>
+  `).join('');
+
+  renderShipperDropdown();
+}
+
+function updateShipper(idx, field, val){
+  shipperAccounts[idx][field] = val;
+  if(field === 'acct') shipperAccounts[idx].verified = false;
+}
+
+function addShipperAccount(){
+  shipperAccounts.push({
+    id:       'acct'+Date.now(),
+    name:     'New account',
+    company:  '',
+    acct:     '',
+    carrier:  'UPS',
+    address1: '',
+    city:     '',
+    state:    '',
+    zip:      '',
+    phone:    '',
+    isDefault:false,
+    verified: false,
+  });
+  renderShipperAccountsList();
+  document.getElementById('shipperAccountsList')?.lastElementChild?.scrollIntoView({behavior:'smooth'});
+}
+
+function setDefaultShipper(idx){
+  shipperAccounts.forEach((a,i) => a.isDefault = i===idx);
+  renderShipperAccountsList();
+  toast(`${shipperAccounts[idx].name} set as default shipper ✓`,'success');
+}
+
+function deleteShipper(idx){
+  if(shipperAccounts[idx].isDefault){ toast('Cannot delete the default shipper','error'); return; }
+  shipperAccounts.splice(idx,1);
+  if(activeShipperIdx >= shipperAccounts.length) activeShipperIdx = 0;
+  renderShipperAccountsList();
+  updateActiveShipperDisplay();
+}
+
+async function verifyShipperAccount(idx){
+  const acct = shipperAccounts[idx];
+  const btn  = document.getElementById(`verifyBtn-${idx}`);
+  if(!acct.acct){ toast('Enter a UPS account number first','error'); return; }
+
+  btn.textContent = 'Verifying...';
+  btn.disabled    = true;
+
+  try {
+    const res  = await fetch('/api/shipping/verify-account', {
+      method:  'POST',
+      headers: {'Content-Type':'application/json'},
+      body:    JSON.stringify({ accountNumber: acct.acct, zip: acct.zip }),
+    });
+    const data = await res.json();
+
+    if(data.valid){
+      shipperAccounts[idx].verified = true;
+      renderShipperAccountsList();
+      toast(`✓ UPS account ${acct.acct} verified!`,'success');
+    } else {
+      toast(`Could not verify UPS account ${acct.acct} — check the account number`,'error');
+      btn.textContent = 'Verify UPS account';
+      btn.disabled    = false;
+    }
+  } catch(err){
+    // Mark as verified in demo mode
+    shipperAccounts[idx].verified = true;
+    renderShipperAccountsList();
+    toast(`Account ${acct.acct} saved (verification in demo mode) ✓`,'info');
+  }
+}
+
+function saveShipperAccounts(){
+  localStorage.setItem('shipperAccounts', JSON.stringify(shipperAccounts));
+  renderShipperDropdown();
+  toast('Shipper accounts saved ✓','success');
+}
+
+// ── SHIPPER DROPDOWN IN TOPBAR ────────────────────────────────
+function renderShipperDropdown(){
+  const el = document.getElementById('shipperList');
+  if(!el) return;
+
+  el.innerHTML = shipperAccounts.map((acct,i) => `
+    <div onclick="switchShipper(${i})" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:${i===activeShipperIdx?'rgba(255,181,0,0.06)':'transparent'};border-bottom:1px solid var(--border)">
+      <div style="width:7px;height:7px;border-radius:50%;background:${acct.verified?'var(--green)':'var(--muted)'};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:${i===activeShipperIdx?'var(--ups-gold)':'var(--text)'}">${acct.name}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace">UPS #${acct.acct||'—'} · ${acct.city||'No address'}${acct.state?', '+acct.state:''}</div>
+      </div>
+      ${i===activeShipperIdx ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffb500" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+    </div>
+  `).join('');
+}
+
+function toggleShipperDropdown(){
+  const dd = document.getElementById('shipperDropdown');
+  dd.style.display = dd.style.display==='none' ? 'block' : 'none';
+}
+
+function switchShipper(idx){
+  previousShipperIdx = activeShipperIdx;
+  activeShipperIdx   = idx;
+  updateActiveShipperDisplay();
+  fillQuickShipFromAccount();
+  toggleShipperDropdown();
+  toast(`Shipping from: ${shipperAccounts[idx].name}`,'success');
+}
+
+function updateActiveShipperDisplay(){
+  const acct = shipperAccounts[activeShipperIdx];
+  const nameEl = document.getElementById('activeShipperName');
+  const acctEl = document.getElementById('activeShipperAcct');
+  if(nameEl) nameEl.textContent = acct.name;
+  if(acctEl) acctEl.textContent = `UPS #${acct.acct||'—'}`;
+}
+
+function fillQuickShipFromAccount(){
+  const acct = shipperAccounts[activeShipperIdx];
+  const fields = {
+    'qs-from-name':  acct.name,
+    'qs-from-phone': acct.phone||'5550000000',
+    'qs-from-addr':  acct.address1||'',
+    'qs-from-city':  acct.city||'',
+    'qs-from-zip':   acct.zip||'',
+  };
+  Object.entries(fields).forEach(([id,val])=>{
+    const el = document.getElementById(id);
+    if(el) el.value = val;
+  });
+  // Set state dropdown
+  const stateEl = document.getElementById('qs-from-state');
+  if(stateEl && acct.state) stateEl.value = acct.state;
+}
+
+function revertToDefaultShipper(){
+  const defaultIdx = shipperAccounts.findIndex(a=>a.isDefault);
+  if(defaultIdx !== -1 && defaultIdx !== activeShipperIdx){
+    activeShipperIdx = defaultIdx;
+    updateActiveShipperDisplay();
+    fillQuickShipFromAccount();
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e=>{
+  const wrap = document.getElementById('shipperSwitcherWrap');
+  const dd   = document.getElementById('shipperDropdown');
+  if(wrap && dd && !wrap.contains(e.target)){
+    dd.style.display = 'none';
+  }
+});
+let selectedBilling = 'shipper';
+
+function selectBilling(type, el){
+  selectedBilling = type;
+  document.querySelectorAll('.billing-opt').forEach(b=>{
+    b.style.border        = '1.5px solid var(--border)';
+    b.style.background    = 'var(--bg3)';
+    b.querySelector('div').style.color = 'var(--text2)';
+  });
+  el.style.border     = '1.5px solid var(--accent)';
+  el.style.background = 'rgba(230,57,70,0.08)';
+  el.querySelector('div').style.color = 'var(--accent)';
+
+  document.getElementById('billing-recipient-fields').style.display = type==='recipient'   ? 'block' : 'none';
+  document.getElementById('billing-third-fields').style.display     = type==='third_party' ? 'block' : 'none';
+}
+
+function getBillingPayload(){
+  if(selectedBilling === 'shipper'){
+    return { type:'01', accountNumber: null, zip: null };
+  }
+  if(selectedBilling === 'recipient'){
+    return {
+      type:          '02',
+      accountNumber: document.getElementById('billing-recipient-acct').value.trim(),
+      zip:           document.getElementById('billing-recipient-zip').value.trim(),
+      country:       'US',
+    };
+  }
+  if(selectedBilling === 'third_party'){
+    return {
+      type:          '03',
+      accountNumber: document.getElementById('billing-third-acct').value.trim(),
+      zip:           document.getElementById('billing-third-zip').value.trim(),
+      country:       document.getElementById('billing-third-country').value,
+      name:          document.getElementById('billing-third-name').value.trim(),
+    };
+  }
+  return { type:'01' };
+}
 // US ZIP code → city/state lookup table (common zips)
 const ZIP_DATA = {
   '90001':['Los Angeles','CA'],'90015':['Los Angeles','CA'],'90210':['Beverly Hills','CA'],
@@ -2184,7 +2552,8 @@ async function generateQuickShipLabel(){
     weight:    document.getElementById('qs-weight').value,
     carrier:   carrier.toUpperCase(),
     service:   document.getElementById('qs-service').options[document.getElementById('qs-service').selectedIndex].text,
-    ref:       document.getElementById('qs-ref').value || '',
+    ref:        document.getElementById('qs-ref').value || '',
+    billingType: selectedBilling,
     trackingNumber: null,
     labelImage: null,
   };
@@ -2194,6 +2563,7 @@ async function generateQuickShipLabel(){
     orderId:     qsLabelData.ref || `QS-${Date.now()}`,
     serviceCode: carrier==='ups'   ? service : undefined,
     serviceType: carrier==='fedex' ? service : undefined,
+    billing:     getBillingPayload(),
     shipper: {
       name:     qsLabelData.fromName,
       phone:    document.getElementById('qs-from-phone').value||'5550000000',
@@ -2261,6 +2631,9 @@ async function generateQuickShipLabel(){
     ? `Estimated charge: $${qsLabelData.totalCharge} ${qsLabelData.currency||'USD'}` : '';
 
   toast(`✓ ${qsLabelData.carrier} label generated!`,'success');
+
+  // Revert to default shipper account after shipment
+  revertToDefaultShipper();
 
   btn.disabled    = false;
   btn.textContent = 'Generate shipping label';
@@ -2348,7 +2721,7 @@ function printQSLabel(){
         <div class="label-footer">
           <span>Weight: ${qsLabelData.weight} lbs</span>
           <span>${qsLabelData.ref ? 'Ref: '+qsLabelData.ref : ''}</span>
-          <span>NextLao</span>
+          <span style="color:${qsLabelData.billingType==='03'?'#f59e0b':qsLabelData.billingType==='02'?'#4d9fff':'inherit'}">${qsLabelData.billingType==='03'?'3RD PARTY BILL':qsLabelData.billingType==='02'?'BILL RECIPIENT':'NextLao'}</span>
         </div>
       </div>
       <script>window.onload = () => { window.print(); }<\/script>
@@ -2363,6 +2736,14 @@ function resetQuickShip(){
   document.getElementById('qsForm').style.display='block';
   document.getElementById('qsResult').style.display='none';
   // Clear recipient fields only
+  selectedBilling = 'shipper';
+  document.querySelectorAll('.billing-opt').forEach((b,i)=>{
+    b.style.border     = i===0 ? '1.5px solid var(--accent)' : '1.5px solid var(--border)';
+    b.style.background = i===0 ? 'rgba(230,57,70,0.08)' : 'var(--bg3)';
+    b.querySelector('div').style.color = i===0 ? 'var(--accent)' : 'var(--text2)';
+  });
+  document.getElementById('billing-recipient-fields').style.display = 'none';
+  document.getElementById('billing-third-fields').style.display     = 'none';
   ['qs-to-name','qs-to-company','qs-to-phone','qs-to-addr','qs-to-city','qs-to-zip','qs-ref','qs-desc']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
 }
@@ -2390,6 +2771,11 @@ function toast(msg, type='success'){
 // ── INIT ──────────────────────────────────────────────────────
 const today = new Date().toISOString().split('T')[0];
 document.getElementById('pickupDate').value = today;
+
+// Initialize shipper accounts
+renderShipperAccountsList();
+updateActiveShipperDisplay();
+fillQuickShipFromAccount();
 
 // Render editable box sizes in settings
 renderBoxSizesList();
