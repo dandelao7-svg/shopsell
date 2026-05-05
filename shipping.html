@@ -1140,6 +1140,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
               <label>Street address</label>
               <input type="text" id="qs-to-addr" placeholder="456 Oak Avenue" autocomplete="off">
             </div>
+            <div class="form-field">
+              <label>Apt / Suite / Unit (optional)</label>
+              <input type="text" id="qs-to-addr2" placeholder="Apt 4B, Suite 200, Unit 3" autocomplete="off">
+            </div>
             <div class="two-col">
               <div class="form-field">
                 <label>City</label>
@@ -1156,6 +1160,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
               <label>ZIP code</label>
               <input type="text" id="qs-to-zip" placeholder="78701" maxlength="5" oninput="onZipInput(this)" autocomplete="off">
               <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none;display:flex;align-items:center;gap:5px"></div>
+            </div>
+
+            <!-- RESIDENTIAL FLAG -->
+            <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
+              <input type="checkbox" id="qs-residential" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0">
+              <div>
+                <label for="qs-residential" style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer">Residential address</label>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Check this for homes, apartments, and condos. UPS charges a residential surcharge. Leave unchecked for businesses, warehouses, and commercial addresses.</div>
+              </div>
             </div>
           </div>
         </div>
@@ -2393,12 +2406,14 @@ async function generateQuickShipLabel(){
     fromCity:  document.getElementById('qs-from-city').value,
     fromState: document.getElementById('qs-from-state').value,
     fromZip:   document.getElementById('qs-from-zip').value,
-    toName,
+    toName:    toName,
     toCompany: document.getElementById('qs-to-company').value.trim()||'',
     toAddr,
+    toAddr2:   document.getElementById('qs-to-addr2').value.trim()||'',
     toCity,
     toState:   document.getElementById('qs-to-state').value,
     toZip,
+    residential: document.getElementById('qs-residential').checked,
     weight:    document.getElementById('qs-weight').value,
     carrier:   carrier.toUpperCase(),
     service:   document.getElementById('qs-service').options[document.getElementById('qs-service').selectedIndex].text,
@@ -2422,9 +2437,17 @@ async function generateQuickShipLabel(){
       country:  'US',
     },
     recipient: {
-      name:     toName,
-      company:  document.getElementById('qs-to-company').value.trim()||undefined,
-      phone:    document.getElementById('qs-to-phone').value||'5550000000',
+      name:        toName,
+      company:     document.getElementById('qs-to-company').value.trim()||undefined,
+      phone:       document.getElementById('qs-to-phone').value||'5550000000',
+      address1:    toAddr,
+      address2:    document.getElementById('qs-to-addr2').value.trim()||undefined,
+      city:        toCity,
+      state:       document.getElementById('qs-to-state').value,
+      zip:         toZip,
+      country:     'US',
+      residential: document.getElementById('qs-residential').checked,
+    },
       address1: toAddr,
       city:     toCity,
       state:    qsLabelData.toState,
@@ -2554,11 +2577,12 @@ function printQSLabel(){
           </div>
         </div>
         <div class="label-section" style="padding:14px">
-          <div class="label-section-title">Ship To</div>
+          <div class="label-section-title">Ship To ${qsLabelData.residential ? '<span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;margin-left:6px">RESIDENTIAL</span>' : ''}</div>
           <div class="label-addr" style="font-size:18px">
             ${qsLabelData.toName}<br>
             ${qsLabelData.toCompany ? `<span style="font-size:14px;font-weight:400">${qsLabelData.toCompany}</span><br>` : ''}
             ${qsLabelData.toAddr}<br>
+            ${qsLabelData.toAddr2 ? `${qsLabelData.toAddr2}<br>` : ''}
             ${qsLabelData.toCity}, ${qsLabelData.toState} ${qsLabelData.toZip}
           </div>
         </div>
@@ -2584,8 +2608,10 @@ function resetQuickShip(){
   document.getElementById('qsForm').style.display='block';
   document.getElementById('qsResult').style.display='none';
   // Clear recipient fields only
-  ['qs-to-name','qs-to-company','qs-to-phone','qs-to-addr','qs-to-city','qs-to-zip','qs-ref','qs-desc']
+  ['qs-to-name','qs-to-company','qs-to-phone','qs-to-addr','qs-to-addr2','qs-to-city','qs-to-zip','qs-ref','qs-desc']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const resEl = document.getElementById('qs-residential');
+  if(resEl) resEl.checked = false;
 }
 
 // ── TOAST ─────────────────────────────────────────────────────
