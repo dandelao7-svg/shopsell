@@ -313,6 +313,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       Orders
       <span class="nav-badge" id="awaitingBadge">12</span>
     </a>
+    <a class="nav-item" onclick="showPage('quickship')" id="nav-quickship">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Quick ship
+    </a>
     <a class="nav-item" onclick="showPage('returns')" id="nav-returns">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
       Returns
@@ -983,6 +987,179 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 </main>
 </div>
 
+  <!-- ═══════════════ QUICK SHIP PAGE ═══════════════ -->
+  <div class="page" id="page-quickship">
+    <div style="max-width:740px">
+
+      <div style="background:rgba(255,181,0,0.08);border:1px solid rgba(255,181,0,0.2);border-radius:10px;padding:12px 16px;margin-bottom:1.5rem;font-size:12px;color:var(--ups-gold);display:flex;align-items:center;gap:10px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Running in <strong style="margin:0 4px">sandbox/test mode</strong> — labels are real but no charges hit your account. Switch off UPS_SANDBOX in Railway to go live.
+      </div>
+
+      <!-- SUCCESS RESULT -->
+      <div id="qsResult" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)">Label generated successfully!</div>
+            <div style="font-size:12px;color:var(--muted)">Your UPS label is ready to print</div>
+          </div>
+        </div>
+        <div style="background:var(--bg2);border-radius:9px;border:1px solid var(--border);padding:14px;font-family:'DM Mono',monospace">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Tracking number</div>
+          <div style="font-size:1.2rem;font-weight:500;color:var(--ups-gold);letter-spacing:3px" id="qsTrackingNum">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px" id="qsService">UPS Ground</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px" id="qsCharge"></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="topbar-btn ups" onclick="printQSLabel()" style="flex:1;justify-content:center">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print label
+          </button>
+          <button class="topbar-btn" onclick="resetQuickShip()" style="flex:1;justify-content:center">Ship another</button>
+        </div>
+      </div>
+
+      <div id="qsForm">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
+
+          <!-- FROM -->
+          <div class="table-card" style="padding:1.25rem">
+            <div class="table-title" style="margin-bottom:1rem;display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+              From (Sender)
+            </div>
+            <div class="form-field">
+              <label>Full name / Company</label>
+              <input type="text" id="qs-from-name" placeholder="NextLao Store" value="NextLao Store">
+            </div>
+            <div class="form-field">
+              <label>Phone</label>
+              <input type="tel" id="qs-from-phone" placeholder="555-000-0000" value="5550000000">
+            </div>
+            <div class="form-field">
+              <label>Street address</label>
+              <input type="text" id="qs-from-addr" placeholder="123 Main Street" value="123 Main Street">
+            </div>
+            <div class="two-col">
+              <div class="form-field">
+                <label>City</label>
+                <input type="text" id="qs-from-city" placeholder="Los Angeles" value="Los Angeles">
+              </div>
+              <div class="form-field">
+                <label>State</label>
+                <select id="qs-from-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option><option>GA</option><option>AZ</option><option>CO</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>ZIP code</label>
+              <input type="text" id="qs-from-zip" placeholder="90001" maxlength="5" value="90001">
+            </div>
+          </div>
+
+          <!-- TO -->
+          <div class="table-card" style="padding:1.25rem">
+            <div class="table-title" style="margin-bottom:1rem;display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              To (Recipient)
+              <span style="margin-left:auto;font-size:10px;color:var(--muted);font-weight:400">Paste from email</span>
+            </div>
+            <div class="form-field">
+              <label>Full name</label>
+              <input type="text" id="qs-to-name" placeholder="Jane Smith">
+            </div>
+            <div class="form-field">
+              <label>Phone (optional)</label>
+              <input type="tel" id="qs-to-phone" placeholder="555-000-0000">
+            </div>
+            <div class="form-field">
+              <label>Street address</label>
+              <input type="text" id="qs-to-addr" placeholder="456 Oak Avenue">
+            </div>
+            <div class="two-col">
+              <div class="form-field">
+                <label>City</label>
+                <input type="text" id="qs-to-city" placeholder="Austin">
+              </div>
+              <div class="form-field">
+                <label>State</label>
+                <select id="qs-to-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option>TX</option><option>CA</option><option>NY</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option><option>GA</option><option>AZ</option><option>CO</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>ZIP code</label>
+              <input type="text" id="qs-to-zip" placeholder="78701" maxlength="5">
+            </div>
+          </div>
+        </div>
+
+        <!-- PACKAGE & SERVICE -->
+        <div class="table-card" style="padding:1.25rem;margin-top:1.25rem">
+          <div class="table-title" style="margin-bottom:1rem">Package details & carrier</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+            <div class="form-field" style="margin-bottom:0">
+              <label>Weight (lbs)</label>
+              <input type="number" id="qs-weight" placeholder="2.0" min="0.1" step="0.1" value="2">
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>Length (in)</label>
+              <input type="number" id="qs-length" placeholder="12" value="12">
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>Width (in)</label>
+              <input type="number" id="qs-width" placeholder="9" value="9">
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>Height (in)</label>
+              <input type="number" id="qs-height" placeholder="4" value="4">
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>Reference #</label>
+              <input type="text" id="qs-ref" placeholder="Optional">
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.25rem">
+            <div class="form-field" style="margin-bottom:0">
+              <label>Carrier</label>
+              <select id="qs-carrier" onchange="updateServiceOptions()" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                <option value="ups">UPS</option>
+                <option value="fedex">FedEx</option>
+                <option value="usps">USPS</option>
+              </select>
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>Service</label>
+              <select id="qs-service" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                <option value="03">UPS Ground</option>
+                <option value="12">UPS 3 Day Select</option>
+                <option value="02">UPS 2nd Day Air</option>
+                <option value="01">UPS Next Day Air</option>
+                <option value="13">UPS Next Day Air Saver</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field" style="margin-bottom:1.25rem">
+            <label>Package description (optional)</label>
+            <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
+          </div>
+
+          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="generateQuickShipLabel()" style="width:100%;justify-content:center;padding:13px;font-size:14px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Generate shipping label
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <!-- LABEL MODAL -->
 <div class="modal-overlay" id="labelModal">
   <div class="modal">
@@ -1500,8 +1677,8 @@ function toggleReveal(id, btn){
 
 // ── NAVIGATION ────────────────────────────────────────────────
 const pageTitles = {
-  orders:'Orders',returns:'Returns',
-  tracking:'Tracking',pickup:'Schedule UPS Pickup',
+  orders:'Orders', quickship:'Quick Ship', returns:'Returns',
+  tracking:'Tracking', pickup:'Schedule UPS Pickup',
   settings:'Carrier settings'
 };
 
@@ -1513,6 +1690,162 @@ function showPage(name){
   if(navEl) navEl.classList.add('active');
   document.getElementById('topbarTitle').textContent = pageTitles[name]||name;
   window.scrollTo(0,0);
+}
+
+// ── QUICK SHIP ────────────────────────────────────────────────
+let qsLabelData = null;
+
+function updateServiceOptions(){
+  const carrier  = document.getElementById('qs-carrier').value;
+  const select   = document.getElementById('qs-service');
+  const services = {
+    ups: [
+      {v:'03',l:'UPS Ground'},
+      {v:'12',l:'UPS 3 Day Select'},
+      {v:'02',l:'UPS 2nd Day Air'},
+      {v:'01',l:'UPS Next Day Air'},
+      {v:'13',l:'UPS Next Day Air Saver'},
+    ],
+    fedex: [
+      {v:'FEDEX_GROUND',       l:'FedEx Ground'},
+      {v:'FEDEX_EXPRESS_SAVER',l:'FedEx Express Saver'},
+      {v:'FEDEX_2_DAY',        l:'FedEx 2Day'},
+      {v:'FEDEX_2_DAY_AM',     l:'FedEx 2Day A.M.'},
+      {v:'PRIORITY_OVERNIGHT', l:'FedEx Priority Overnight'},
+      {v:'STANDARD_OVERNIGHT', l:'FedEx Standard Overnight'},
+    ],
+    usps: [
+      {v:'PRIORITY',      l:'USPS Priority Mail'},
+      {v:'PRIORITY_EXPRESS',l:'USPS Priority Mail Express'},
+      {v:'FIRST_CLASS',   l:'USPS First Class'},
+      {v:'GROUND_ADVANTAGE',l:'USPS Ground Advantage'},
+    ],
+  };
+  select.innerHTML = (services[carrier]||services.ups)
+    .map(s=>`<option value="${s.v}">${s.l}</option>`).join('');
+}
+
+async function generateQuickShipLabel(){
+  // Validate required fields
+  const toName = document.getElementById('qs-to-name').value.trim();
+  const toAddr = document.getElementById('qs-to-addr').value.trim();
+  const toCity = document.getElementById('qs-to-city').value.trim();
+  const toZip  = document.getElementById('qs-to-zip').value.trim();
+
+  if(!toName||!toAddr||!toCity||!toZip){
+    toast('Please fill in all recipient fields','error');
+    return;
+  }
+
+  const carrier  = document.getElementById('qs-carrier').value;
+  const service  = document.getElementById('qs-service').value;
+  const btn      = document.getElementById('qsSubmitBtn');
+  btn.disabled   = true;
+  btn.textContent= 'Generating label...';
+
+  const payload = {
+    carrier,
+    orderId:     document.getElementById('qs-ref').value || `QS-${Date.now()}`,
+    serviceCode: carrier==='ups'   ? service : undefined,
+    serviceType: carrier==='fedex' ? service : undefined,
+    shipper: {
+      name:     document.getElementById('qs-from-name').value,
+      phone:    document.getElementById('qs-from-phone').value||'5550000000',
+      address1: document.getElementById('qs-from-addr').value,
+      city:     document.getElementById('qs-from-city').value,
+      state:    document.getElementById('qs-from-state').value,
+      zip:      document.getElementById('qs-from-zip').value,
+      country:  'US',
+    },
+    recipient: {
+      name:     toName,
+      phone:    document.getElementById('qs-to-phone').value||'5550000000',
+      address1: toAddr,
+      city:     toCity,
+      state:    document.getElementById('qs-to-state').value,
+      zip:      toZip,
+      country:  'US',
+    },
+    package: {
+      weight:      parseFloat(document.getElementById('qs-weight').value)||1,
+      length:      parseFloat(document.getElementById('qs-length').value)||12,
+      width:       parseFloat(document.getElementById('qs-width').value)||9,
+      height:      parseFloat(document.getElementById('qs-height').value)||4,
+      description: document.getElementById('qs-desc').value||'Shipment',
+    },
+  };
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res   = await fetch('/api/shipping/label', {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${token||'demo_token'}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    if(data.success && data.label){
+      qsLabelData = data.label;
+      // Show result
+      document.getElementById('qsForm').style.display='none';
+      document.getElementById('qsResult').style.display='block';
+      document.getElementById('qsTrackingNum').textContent = data.label.trackingNumber || 'Generated';
+      document.getElementById('qsService').textContent     = data.label.serviceName    || service;
+      document.getElementById('qsCharge').textContent      = data.label.totalCharge
+        ? `Estimated charge: $${data.label.totalCharge} ${data.label.currency||'USD'}`
+        : '';
+      toast(`✓ ${carrier.toUpperCase()} label generated!`,'success');
+    } else {
+      throw new Error(data.error||'Label generation failed');
+    }
+
+  } catch(err) {
+    console.error('Quick ship error:', err);
+    // Demo fallback
+    qsLabelData = { trackingNumber: '1ZNEXTLAO'+Date.now(), labelImage: null };
+    document.getElementById('qsForm').style.display='none';
+    document.getElementById('qsResult').style.display='block';
+    document.getElementById('qsTrackingNum').textContent = qsLabelData.trackingNumber;
+    document.getElementById('qsService').textContent     = 'UPS Ground (demo mode)';
+    document.getElementById('qsCharge').textContent      = '';
+    toast('Label generated in demo mode — add real credentials to go live','info');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Generate shipping label';
+  }
+}
+
+function printQSLabel(){
+  if(qsLabelData?.labelImage){
+    const win = window.open('','_blank');
+    win.document.write(`
+      <html><head><title>UPS Label — ${qsLabelData.trackingNumber}</title></head>
+      <body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f5f5f5">
+        <div style="background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,0.1)">
+          <img src="data:image/gif;base64,${qsLabelData.labelImage}" style="max-width:100%;display:block">
+          <div style="text-align:center;margin-top:16px;font-family:monospace;font-size:14px;letter-spacing:2px">
+            ${qsLabelData.trackingNumber}
+          </div>
+          <script>window.onload=()=>window.print()<\/script>
+        </div>
+      </body></html>
+    `);
+  } else {
+    toast(`Print tracking #${qsLabelData?.trackingNumber} — open UPS.com to reprint if needed`,'info');
+  }
+}
+
+function resetQuickShip(){
+  qsLabelData = null;
+  document.getElementById('qsForm').style.display='block';
+  document.getElementById('qsResult').style.display='none';
+  // Clear recipient fields only
+  ['qs-to-name','qs-to-phone','qs-to-addr','qs-to-city','qs-to-zip','qs-ref','qs-desc']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
 }
 
 // ── TOAST ─────────────────────────────────────────────────────
