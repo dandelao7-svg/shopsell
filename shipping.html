@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NextLao — Shipping Suite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   NEXTLAO SHIPPING SUITE
+   Production-ready shipping dashboard
+   OMS-ready architecture — marketplace tabs plug in here
+   ============================================================ */
+
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;
+  --bg2:#111118;
+  --bg3:#18181f;
+  --card:#1c1c24;
+  --card2:#22222c;
+  --border:#2a2a36;
+  --border2:#333340;
+  --text:#f0f0f5;
+  --text2:#a0a0b8;
+  --text3:#6060780;
+  --muted:#60607a;
+  --accent:#e63946;
+  --accent2:#ff6b6b;
+  --ups:#340a00;
+  --ups-light:#8b1a00;
+  --ups-gold:#ffb500;
+  --ups-gold-light:#ffd760;
+  --fedex:#4b0082;
+  --fedex-light:#7b2fd4;
+  --usps:#003087;
+  --usps-light:#0050c8;
+  --green:#00c896;
+  --green-bg:rgba(0,200,150,0.1);
+  --amber:#f59e0b;
+  --amber-bg:rgba(245,158,11,0.1);
+  --red:#e63946;
+  --red-bg:rgba(230,57,70,0.1);
+  --blue:#4d9fff;
+  --blue-bg:rgba(77,159,255,0.1);
+  --sidebar-w:220px;
+  --header-h:56px;
+  --radius:10px;
+}
+
+html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden}
+
+/* ── LAYOUT ── */
+.app{display:flex;min-height:100vh}
+
+/* ── SIDEBAR ── */
+.sidebar{width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);position:fixed;top:0;left:0;height:100vh;display:flex;flex-direction:column;z-index:100}
+.sidebar-logo{padding:18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.logo-mark{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#fff;flex-shrink:0}
+.logo-text{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;color:var(--text)}
+.logo-text span{color:var(--ups-gold)}
+.logo-sub{font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:1px}
+
+.sidebar-nav{flex:1;padding:10px 10px;overflow-y:auto}
+.nav-section{font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 8px 6px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--text2);font-size:13px;font-weight:500;transition:all 0.15s;margin-bottom:1px;position:relative;text-decoration:none}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:rgba(230,57,70,0.12);color:var(--accent)}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:20px;background:var(--accent);border-radius:0 3px 3px 0}
+.nav-item svg{width:15px;height:15px;flex-shrink:0}
+.nav-badge{margin-left:auto;background:var(--accent);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center}
+.nav-badge.amber{background:var(--amber)}
+.nav-badge.green{background:var(--green)}
+.nav-item.locked{opacity:0.35;cursor:not-allowed}
+.nav-item.locked:hover{background:none;color:var(--text2)}
+.coming-soon{margin-left:auto;font-size:9px;color:var(--muted);letter-spacing:0.5px}
+
+.sidebar-footer{padding:12px;border-top:1px solid var(--border)}
+.carrier-status{display:flex;flex-direction:column;gap:6px}
+.carrier-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;background:var(--bg3)}
+.carrier-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.carrier-dot.up{background:var(--green)}
+.carrier-dot.down{background:var(--red)}
+.carrier-name{font-size:11px;font-weight:600;color:var(--text2);flex:1}
+.carrier-status-text{font-size:10px;color:var(--muted)}
+
+/* ── MAIN ── */
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+
+/* ── TOPBAR ── */
+.topbar{height:var(--header-h);background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.page-title{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;color:var(--text)}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.topbar-btn{border:1px solid var(--border2);background:var(--card);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);transition:all 0.2s;display:flex;align-items:center;gap:6px}
+.topbar-btn:hover{border-color:var(--accent);color:var(--accent)}
+.topbar-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.topbar-btn.primary:hover{background:#c1121f}
+.topbar-btn.ups{background:rgba(255,181,0,0.1);border-color:rgba(255,181,0,0.3);color:var(--ups-gold)}
+.topbar-btn.ups:hover{background:rgba(255,181,0,0.2)}
+
+/* ── PAGE SYSTEM ── */
+.page{display:none;padding:1.5rem;animation:fadeIn 0.2s ease}
+.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── STAT CARDS ── */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.1rem;position:relative;overflow:hidden}
+.stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat-card.gold::after{background:var(--ups-gold)}
+.stat-card.green::after{background:var(--green)}
+.stat-card.blue::after{background:var(--blue)}
+.stat-card.red::after{background:var(--accent)}
+.stat-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+.stat-icon.gold{background:rgba(255,181,0,0.12)}
+.stat-icon.green{background:var(--green-bg)}
+.stat-icon.blue{background:var(--blue-bg)}
+.stat-icon.red{background:var(--red-bg)}
+.stat-val{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:700;margin-bottom:2px}
+.stat-label{font-size:11px;color:var(--muted);margin-bottom:5px}
+.stat-change{font-size:11px;font-weight:600}
+.stat-change.up{color:var(--green)}
+.stat-change.down{color:var(--accent)}
+
+/* ── ORDERS TABLE ── */
+.table-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;margin-bottom:1.5rem}
+.table-hd{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.table-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text)}
+.table-actions{display:flex;gap:8px;align-items:center}
+
+/* FILTER TABS */
+.filter-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 18px}
+.filter-tab{padding:10px 16px;font-size:12px;font-weight:500;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all 0.2s;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.filter-tab:hover{color:var(--text)}
+.filter-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.filter-tab .ct{background:var(--bg3);color:var(--text2);border-radius:10px;font-size:10px;font-weight:600;padding:1px 6px}
+.filter-tab.active .ct{background:rgba(230,57,70,0.15);color:var(--accent)}
+
+/* SEARCH BAR */
+.search-bar{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;gap:8px;min-width:220px}
+.search-bar input{border:none;background:none;font-family:'Outfit',sans-serif;font-size:12px;color:var(--text);outline:none;width:100%}
+.search-bar input::placeholder{color:var(--muted)}
+
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg2);white-space:nowrap}
+td{padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.02)}
+
+/* ORDER SPECIFIC */
+.order-num{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)}
+.channel-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
+.channel-badge.nextlao{background:rgba(230,57,70,0.12);color:var(--accent)}
+.channel-badge.amazon{background:rgba(255,153,0,0.12);color:#ff9900}
+.channel-badge.ebay{background:rgba(0,100,210,0.12);color:#0064d2}
+.channel-badge.etsy{background:rgba(240,81,35,0.12);color:#f05123}
+.channel-badge.walmart{background:rgba(0,112,201,0.12);color:#0070c9}
+.status-pill{padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap}
+.status-pill.awaiting{background:var(--amber-bg);color:var(--amber)}
+.status-pill.printed{background:var(--blue-bg);color:var(--blue)}
+.status-pill.shipped{background:var(--green-bg);color:var(--green)}
+.status-pill.delivered{background:rgba(0,200,150,0.06);color:var(--green)}
+.status-pill.exception{background:var(--red-bg);color:var(--accent)}
+.status-pill.return{background:rgba(139,26,0,0.15);color:#ff6b35}
+.carrier-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:0.3px}
+.carrier-pill.ups{background:rgba(255,181,0,0.12);color:var(--ups-gold)}
+.carrier-pill.fedex{background:rgba(123,47,212,0.12);color:#a855f7}
+.carrier-pill.usps{background:rgba(0,80,200,0.12);color:var(--usps-light)}
+.action-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;font-weight:500;transition:all 0.2s;white-space:nowrap}
+.action-btn:hover{border-color:var(--accent);color:var(--accent)}
+.action-btn.primary{background:rgba(230,57,70,0.1);border-color:rgba(230,57,70,0.3);color:var(--accent)}
+.action-btn.primary:hover{background:rgba(230,57,70,0.2)}
+.action-btn.ups{background:rgba(255,181,0,0.08);border-color:rgba(255,181,0,0.25);color:var(--ups-gold)}
+.checkbox-cell input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+
+/* ── LABEL MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;display:none;align-items:center;justify-content:center;padding:2rem;backdrop-filter:blur(4px)}
+.modal-overlay.open{display:flex;animation:fadeIn 0.2s ease}
+.modal{background:var(--card);border-radius:16px;border:1px solid var(--border2);width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
+.modal-hd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700}
+.modal-close{background:var(--bg3);border:none;color:var(--text2);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.modal-body{padding:22px}
+.modal-footer{padding:16px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}
+
+.label-preview{background:var(--bg2);border-radius:10px;border:1px solid var(--border);padding:20px;margin-bottom:16px;font-family:'DM Mono',monospace}
+.label-carrier-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.label-carrier-name{font-size:18px;font-weight:500;color:var(--ups-gold)}
+.label-tracking{font-size:11px;color:var(--muted);margin-bottom:4px}
+.label-tracking-num{font-size:14px;font-weight:500;color:var(--text);letter-spacing:2px}
+.barcode-sim{background:var(--bg3);border-radius:6px;padding:12px;text-align:center;margin:12px 0;display:flex;justify-content:center;gap:1px}
+.barcode-bar{background:var(--text);border-radius:1px}
+.label-addresses{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+.label-addr-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.label-addr-val{font-size:12px;color:var(--text);line-height:1.5}
+.label-service{display:inline-block;background:rgba(255,181,0,0.12);color:var(--ups-gold);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:1px;margin-top:10px}
+
+.form-field{margin-bottom:14px}
+.form-field label{display:block;font-size:11px;font-weight:500;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px}
+.form-field input,.form-field select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);background:var(--bg3);outline:none;transition:border-color 0.2s}
+.form-field input:focus,.form-field select:focus{border-color:var(--accent)}
+.form-field select option{background:var(--card)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+
+/* ── RETURN FLOW ── */
+.return-steps{display:flex;flex-direction:column;gap:12px}
+.return-step{display:flex;gap:14px;padding:14px;background:var(--bg3);border-radius:9px;border:1px solid var(--border)}
+.return-step-num{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
+.return-step-title{font-size:13px;font-weight:600;margin-bottom:3px}
+.return-step-desc{font-size:12px;color:var(--muted);line-height:1.5}
+
+/* ── RETURNS TABLE ── */
+.return-reason{display:inline-block;background:var(--bg3);color:var(--text2);font-size:11px;padding:2px 8px;border-radius:4px}
+
+/* ── TRACKING PAGE ── */
+.tracking-wrapper{max-width:600px;margin:0 auto}
+.tracking-search{display:flex;gap:10px;margin-bottom:2rem}
+.tracking-search input{flex:1;padding:12px 16px;border:1px solid var(--border2);border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;color:var(--text);background:var(--card);outline:none}
+.tracking-search input:focus{border-color:var(--accent)}
+.track-btn{background:var(--accent);color:#fff;border:none;padding:12px 24px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer}
+.tracking-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.5rem;margin-bottom:1rem}
+.tracking-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem}
+.tracking-num-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.tracking-num{font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:500;color:var(--text);letter-spacing:2px}
+.tracking-timeline{display:flex;flex-direction:column;gap:0}
+.tl-item{display:flex;gap:14px;padding:12px 0;position:relative}
+.tl-item:not(:last-child)::after{content:'';position:absolute;left:10px;top:36px;bottom:0;width:1px;background:var(--border)}
+.tl-dot{width:21px;height:21px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:2px;z-index:1}
+.tl-dot.done{background:var(--green);border:2px solid var(--green)}
+.tl-dot.current{background:var(--accent);border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(230,57,70,0.15)}
+.tl-dot.pending{background:var(--bg3);border:2px solid var(--border2)}
+.tl-label{font-size:13px;font-weight:600;margin-bottom:2px}
+.tl-desc{font-size:12px;color:var(--muted)}
+.tl-time{font-size:11px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace}
+
+/* ── SETTINGS ── */
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+.settings-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem}
+.settings-hd{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:1rem;padding-bottom:10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none;padding-bottom:0}
+.toggle-label{font-size:13px;font-weight:500;color:var(--text)}
+.toggle-desc{font-size:11px;color:var(--muted);margin-top:1px}
+.toggle{position:relative;width:36px;height:19px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.tslider{position:absolute;inset:0;background:#333345;border-radius:19px;cursor:pointer;transition:background 0.2s}
+.tslider::before{content:'';position:absolute;width:13px;height:13px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform 0.2s}
+.toggle input:checked+.tslider{background:var(--accent)}
+.toggle input:checked+.tslider::before{transform:translateX(17px)}
+
+/* API KEY CARD */
+.api-card{background:var(--bg2);border-radius:9px;border:1px solid var(--border);padding:14px;margin-bottom:10px}
+.api-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.api-carrier{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.api-connected{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600}
+.api-connected.yes{color:var(--green)}
+.api-connected.no{color:var(--muted)}
+.api-key-row{display:flex;gap:8px;align-items:center}
+.api-key-row input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);background:var(--bg3);outline:none}
+.api-key-row input:focus{border-color:var(--accent)}
+.api-reveal{background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-family:'Outfit',sans-serif;white-space:nowrap}
+.api-save{background:var(--accent);border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11px;font-family:'Outfit',sans-serif;font-weight:600}
+
+/* ── BULK ACTIONS BAR ── */
+.bulk-bar{background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:10px 16px;margin-bottom:1rem;display:none;align-items:center;gap:12px}
+.bulk-bar.show{display:flex}
+.bulk-count{font-size:13px;font-weight:500;color:var(--text)}
+.bulk-count span{color:var(--accent);font-weight:700}
+.bulk-actions{display:flex;gap:8px;margin-left:auto}
+
+/* ── PICKUP SCHEDULER ── */
+.pickup-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;margin-bottom:1rem}
+.pickup-hd{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:8px}
+.pickup-ups-tag{background:rgba(255,181,0,0.12);color:var(--ups-gold);font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:0.5px}
+
+/* ── CHARTS ── */
+.mini-chart{display:flex;align-items:flex-end;gap:4px;height:48px;margin-top:8px}
+.mini-bar{flex:1;border-radius:3px 3px 0 0;background:rgba(255,181,0,0.2);transition:background 0.2s;cursor:pointer;min-height:4px}
+.mini-bar:hover{background:var(--ups-gold)}
+.mini-bar.accent{background:rgba(230,57,70,0.3)}
+.mini-bar.accent:hover{background:var(--accent)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--card);border:1px solid var(--border2);color:var(--text);padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;transform:translateY(80px);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);pointer-events:none;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:300px;display:flex;align-items:center;gap:10px}
+.toast.show{transform:translateY(0)}
+.toast-icon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.toast-icon.success{background:var(--green-bg)}
+.toast-icon.error{background:var(--red-bg)}
+.toast-icon.info{background:var(--blue-bg)}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">N</div>
+    <div>
+      <div class="logo-text">Next<span>Lao</span></div>
+      <div class="logo-sub">Shipping Suite</div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section">Shipping</div>
+    <a class="nav-item active" onclick="showPage('orders')" id="nav-orders">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+      Orders
+      <span class="nav-badge" id="awaitingBadge">12</span>
+    </a>
+    <a class="nav-item" onclick="showPage('returns')" id="nav-returns">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+      Returns
+      <span class="nav-badge amber" id="returnsBadge">3</span>
+    </a>
+    <a class="nav-item" onclick="showPage('tracking')" id="nav-tracking">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Tracking
+    </a>
+    <a class="nav-item" onclick="showPage('pickup')" id="nav-pickup">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      Schedule pickup
+    </a>
+
+    <div class="nav-section">Marketplaces</div>
+    <a class="nav-item active-channel" onclick="filterChannel('nextlao')" id="nav-nextlao">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/></svg>
+      NextLao Store
+      <span class="nav-badge green">Live</span>
+    </a>
+    <a class="nav-item locked" title="OMS module — coming soon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      Amazon
+      <span class="coming-soon">OMS</span>
+    </a>
+    <a class="nav-item locked" title="OMS module — coming soon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      eBay
+      <span class="coming-soon">OMS</span>
+    </a>
+    <a class="nav-item locked" title="OMS module — coming soon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      Etsy
+      <span class="coming-soon">OMS</span>
+    </a>
+    <a class="nav-item locked" title="OMS module — coming soon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Walmart
+      <span class="coming-soon">OMS</span>
+    </a>
+
+    <div class="nav-section">Account</div>
+    <a class="nav-item" onclick="showPage('settings')" id="nav-settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      Carrier settings
+    </a>
+    <a class="nav-item" onclick="window.open('/dashboard','_blank')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+      Back to dashboard
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="carrier-status">
+      <div class="carrier-row">
+        <div class="carrier-dot up"></div>
+        <div class="carrier-name">UPS API</div>
+        <div class="carrier-status-text">Connected</div>
+      </div>
+      <div class="carrier-row">
+        <div class="carrier-dot up"></div>
+        <div class="carrier-name">FedEx API</div>
+        <div class="carrier-status-text">Connected</div>
+      </div>
+      <div class="carrier-row">
+        <div class="carrier-dot up"></div>
+        <div class="carrier-name">USPS API</div>
+        <div class="carrier-status-text">Connected</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="page-title" id="topbarTitle">Orders</div>
+    </div>
+    <div class="topbar-right">
+      <button class="topbar-btn" onclick="toast('Exporting orders to CSV...','info')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+      <button class="topbar-btn ups" onclick="showPage('pickup')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        Schedule UPS pickup
+      </button>
+      <button class="topbar-btn primary" onclick="printSelected()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print labels
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ ORDERS PAGE ═══════════════ -->
+  <div class="page active" id="page-orders">
+
+    <div class="stats-grid">
+      <div class="stat-card gold">
+        <div class="stat-icon gold">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb500" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+        </div>
+        <div class="stat-val">47</div>
+        <div class="stat-label">Orders today</div>
+        <div class="stat-change up">↑ 12 vs yesterday</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-icon green">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        </div>
+        <div class="stat-val">35</div>
+        <div class="stat-label">Labels printed</div>
+        <div class="stat-change up">↑ 8 in last hour</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon blue">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4d9fff" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        </div>
+        <div class="stat-val">28</div>
+        <div class="stat-label">In transit</div>
+        <div class="stat-change up">↑ On time: 96%</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon red">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e63946" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="stat-val">2</div>
+        <div class="stat-label">Exceptions</div>
+        <div class="stat-change down">↑ Needs attention</div>
+      </div>
+    </div>
+
+    <div class="bulk-bar" id="bulkBar">
+      <div class="bulk-count"><span id="bulkCount">0</span> orders selected</div>
+      <div class="bulk-actions">
+        <button class="action-btn ups" onclick="bulkPrint()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Print all labels
+        </button>
+        <button class="action-btn" onclick="toast('Packing slips printing...','info')">Print packing slips</button>
+        <button class="action-btn" onclick="toast('Orders marked as shipped','success')">Mark as shipped</button>
+        <button class="action-btn" style="color:var(--muted)" onclick="clearSelection()">Clear</button>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-hd">
+        <div class="table-title">All orders</div>
+        <div class="table-actions">
+          <div class="search-bar">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60607a" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Search orders, customers..." oninput="searchOrders(this.value)">
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-tabs">
+        <div class="filter-tab active" onclick="filterStatus('all',this)">All <span class="ct">47</span></div>
+        <div class="filter-tab" onclick="filterStatus('awaiting',this)">Awaiting label <span class="ct">12</span></div>
+        <div class="filter-tab" onclick="filterStatus('printed',this)">Label printed <span class="ct">8</span></div>
+        <div class="filter-tab" onclick="filterStatus('shipped',this)">Shipped <span class="ct">25</span></div>
+        <div class="filter-tab" onclick="filterStatus('exception',this)">Exception <span class="ct" style="background:rgba(230,57,70,0.15);color:var(--accent)">2</span></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer"></th>
+            <th>Order</th>
+            <th>Channel</th>
+            <th>Customer</th>
+            <th>Items</th>
+            <th>Weight</th>
+            <th>Carrier</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="ordersTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════ RETURNS PAGE ═══════════════ -->
+  <div class="page" id="page-returns">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px">How it works for buyers</div>
+        <div class="return-steps">
+          <div class="return-step">
+            <div class="return-step-num">1</div>
+            <div>
+              <div class="return-step-title">Buyer requests return</div>
+              <div class="return-step-desc">Buyer goes to My Orders → clicks "Return this item" → selects reason and items</div>
+            </div>
+          </div>
+          <div class="return-step">
+            <div class="return-step-num">2</div>
+            <div>
+              <div class="return-step-title">Seller approves (or auto-approve)</div>
+              <div class="return-step-desc">You approve the return from this dashboard. Set auto-approve in settings to skip this step.</div>
+            </div>
+          </div>
+          <div class="return-step">
+            <div class="return-step-num">3</div>
+            <div>
+              <div class="return-step-title">UPS label emailed to buyer</div>
+              <div class="return-step-desc">Prepaid UPS return label generated instantly and emailed to the buyer automatically.</div>
+            </div>
+          </div>
+          <div class="return-step">
+            <div class="return-step-num">4</div>
+            <div>
+              <div class="return-step-title">Refund issued automatically</div>
+              <div class="return-step-desc">When UPS scans the package, Stripe refund is triggered. Item restocked in inventory.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px">Return settings</div>
+        <div class="settings-card">
+          <div class="toggle-row">
+            <div><div class="toggle-label">Auto-approve returns</div><div class="toggle-desc">Skip manual approval step</div></div>
+            <label class="toggle"><input type="checkbox"><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Auto-issue refund on scan</div><div class="toggle-desc">Refund when UPS scans return label</div></div>
+            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Auto-restock inventory</div><div class="toggle-desc">Add item back when return received</div></div>
+            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+          </div>
+          <div class="form-field" style="margin-top:12px;margin-bottom:0">
+            <label>Return window (days)</label>
+            <select style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <option>14 days</option>
+              <option selected>30 days</option>
+              <option>60 days</option>
+              <option>90 days</option>
+              <option>No returns</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-hd">
+        <div class="table-title">Return requests</div>
+        <div class="table-actions">
+          <button class="action-btn primary" onclick="toast('All pending returns approved — UPS labels sent','success')">Approve all pending</button>
+        </div>
+      </div>
+      <div class="filter-tabs">
+        <div class="filter-tab active">All <span class="ct">6</span></div>
+        <div class="filter-tab">Pending approval <span class="ct" style="background:rgba(245,158,11,0.15);color:var(--amber)">3</span></div>
+        <div class="filter-tab">Label sent <span class="ct">2</span></div>
+        <div class="filter-tab">Completed <span class="ct">1</span></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Return #</th>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Item</th>
+            <th>Reason</th>
+            <th>Refund</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="order-num">RET-0041</td>
+            <td class="order-num">#SS-10291</td>
+            <td>Sarah Johnson</td>
+            <td>Linen Tote Bag × 1</td>
+            <td><span class="return-reason">Wrong item</span></td>
+            <td style="font-weight:600;color:var(--green)">$34.99</td>
+            <td><span class="status-pill awaiting">Pending approval</span></td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <button class="action-btn primary" onclick="approveReturn('RET-0041',this)">Approve</button>
+                <button class="action-btn" onclick="toast('Return RET-0041 denied','info')">Deny</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="order-num">RET-0040</td>
+            <td class="order-num">#SS-10288</td>
+            <td>Michael Chen</td>
+            <td>Glow Face Serum × 1</td>
+            <td><span class="return-reason">Damaged in shipping</span></td>
+            <td style="font-weight:600;color:var(--green)">$52.00</td>
+            <td><span class="status-pill awaiting">Pending approval</span></td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <button class="action-btn primary" onclick="approveReturn('RET-0040',this)">Approve</button>
+                <button class="action-btn" onclick="toast('Return RET-0040 denied','info')">Deny</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="order-num">RET-0039</td>
+            <td class="order-num">#SS-10281</td>
+            <td>Emma Williams</td>
+            <td>Floral Sundress × 1</td>
+            <td><span class="return-reason">Wrong size</span></td>
+            <td style="font-weight:600;color:var(--green)">$72.00</td>
+            <td><span class="status-pill awaiting">Pending approval</span></td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <button class="action-btn primary" onclick="approveReturn('RET-0039',this)">Approve</button>
+                <button class="action-btn" onclick="toast('Return RET-0039 denied','info')">Deny</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="order-num">RET-0038</td>
+            <td class="order-num">#SS-10274</td>
+            <td>James Rodriguez</td>
+            <td>Leather Wallet × 1</td>
+            <td><span class="return-reason">Changed mind</span></td>
+            <td style="font-weight:600;color:var(--green)">$65.00</td>
+            <td><span class="status-pill printed">Label sent</span></td>
+            <td><button class="action-btn" onclick="toast('Tracking: 1Z999AA10123456784')">Track return</button></td>
+          </tr>
+          <tr>
+            <td class="order-num">RET-0037</td>
+            <td class="order-num">#SS-10268</td>
+            <td>Olivia Martinez</td>
+            <td>Ceramic Mug Set × 1</td>
+            <td><span class="return-reason">Defective</span></td>
+            <td style="font-weight:600;color:var(--green)">$45.00</td>
+            <td><span class="status-pill printed">Label sent</span></td>
+            <td><button class="action-btn" onclick="toast('Tracking: 1Z999AA10123456785')">Track return</button></td>
+          </tr>
+          <tr>
+            <td class="order-num">RET-0036</td>
+            <td class="order-num">#SS-10255</td>
+            <td>David Kim</td>
+            <td>Classic White Tee × 2</td>
+            <td><span class="return-reason">Wrong color</span></td>
+            <td style="font-weight:600;color:var(--green)">$56.00</td>
+            <td><span class="status-pill shipped">Completed</span></td>
+            <td><button class="action-btn" onclick="toast('Refund of $56.00 issued Apr 28')">View refund</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════ TRACKING PAGE ═══════════════ -->
+  <div class="page" id="page-tracking">
+    <div class="tracking-wrapper">
+      <div class="tracking-search">
+        <input type="text" id="trackingInput" placeholder="Enter tracking number e.g. 1Z999AA10123456784" onkeydown="if(event.key==='Enter')trackPackage()">
+        <button class="track-btn" onclick="trackPackage()">Track</button>
+      </div>
+
+      <div id="trackingResult" style="display:none">
+        <div class="tracking-card">
+          <div class="tracking-hd">
+            <div>
+              <div class="tracking-num-label">UPS Tracking Number</div>
+              <div class="tracking-num" id="trackingNum">1Z999AA10123456784</div>
+            </div>
+            <div style="text-align:right">
+              <span class="status-pill shipped" style="font-size:12px">In Transit</span>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">Est. delivery: Tomorrow by 8pm</div>
+            </div>
+          </div>
+          <div class="tracking-timeline">
+            <div class="tl-item">
+              <div class="tl-dot done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <div>
+                <div class="tl-label">Order shipped</div>
+                <div class="tl-desc">Package picked up — Los Angeles, CA</div>
+                <div class="tl-time">Apr 30, 2026 · 9:14 AM</div>
+              </div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <div>
+                <div class="tl-label">Departed facility</div>
+                <div class="tl-desc">UPS Sort Facility — Commerce, CA</div>
+                <div class="tl-time">Apr 30, 2026 · 11:42 PM</div>
+              </div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot current"></div>
+              <div>
+                <div class="tl-label" style="color:var(--accent)">In transit</div>
+                <div class="tl-desc">UPS Hub — Phoenix, AZ</div>
+                <div class="tl-time">May 1, 2026 · 4:22 AM</div>
+              </div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot pending"></div>
+              <div>
+                <div class="tl-label" style="color:var(--muted)">Out for delivery</div>
+                <div class="tl-desc">Expected tomorrow morning</div>
+              </div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot pending"></div>
+              <div>
+                <div class="tl-label" style="color:var(--muted)">Delivered</div>
+                <div class="tl-desc">Estimated May 2, 2026 by 8:00 PM</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="topbar-btn" onclick="toast('Tracking notification sent to customer','success')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Email customer update
+          </button>
+          <button class="topbar-btn" onclick="toast('Tracking page link copied!','success')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            Copy tracking link
+          </button>
+        </div>
+      </div>
+
+      <div id="trackingEmpty" style="text-align:center;padding:3rem;color:var(--muted)">
+        <div style="font-size:3rem;margin-bottom:12px">📦</div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:6px">Enter a tracking number above</div>
+        <div style="font-size:12px">Track any UPS, FedEx, or USPS shipment</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ PICKUP PAGE ═══════════════ -->
+  <div class="page" id="page-pickup">
+    <div style="max-width:600px">
+      <div class="pickup-card">
+        <div class="pickup-hd">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb500" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          Schedule UPS Pickup
+          <span class="pickup-ups-tag">UPS ON-CALL</span>
+        </div>
+
+        <div class="form-field">
+          <label>Pickup date</label>
+          <input type="date" id="pickupDate" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+        </div>
+        <div class="two-col">
+          <div class="form-field">
+            <label>Earliest pickup time</label>
+            <select style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <option>8:00 AM</option><option>9:00 AM</option><option selected>10:00 AM</option><option>11:00 AM</option><option>12:00 PM</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Latest pickup time</label>
+            <select style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <option>2:00 PM</option><option>3:00 PM</option><option>4:00 PM</option><option selected>5:00 PM</option><option>6:00 PM</option>
+            </select>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="form-field">
+            <label>Number of packages</label>
+            <input type="number" value="12" min="1" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+          </div>
+          <div class="form-field">
+            <label>Total weight (lbs)</label>
+            <input type="number" value="48" min="1" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Pickup location / special instructions</label>
+          <input type="text" placeholder="e.g. Front door, dock B, call on arrival" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+        </div>
+
+        <div style="background:var(--bg2);border-radius:9px;border:1px solid var(--border);padding:14px;margin-bottom:16px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Pickup address on file</div>
+          <div style="font-size:13px;font-weight:500">Jane's Boutique</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">123 Main Street, Los Angeles, CA 90001</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;cursor:pointer;color:var(--accent)">Change address →</div>
+        </div>
+
+        <button class="topbar-btn primary" style="width:100%;justify-content:center;padding:12px" onclick="schedulePickup()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          Schedule UPS Pickup
+        </button>
+      </div>
+
+      <div class="pickup-card">
+        <div class="pickup-hd">Upcoming pickups</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
+            <div>
+              <div style="font-size:13px;font-weight:500">Today — May 5, 2026</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">10:00 AM – 5:00 PM · 35 packages</div>
+            </div>
+            <span class="status-pill shipped">Confirmed</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
+            <div>
+              <div style="font-size:13px;font-weight:500">Tomorrow — May 6, 2026</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">9:00 AM – 4:00 PM · 12 packages</div>
+            </div>
+            <span class="status-pill printed">Scheduled</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ SETTINGS PAGE ═══════════════ -->
+  <div class="page" id="page-settings">
+    <div class="settings-grid">
+
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Carrier API credentials</div>
+
+        <div class="api-card">
+          <div class="api-card-hd">
+            <div class="api-carrier">
+              <div style="width:28px;height:28px;border-radius:6px;background:rgba(255,181,0,0.12);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--ups-gold)">UPS</div>
+              UPS API
+            </div>
+            <div class="api-connected yes">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Connected
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:8px">
+            <label>Client ID</label>
+            <div class="api-key-row">
+              <input type="password" value="your_ups_client_id_here" id="upsClientId">
+              <button class="api-reveal" onclick="toggleReveal('upsClientId',this)">Show</button>
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:8px">
+            <label>Client Secret</label>
+            <div class="api-key-row">
+              <input type="password" value="your_ups_client_secret_here" id="upsSecret">
+              <button class="api-reveal" onclick="toggleReveal('upsSecret',this)">Show</button>
+              <button class="api-save" onclick="toast('UPS credentials saved','success')">Save</button>
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:0">
+            <label>Account number</label>
+            <div class="api-key-row">
+              <input type="password" value="your_ups_account_number" id="upsAccount">
+              <button class="api-reveal" onclick="toggleReveal('upsAccount',this)">Show</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-hd">
+            <div class="api-carrier">
+              <div style="width:28px;height:28px;border-radius:6px;background:rgba(123,47,212,0.12);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#a855f7">FDX</div>
+              FedEx API
+            </div>
+            <div class="api-connected yes">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Connected
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:8px">
+            <label>API Key</label>
+            <div class="api-key-row">
+              <input type="password" value="your_fedex_api_key_here" id="fedexKey">
+              <button class="api-reveal" onclick="toggleReveal('fedexKey',this)">Show</button>
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:0">
+            <label>Secret Key</label>
+            <div class="api-key-row">
+              <input type="password" value="your_fedex_secret_here" id="fedexSecret">
+              <button class="api-reveal" onclick="toggleReveal('fedexSecret',this)">Show</button>
+              <button class="api-save" onclick="toast('FedEx credentials saved','success')">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-hd">
+            <div class="api-carrier">
+              <div style="width:28px;height:28px;border-radius:6px;background:rgba(0,80,200,0.12);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:var(--usps-light)">USPS</div>
+              USPS API
+            </div>
+            <div class="api-connected yes">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Connected
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:0">
+            <label>API Key</label>
+            <div class="api-key-row">
+              <input type="password" value="your_usps_api_key_here" id="uspsKey">
+              <button class="api-reveal" onclick="toggleReveal('uspsKey',this)">Show</button>
+              <button class="api-save" onclick="toast('USPS credentials saved','success')">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Shipping preferences</div>
+        <div class="settings-card" style="margin-bottom:1rem">
+          <div class="settings-hd">Default carrier</div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">UPS as primary carrier</div><div class="toggle-desc">Always ship UPS when available</div></div>
+            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">FedEx as fallback</div><div class="toggle-desc">Use when UPS unavailable</div></div>
+            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">USPS for lightweight items</div><div class="toggle-desc">Items under 1 lb use USPS First Class</div></div>
+            <label class="toggle"><input type="checkbox"><span class="tslider"></span></label>
+          </div>
+        </div>
+
+        <div class="settings-card" style="margin-bottom:1rem">
+          <div class="settings-hd">Automation</div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Auto-print labels on new order</div><div class="toggle-desc">Print label immediately when order arrives</div></div>
+            <label class="toggle"><input type="checkbox"><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Auto-notify customer when shipped</div><div class="toggle-desc">Email tracking number when label printed</div></div>
+            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Daily pickup auto-schedule</div><div class="toggle-desc">Auto-request UPS pickup each morning</div></div>
+            <label class="toggle"><input type="checkbox"><span class="tslider"></span></label>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-hd">Default package dimensions</div>
+          <div class="three-col" style="margin-bottom:12px">
+            <div class="form-field" style="margin-bottom:0">
+              <label>Length (in)</label>
+              <input type="number" value="12" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>Width (in)</label>
+              <input type="number" value="9" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>Height (in)</label>
+              <input type="number" value="4" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+            </div>
+          </div>
+          <button class="api-save" style="width:100%;padding:9px;border-radius:8px;font-size:13px" onclick="toast('Default dimensions saved','success')">Save defaults</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- LABEL MODAL -->
+<div class="modal-overlay" id="labelModal">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-title">Shipping label — <span id="modalOrderNum">#SS-10312</span></div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="label-preview">
+        <div class="label-carrier-hd">
+          <div class="label-carrier-name">UPS</div>
+          <div style="font-size:11px;color:var(--muted)">GROUND</div>
+        </div>
+        <div class="label-tracking">Tracking number</div>
+        <div class="label-tracking-num" id="labelTrackingNum">1Z 999 AA1 0123 4567 84</div>
+        <div class="barcode-sim" id="barcodeEl"></div>
+        <div class="label-addresses">
+          <div>
+            <div class="label-addr-label">From</div>
+            <div class="label-addr-val">Jane's Boutique<br>123 Main Street<br>Los Angeles, CA 90001</div>
+          </div>
+          <div>
+            <div class="label-addr-label">Ship to</div>
+            <div class="label-addr-val" id="labelShipTo">Sarah Johnson<br>456 Oak Avenue<br>Austin, TX 78701</div>
+          </div>
+        </div>
+        <div><span class="label-service">UPS GROUND</span></div>
+      </div>
+
+      <div class="two-col">
+        <div class="form-field">
+          <label>Package weight (lbs)</label>
+          <input type="number" value="2.4" step="0.1" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+        </div>
+        <div class="form-field">
+          <label>Service level</label>
+          <select style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+            <option selected>UPS Ground</option>
+            <option>UPS 3 Day Select</option>
+            <option>UPS 2nd Day Air</option>
+            <option>UPS Next Day Air</option>
+            <option>FedEx Ground</option>
+            <option>FedEx 2Day</option>
+            <option>USPS Priority Mail</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="topbar-btn" onclick="closeModal()">Cancel</button>
+      <button class="topbar-btn" onclick="toast('Packing slip printed','success');closeModal()">Print packing slip</button>
+      <button class="topbar-btn primary" onclick="printLabel()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print label
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toastEl">
+  <div class="toast-icon success" id="toastIcon">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <span id="toastMsg">Done!</span>
+</div>
+
+<script>
+/* ============================================================
+   NEXTLAO SHIPPING SUITE — JAVASCRIPT
+   OMS-ready: marketplace channel system built in.
+   When OMS module is added, populate channel data here.
+   ============================================================ */
+
+// ── SAMPLE ORDERS ─────────────────────────────────────────────
+// API CALL: Replace with fetch('/api/shipping/orders') from server
+const ORDERS = [
+  {id:'SS-10312',channel:'nextlao',customer:'Sarah Johnson',addr:'456 Oak Ave, Austin TX',items:'Linen Tote Bag × 2',weight:'3.2 lbs',carrier:'ups',status:'awaiting'},
+  {id:'SS-10311',channel:'nextlao',customer:'Michael Chen',addr:'789 Pine St, Seattle WA',items:'Glow Face Serum × 1',weight:'0.8 lbs',carrier:'ups',status:'awaiting'},
+  {id:'SS-10310',channel:'nextlao',customer:'Emma Williams',addr:'321 Elm Rd, Chicago IL',items:'Scented Candle × 3',weight:'4.5 lbs',carrier:'ups',status:'printed'},
+  {id:'SS-10309',channel:'nextlao',customer:'James Rodriguez',addr:'654 Maple Dr, Miami FL',items:'Classic White Tee × 1',weight:'0.6 lbs',carrier:'usps',status:'awaiting'},
+  {id:'SS-10308',channel:'nextlao',customer:'Olivia Martinez',addr:'987 Cedar Ln, Denver CO',items:'Floral Sundress × 1',weight:'1.2 lbs',carrier:'ups',status:'shipped'},
+  {id:'SS-10307',channel:'nextlao',customer:'David Kim',addr:'147 Birch Ave, Portland OR',items:'Leather Wallet × 1',weight:'0.5 lbs',carrier:'fedex',status:'shipped'},
+  {id:'SS-10306',channel:'nextlao',customer:'Lisa Thompson',addr:'258 Willow St, Nashville TN',items:'Ceramic Mug Set × 1',weight:'3.8 lbs',carrier:'ups',status:'shipped'},
+  {id:'AMZ-8841923',channel:'amazon',customer:'Robert Davis',addr:'369 Oak Blvd, Phoenix AZ',items:'Rose Water Mist × 2',weight:'1.4 lbs',carrier:'ups',status:'awaiting'},
+  {id:'AMZ-8841891',channel:'amazon',customer:'Jennifer Wilson',addr:'741 Pine Ave, Atlanta GA',items:'Lip Tint Trio × 1',weight:'0.4 lbs',carrier:'usps',status:'awaiting'},
+  {id:'EBY-992847',channel:'ebay',customer:'Mark Johnson',addr:'852 Elm St, Boston MA',items:'Silk Scrunchie Set × 3',weight:'0.9 lbs',carrier:'ups',status:'awaiting'},
+  {id:'SS-10305',channel:'nextlao',customer:'Amanda Brown',addr:'963 Cedar Rd, Las Vegas NV',items:'Bamboo Cutting Board × 1',weight:'2.1 lbs',carrier:'ups',status:'exception'},
+  {id:'SS-10304',channel:'nextlao',customer:'Chris Taylor',addr:'159 Maple Ln, San Diego CA',items:'Linen Joggers × 1',weight:'1.6 lbs',carrier:'fedex',status:'exception'},
+];
+
+let selectedOrders = new Set();
+let currentFilter = 'all';
+let currentSearch = '';
+
+// ── RENDER ORDERS ─────────────────────────────────────────────
+function renderOrders(){
+  let list = [...ORDERS];
+  if(currentFilter !== 'all') list = list.filter(o=>o.status===currentFilter);
+  if(currentSearch){
+    const q=currentSearch.toLowerCase();
+    list=list.filter(o=>
+      o.id.toLowerCase().includes(q)||
+      o.customer.toLowerCase().includes(q)||
+      o.items.toLowerCase().includes(q)
+    );
+  }
+
+  const tbody = document.getElementById('ordersTableBody');
+  tbody.innerHTML = list.map(o => `
+    <tr>
+      <td><input type="checkbox" class="order-cb" data-id="${o.id}" onchange="toggleOrder('${o.id}',this)" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer" ${selectedOrders.has(o.id)?'checked':''}></td>
+      <td><span class="order-num">#${o.id}</span></td>
+      <td>${channelBadge(o.channel)}</td>
+      <td>
+        <div style="font-size:13px;font-weight:500">${o.customer}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${o.addr}</div>
+      </td>
+      <td style="font-size:12px;color:var(--text2)">${o.items}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${o.weight}</td>
+      <td>${carrierPill(o.carrier)}</td>
+      <td>${statusPill(o.status)}</td>
+      <td>
+        <div style="display:flex;gap:5px">
+          ${o.status==='awaiting'||o.status==='printed'?
+            `<button class="action-btn primary" onclick="openLabelModal('${o.id}','${o.customer}')">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              ${o.status==='printed'?'Reprint':'Print label'}
+            </button>`:
+            `<button class="action-btn" onclick="toast('Tracking: 1Z999AA1012345678${Math.floor(Math.random()*9)}','info')">Track</button>`
+          }
+          <button class="action-btn" onclick="toast('Order #${o.id} details coming soon','info')">View</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function channelBadge(ch){
+  const map={
+    nextlao:`<span class="channel-badge nextlao">NextLao</span>`,
+    amazon:`<span class="channel-badge amazon">Amazon</span>`,
+    ebay:`<span class="channel-badge ebay">eBay</span>`,
+    etsy:`<span class="channel-badge etsy">Etsy</span>`,
+    walmart:`<span class="channel-badge walmart">Walmart</span>`,
+  };
+  return map[ch]||ch;
+}
+
+function carrierPill(c){
+  const map={
+    ups:`<span class="carrier-pill ups">UPS</span>`,
+    fedex:`<span class="carrier-pill fedex">FedEx</span>`,
+    usps:`<span class="carrier-pill usps">USPS</span>`,
+  };
+  return map[c]||c;
+}
+
+function statusPill(s){
+  const map={
+    awaiting:`<span class="status-pill awaiting">Awaiting label</span>`,
+    printed:`<span class="status-pill printed">Label printed</span>`,
+    shipped:`<span class="status-pill shipped">Shipped</span>`,
+    delivered:`<span class="status-pill delivered">Delivered</span>`,
+    exception:`<span class="status-pill exception">⚠ Exception</span>`,
+  };
+  return map[s]||s;
+}
+
+// ── FILTERS ───────────────────────────────────────────────────
+function filterStatus(status, btn){
+  currentFilter = status;
+  document.querySelectorAll('.filter-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  renderOrders();
+}
+
+function filterChannel(ch){
+  currentFilter = 'all';
+  currentSearch = ch === 'all' ? '' : ch;
+  renderOrders();
+  toast(`Showing ${ch} orders`,'info');
+}
+
+function searchOrders(q){
+  currentSearch = q;
+  renderOrders();
+}
+
+// ── SELECTION ─────────────────────────────────────────────────
+function toggleOrder(id, cb){
+  if(cb.checked) selectedOrders.add(id);
+  else selectedOrders.delete(id);
+  updateBulkBar();
+}
+
+function toggleSelectAll(cb){
+  document.querySelectorAll('.order-cb').forEach(c=>{
+    c.checked = cb.checked;
+    if(cb.checked) selectedOrders.add(c.dataset.id);
+    else selectedOrders.delete(c.dataset.id);
+  });
+  updateBulkBar();
+}
+
+function updateBulkBar(){
+  const bar = document.getElementById('bulkBar');
+  const count = document.getElementById('bulkCount');
+  count.textContent = selectedOrders.size;
+  bar.classList.toggle('show', selectedOrders.size > 0);
+}
+
+function clearSelection(){
+  selectedOrders.clear();
+  document.querySelectorAll('.order-cb').forEach(c=>c.checked=false);
+  document.getElementById('selectAll').checked = false;
+  updateBulkBar();
+}
+
+function bulkPrint(){
+  if(!selectedOrders.size){toast('No orders selected','info');return}
+  toast(`Printing ${selectedOrders.size} labels... 🖨️`,'success');
+  setTimeout(()=>{
+    selectedOrders.forEach(id=>{
+      const o = ORDERS.find(x=>x.id===id);
+      if(o) o.status='printed';
+    });
+    clearSelection();
+    renderOrders();
+  },1500);
+}
+
+function printSelected(){
+  const awaiting = ORDERS.filter(o=>o.status==='awaiting').length;
+  toast(`Printing ${awaiting} labels for all awaiting orders... 🖨️`,'success');
+  setTimeout(()=>{
+    ORDERS.forEach(o=>{if(o.status==='awaiting')o.status='printed'});
+    renderOrders();
+  },1500);
+}
+
+// ── LABEL MODAL ───────────────────────────────────────────────
+function openLabelModal(orderId, customer){
+  document.getElementById('modalOrderNum').textContent = '#'+orderId;
+  document.getElementById('labelTrackingNum').textContent = '1Z 999 AA1 '+Math.floor(Math.random()*9000+1000)+' '+Math.floor(Math.random()*9000+1000)+' '+Math.floor(Math.random()*90+10);
+  document.getElementById('labelShipTo').innerHTML = customer+'<br>456 Oak Avenue<br>Austin, TX 78701';
+  generateBarcode();
+  document.getElementById('labelModal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function generateBarcode(){
+  const el = document.getElementById('barcodeEl');
+  el.innerHTML = '';
+  const widths = [2,1,3,1,2,1,1,2,3,1,2,1,2,3,1,1,2,1,3,2,1,2,1,3,1,2,1,2,1,3,2,1,1,2,3,1,2,1,1,2,3,1];
+  widths.forEach((w,i)=>{
+    const bar = document.createElement('div');
+    bar.className = 'barcode-bar';
+    bar.style.width = w+'px';
+    bar.style.height = (i%3===0?44:i%2===0?38:32)+'px';
+    el.appendChild(bar);
+  });
+}
+
+function closeModal(){
+  document.getElementById('labelModal').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+function printLabel(){
+  const orderId = document.getElementById('modalOrderNum').textContent.replace('#','');
+  const o = ORDERS.find(x=>x.id===orderId);
+  if(o) o.status = 'printed';
+  closeModal();
+  renderOrders();
+  toast('Label printed — tracking number emailed to customer ✓','success');
+}
+
+// ── TRACKING ──────────────────────────────────────────────────
+function trackPackage(){
+  const num = document.getElementById('trackingInput').value.trim();
+  if(!num){toast('Enter a tracking number first','info');return}
+  document.getElementById('trackingNum').textContent = num;
+  document.getElementById('trackingResult').style.display = 'block';
+  document.getElementById('trackingEmpty').style.display = 'none';
+  toast('Tracking info loaded','success');
+}
+
+// ── RETURNS ───────────────────────────────────────────────────
+function approveReturn(retId, btn){
+  const row = btn.closest('tr');
+  const statusCell = row.querySelector('.status-pill');
+  statusCell.className = 'status-pill printed';
+  statusCell.textContent = 'Label sent';
+  btn.parentElement.innerHTML = `<button class="action-btn" onclick="toast('Tracking: 1Z999AA10123456789','info')">Track return</button>`;
+  toast(`Return ${retId} approved — UPS return label emailed to customer ✓`,'success');
+}
+
+// ── PICKUP ────────────────────────────────────────────────────
+function schedulePickup(){
+  const date = document.getElementById('pickupDate').value;
+  if(!date){toast('Please select a pickup date','info');return}
+  toast('UPS pickup scheduled successfully ✓','success');
+}
+
+// ── SETTINGS ──────────────────────────────────────────────────
+function toggleReveal(id, btn){
+  const el = document.getElementById(id);
+  const shown = el.type==='text';
+  el.type = shown ? 'password' : 'text';
+  btn.textContent = shown ? 'Show' : 'Hide';
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────
+const pageTitles = {
+  orders:'Orders',returns:'Returns',
+  tracking:'Tracking',pickup:'Schedule UPS Pickup',
+  settings:'Carrier settings'
+};
+
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  const navEl = document.getElementById('nav-'+name);
+  if(navEl) navEl.classList.add('active');
+  document.getElementById('topbarTitle').textContent = pageTitles[name]||name;
+  window.scrollTo(0,0);
+}
+
+// ── TOAST ─────────────────────────────────────────────────────
+function toast(msg, type='success'){
+  const el = document.getElementById('toastEl');
+  const icon = document.getElementById('toastIcon');
+  const msgEl = document.getElementById('toastMsg');
+  const colors = {success:'#00c896',error:'#e63946',info:'#4d9fff'};
+  const svgs = {
+    success:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>',
+    error:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    info:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  };
+  icon.className = `toast-icon ${type}`;
+  icon.style.color = colors[type];
+  icon.innerHTML = svgs[type]||svgs.info;
+  msgEl.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>el.classList.remove('show'),3000);
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+// Set today's date as default pickup date
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('pickupDate').value = today;
+
+renderOrders();
+</script>
+</body>
+</html>
