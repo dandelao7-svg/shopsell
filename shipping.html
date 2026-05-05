@@ -1174,7 +1174,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         </div>
 
         <!-- PACKAGE & SERVICE -->
-        <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;margin-top:1.25rem">
+        <div id="carrierCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;margin-top:1.25rem;transition:border-color 0.3s">
           <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;justify-content:space-between">
             Package details & carrier
             <span style="font-size:11px;font-weight:400;color:var(--muted)">Select a box or enter custom dimensions</span>
@@ -2354,6 +2354,23 @@ async function validateAndShip(){
 function updateServiceOptions(){
   const carrier  = document.getElementById('qs-carrier').value;
   const select   = document.getElementById('qs-service');
+
+  // Update card border color based on carrier
+  const card = document.getElementById('carrierCard');
+  if(card){
+    const colors = {
+      ups:   'rgba(255,181,0,0.5)',    // UPS brown/gold
+      fedex: 'rgba(123,47,212,0.5)',   // FedEx purple
+      usps:  'rgba(0,80,200,0.5)',     // USPS blue
+    };
+    const shadows = {
+      ups:   '0 0 0 3px rgba(255,181,0,0.08)',
+      fedex: '0 0 0 3px rgba(123,47,212,0.08)',
+      usps:  '0 0 0 3px rgba(0,80,200,0.08)',
+    };
+    card.style.borderColor = colors[carrier] || colors.ups;
+    card.style.boxShadow   = shadows[carrier] || shadows.ups;
+  }
   const services = {
     ups: [
       {v:'03',l:'UPS Ground'},
@@ -2636,6 +2653,9 @@ document.getElementById('pickupDate').value = today;
 renderShipperAccountsList();
 updateActiveShipperDisplay();
 fillQuickShipFromAccount();
+
+// Set initial carrier card color
+updateServiceOptions();
 
 // Render editable box sizes in settings
 renderBoxSizesList();
