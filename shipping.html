@@ -2448,12 +2448,6 @@ async function generateQuickShipLabel(){
       country:     'US',
       residential: document.getElementById('qs-residential').checked,
     },
-      address1: toAddr,
-      city:     toCity,
-      state:    qsLabelData.toState,
-      zip:      toZip,
-      country:  'US',
-    },
     package: {
       weight:      parseFloat(document.getElementById('qs-weight').value)||1,
       length:      parseFloat(document.getElementById('qs-length').value)||12,
