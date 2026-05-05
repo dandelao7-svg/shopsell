@@ -104,6 +104,11 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
+// Serve the shipping suite
+app.get('/shipping', (req, res) => {
+  res.sendFile(path.join(__dirname, 'shipping.html'));
+});
+
 // ── AUTH MIDDLEWARE ───────────────────────────────────────────
 function requireAuth(req, res, next) {
   const header = req.headers['authorization'];
