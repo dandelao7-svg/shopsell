@@ -1061,6 +1061,79 @@ app.post('/api/shipping/pickup', requireAuth, async (req, res) => {
   }
 });
 
+// VALIDATE ADDRESS
+app.post('/api/shipping/validate-address', requireAuth, async (req, res) => {
+  try {
+    const { address1, city, state, zip } = req.body;
+    if(!address1 || !city || !state || !zip) {
+      return res.status(400).json({ error: 'Address fields required.' });
+    }
+
+    const token = await carriers.ups.getAccessToken();
+    const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+
+    const payload = {
+      XAVRequest: {
+        Request: { RequestOption: '3' },
+        AddressKeyFormat: {
+          AddressLine:       address1,
+          PoliticalDivision2: city,
+          PoliticalDivision1: state,
+          PostcodePrimaryLow: zip,
+          CountryCode:        'US',
+        },
+      },
+    };
+
+    const apiRes = await fetch(`${carriers.ups.apiUrl}/api/addressvalidation/v2/1`, {
+      method: 'POST',
+      headers: {
+        'Authorization':  `Bearer ${token}`,
+        'Content-Type':   'application/json',
+        'transId':        `nextlao-addr-${Date.now()}`,
+        'transactionSrc': 'nextlao',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await apiRes.json();
+    const candidate = data?.XAVResponse?.Candidate?.[0]?.AddressKeyFormat;
+    const quality   = data?.XAVResponse?.Candidate?.[0]?.AddressClassification?.Description;
+
+    if(!candidate) {
+      return res.json({ valid: false, message: 'Address not found in UPS database.' });
+    }
+
+    // Build suggested address from UPS response
+    const suggestion = {
+      address1: Array.isArray(candidate.AddressLine)
+        ? candidate.AddressLine[0]
+        : candidate.AddressLine,
+      city:  candidate.PoliticalDivision2,
+      state: candidate.PoliticalDivision1,
+      zip:   candidate.PostcodePrimaryLow,
+    };
+
+    // Check if it matches what was entered
+    const inputAddr  = address1.toLowerCase().replace(/\s+/g,'');
+    const suggestAddr= (suggestion.address1||'').toLowerCase().replace(/\s+/g,'');
+    const isExact    = inputAddr === suggestAddr &&
+                       city.toLowerCase() === (suggestion.city||'').toLowerCase() &&
+                       zip === suggestion.zip;
+
+    if(isExact || quality === 'Commercial' || quality === 'Residential') {
+      return res.json({ valid: true, message: 'Address verified ✓', suggestion });
+    } else {
+      return res.json({ valid: false, suggestion, message: 'Address could not be fully verified.' });
+    }
+
+  } catch(err) {
+    console.error('Address validation error:', err);
+    // Don't block shipping if validation fails — return null so frontend skips
+    res.json({ valid: true, message: 'Validation unavailable — proceeding.' });
+  }
+});
+
 // VOID / CANCEL LABEL
 app.post('/api/shipping/void', requireAuth, async (req, res) => {
   try {
