@@ -960,6 +960,42 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             <div><div class="toggle-label">Daily pickup auto-schedule</div><div class="toggle-desc">Auto-request UPS pickup each morning</div></div>
             <label class="toggle"><input type="checkbox"><span class="tslider"></span></label>
           </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">UPS address validation</div><div class="toggle-desc">Validate recipient address before printing label</div></div>
+            <label class="toggle"><input type="checkbox" id="addrValidToggle" checked onchange="saveAddrValidSetting(this.checked)"><span class="tslider"></span></label>
+          </div>
+        </div>
+
+        <div class="settings-card" style="margin-bottom:1rem">
+          <div class="settings-hd">Box sizes</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="boxSizesList">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:7px;border:1px solid var(--border);font-size:12px">
+              <span style="flex:1;font-weight:500">Small</span>
+              <span style="color:var(--muted);font-family:'DM Mono',monospace">8×6×4 in</span>
+              <span style="background:var(--green-bg);color:var(--green);font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600">Default</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:7px;border:1px solid var(--border);font-size:12px">
+              <span style="flex:1;font-weight:500">Medium</span>
+              <span style="color:var(--muted);font-family:'DM Mono',monospace">12×9×6 in</span>
+              <button onclick="setDefaultBox('medium')" style="background:none;border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif">Set default</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:7px;border:1px solid var(--border);font-size:12px">
+              <span style="flex:1;font-weight:500">Large</span>
+              <span style="color:var(--muted);font-family:'DM Mono',monospace">18×14×10 in</span>
+              <button onclick="setDefaultBox('large')" style="background:none;border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif">Set default</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:7px;border:1px solid var(--border);font-size:12px">
+              <span style="flex:1;font-weight:500">X-Large</span>
+              <span style="color:var(--muted);font-family:'DM Mono',monospace">24×18×12 in</span>
+              <button onclick="setDefaultBox('xlarge')" style="background:none;border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif">Set default</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border-radius:7px;border:1px solid var(--border);font-size:12px">
+              <span style="flex:1;font-weight:500">Flat envelope</span>
+              <span style="color:var(--muted);font-family:'DM Mono',monospace">13×10×1 in</span>
+              <button onclick="setDefaultBox('envelope')" style="background:none;border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif">Set default</button>
+            </div>
+          </div>
+          <button class="api-save" style="width:100%;padding:9px;border-radius:8px;font-size:13px" onclick="toast('Box sizes saved','success')">Save box sizes</button>
         </div>
 
         <div class="settings-card">
@@ -967,18 +1003,18 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           <div class="three-col" style="margin-bottom:12px">
             <div class="form-field" style="margin-bottom:0">
               <label>Length (in)</label>
-              <input type="number" value="12" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <input type="number" value="12" id="defaultLength" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
             </div>
             <div class="form-field" style="margin-bottom:0">
               <label>Width (in)</label>
-              <input type="number" value="9" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <input type="number" value="9" id="defaultWidth" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
             </div>
             <div class="form-field" style="margin-bottom:0">
               <label>Height (in)</label>
-              <input type="number" value="4" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <input type="number" value="4" id="defaultHeight" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
             </div>
           </div>
-          <button class="api-save" style="width:100%;padding:9px;border-radius:8px;font-size:13px" onclick="toast('Default dimensions saved','success')">Save defaults</button>
+          <button class="api-save" style="width:100%;padding:9px;border-radius:8px;font-size:13px" onclick="saveDefaultDimensions()">Save defaults</button>
         </div>
       </div>
     </div>
@@ -1098,7 +1134,25 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
         <!-- PACKAGE & SERVICE -->
         <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;margin-top:1.25rem">
-          <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text)">Package details & carrier</div>
+          <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;justify-content:space-between">
+            Package details & carrier
+            <span style="font-size:11px;font-weight:400;color:var(--muted)">Select a box or enter custom dimensions</span>
+          </div>
+
+          <!-- BOX SIZE SELECTOR -->
+          <div class="form-field" style="margin-bottom:14px">
+            <label>Box size</label>
+            <select id="qs-box" onchange="selectBox(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <option value="custom">Custom dimensions</option>
+              <option value="small">Small — 8×6×4 in (up to 5 lbs)</option>
+              <option value="medium" selected>Medium — 12×9×6 in (up to 20 lbs)</option>
+              <option value="large">Large — 18×14×10 in (up to 50 lbs)</option>
+              <option value="xlarge">X-Large — 24×18×12 in (up to 70 lbs)</option>
+              <option value="envelope">Flat envelope — 13×10×1 in</option>
+              <option value="tube">Tube — 36×6×6 in</option>
+            </select>
+          </div>
+
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px">
             <div class="form-field" style="margin-bottom:0">
               <label>Weight (lbs)</label>
@@ -1148,7 +1202,24 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
           </div>
 
-          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="generateQuickShipLabel()" style="width:100%;justify-content:center;padding:13px;font-size:14px">
+          <!-- ADDRESS VALIDATION RESULT -->
+          <div id="addrValidResult" style="display:none;border-radius:9px;padding:12px 14px;margin-bottom:1rem;font-size:12px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+              <div style="display:flex;align-items:flex-start;gap:8px">
+                <div id="addrValidIcon" style="flex-shrink:0;margin-top:1px"></div>
+                <div>
+                  <div id="addrValidMsg" style="font-weight:600;margin-bottom:3px"></div>
+                  <div id="addrValidDetail" style="color:var(--muted);line-height:1.5"></div>
+                  <div id="addrSuggestion" style="margin-top:6px;display:none">
+                    <span style="color:var(--ups-gold);cursor:pointer;font-weight:600" onclick="useSuggestedAddress()">✓ Use suggested address →</span>
+                  </div>
+                </div>
+              </div>
+              <button id="addrOverrideBtn" onclick="overrideAndShip()" style="display:none;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 12px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;white-space:nowrap">Ship anyway</button>
+            </div>
+          </div>
+
+          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="validateAndShip()" style="width:100%;justify-content:center;padding:13px;font-size:14px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
             Generate shipping label
           </button>
@@ -1692,8 +1763,184 @@ function showPage(name){
   window.scrollTo(0,0);
 }
 
-// ── QUICK SHIP ────────────────────────────────────────────────
-let qsLabelData = null;
+// ── BOX SIZES ─────────────────────────────────────────────────
+const BOX_SIZES = {
+  custom:   { l:null, w:null, h:null },
+  small:    { l:8,  w:6,  h:4  },
+  medium:   { l:12, w:9,  h:6  },
+  large:    { l:18, w:14, h:10 },
+  xlarge:   { l:24, w:18, h:12 },
+  envelope: { l:13, w:10, h:1  },
+  tube:     { l:36, w:6,  h:6  },
+};
+
+let defaultBox = localStorage.getItem('defaultBox') || 'medium';
+let addrValidEnabled = localStorage.getItem('addrValid') !== 'false';
+let suggestedAddr = null;
+let addrValidOverridden = false;
+
+function selectBox(val){
+  if(val === 'custom') return;
+  const box = BOX_SIZES[val];
+  if(!box) return;
+  document.getElementById('qs-length').value = box.l;
+  document.getElementById('qs-width').value  = box.w;
+  document.getElementById('qs-height').value = box.h;
+}
+
+function setDefaultBox(name){
+  defaultBox = name;
+  localStorage.setItem('defaultBox', name);
+  // Update UI
+  document.querySelectorAll('#boxSizesList button').forEach(b=>{
+    b.style.background = '';
+    b.style.color = 'var(--muted)';
+    b.textContent = 'Set default';
+  });
+  toast(`${name.charAt(0).toUpperCase()+name.slice(1)} set as default box ✓`,'success');
+}
+
+function saveDefaultDimensions(){
+  const l = document.getElementById('defaultLength').value;
+  const w = document.getElementById('defaultWidth').value;
+  const h = document.getElementById('defaultHeight').value;
+  localStorage.setItem('defaultDims', JSON.stringify({l,w,h}));
+  toast('Default dimensions saved ✓','success');
+}
+
+function saveAddrValidSetting(enabled){
+  addrValidEnabled = enabled;
+  localStorage.setItem('addrValid', enabled ? 'true' : 'false');
+  toast(`Address validation ${enabled ? 'enabled' : 'disabled'}`,'info');
+}
+
+// ── ADDRESS VALIDATION ────────────────────────────────────────
+async function validateAddress(addr){
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/validate-address', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${token||'demo_token'}`,
+      },
+      body: JSON.stringify(addr),
+    });
+    const data = await res.json();
+    return data;
+  } catch(err) {
+    console.error('Address validation error:', err);
+    return null;
+  }
+}
+
+function showAddrValidResult(type, msg, detail, suggestion){
+  const el      = document.getElementById('addrValidResult');
+  const icon    = document.getElementById('addrValidIcon');
+  const msgEl   = document.getElementById('addrValidMsg');
+  const detailEl= document.getElementById('addrValidDetail');
+  const suggEl  = document.getElementById('addrSuggestion');
+  const overBtn = document.getElementById('addrOverrideBtn');
+
+  const styles = {
+    success: { bg:'rgba(0,200,150,0.08)', border:'rgba(0,200,150,0.25)', color:'var(--green)',
+      icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' },
+    warning: { bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.25)', color:'var(--amber)',
+      icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' },
+    error: { bg:'rgba(230,57,70,0.08)', border:'rgba(230,57,70,0.25)', color:'var(--accent)',
+      icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e63946" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
+  };
+
+  const s = styles[type] || styles.warning;
+  el.style.display    = 'block';
+  el.style.background = s.bg;
+  el.style.border     = `1px solid ${s.border}`;
+  icon.innerHTML      = s.icon;
+  msgEl.style.color   = s.color;
+  msgEl.textContent   = msg;
+  detailEl.textContent= detail || '';
+
+  if(suggestion){
+    suggestedAddr = suggestion;
+    suggEl.style.display = 'block';
+  } else {
+    suggEl.style.display = 'none';
+  }
+
+  // Show override button for warnings and errors
+  overBtn.style.display = (type !== 'success') ? 'block' : 'none';
+}
+
+function useSuggestedAddress(){
+  if(!suggestedAddr) return;
+  if(suggestedAddr.address1) document.getElementById('qs-to-addr').value  = suggestedAddr.address1;
+  if(suggestedAddr.city)     document.getElementById('qs-to-city').value  = suggestedAddr.city;
+  if(suggestedAddr.state)    document.getElementById('qs-to-state').value = suggestedAddr.state;
+  if(suggestedAddr.zip)      document.getElementById('qs-to-zip').value   = suggestedAddr.zip;
+  showAddrValidResult('success','Address updated to suggested address ✓','');
+  toast('Address updated','success');
+  addrValidOverridden = true;
+}
+
+function overrideAndShip(){
+  addrValidOverridden = true;
+  document.getElementById('addrValidResult').style.display = 'none';
+  toast('Address override confirmed — generating label...','info');
+  generateQuickShipLabel();
+}
+
+async function validateAndShip(){
+  addrValidOverridden = false;
+
+  // Basic field validation
+  const toName = document.getElementById('qs-to-name').value.trim();
+  const toAddr = document.getElementById('qs-to-addr').value.trim();
+  const toCity = document.getElementById('qs-to-city').value.trim();
+  const toZip  = document.getElementById('qs-to-zip').value.trim();
+
+  if(!toName||!toAddr||!toCity||!toZip){
+    toast('Please fill in all recipient fields','error');
+    return;
+  }
+
+  // Skip validation if disabled
+  if(!addrValidEnabled){
+    generateQuickShipLabel();
+    return;
+  }
+
+  const btn = document.getElementById('qsSubmitBtn');
+  btn.disabled    = true;
+  btn.textContent = 'Validating address...';
+
+  const result = await validateAddress({
+    address1: toAddr,
+    city:     toCity,
+    state:    document.getElementById('qs-to-state').value,
+    zip:      toZip,
+  });
+
+  btn.disabled    = false;
+  btn.innerHTML   = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Generate shipping label';
+
+  if(!result){
+    // API unavailable — ship anyway
+    generateQuickShipLabel();
+    return;
+  }
+
+  if(result.valid){
+    showAddrValidResult('success','Address verified ✓', result.message||'This address is valid and deliverable.');
+    setTimeout(()=>generateQuickShipLabel(), 800);
+  } else if(result.suggestion){
+    showAddrValidResult('warning','Address may need correction',
+      `We found a close match: ${result.suggestion.address1}, ${result.suggestion.city}, ${result.suggestion.state} ${result.suggestion.zip}`,
+      result.suggestion);
+  } else {
+    showAddrValidResult('error','Address not found',
+      result.message || 'This address could not be verified. Please check and try again, or click "Ship anyway" to proceed.');
+  }
+}
 
 function updateServiceOptions(){
   const carrier  = document.getElementById('qs-carrier').value;
@@ -1963,6 +2210,29 @@ function toast(msg, type='success'){
 // Set today's date as default pickup date
 const today = new Date().toISOString().split('T')[0];
 document.getElementById('pickupDate').value = today;
+
+// Load saved settings
+const savedDims = localStorage.getItem('defaultDims');
+if(savedDims){
+  const d = JSON.parse(savedDims);
+  const lEl = document.getElementById('qs-length');
+  const wEl = document.getElementById('qs-width');
+  const hEl = document.getElementById('qs-height');
+  if(lEl) lEl.value = d.l;
+  if(wEl) wEl.value = d.w;
+  if(hEl) hEl.value = d.h;
+}
+
+// Set default box in selector
+const boxEl = document.getElementById('qs-box');
+if(boxEl && defaultBox && defaultBox !== 'custom'){
+  boxEl.value = defaultBox;
+  selectBox(defaultBox);
+}
+
+// Set address validation toggle
+const avToggle = document.getElementById('addrValidToggle');
+if(avToggle) avToggle.checked = addrValidEnabled;
 
 renderOrders();
 </script>
