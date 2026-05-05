@@ -36,6 +36,9 @@ const carriers     = require('./carriers');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust Railway's proxy — required for rate limiting to work correctly
+app.set('trust proxy', 1);
+
 // ── SECURITY MIDDLEWARE ───────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
