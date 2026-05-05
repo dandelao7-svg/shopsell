@@ -74,14 +74,54 @@ class UPSCarrier {
 
   // ── CREATE SHIPMENT (GENERATE LABEL) ────────────────────────
   async createShipment({
-    shipper,      // { name, phone, address1, address2, city, state, zip, country }
-    recipient,    // { name, phone, address1, address2, city, state, zip, country }
-    package: pkg, // { weight, length, width, height, description }
-    serviceCode,  // '03' = Ground, '02' = 2nd Day Air, '01' = Next Day Air
-    labelFormat,  // 'GIF' or 'PNG' or 'PDF'
-    reference,    // order ID for reference
+    shipper,
+    recipient,
+    package: pkg,
+    serviceCode,
+    labelFormat,
+    reference,
+    billing,
   }){
     const token = await this.getAccessToken();
+
+    // Build payment information based on billing type
+    const billType = billing?.type || '01';
+    let paymentInfo;
+
+    if(billType === '01'){
+      // Shipper pays (default)
+      paymentInfo = {
+        ShipmentCharge: {
+          Type:        '01',
+          BillShipper: { AccountNumber: this.accountNumber },
+        },
+      };
+    } else if(billType === '02'){
+      // Bill recipient
+      paymentInfo = {
+        ShipmentCharge: {
+          Type:         '01',
+          BillReceiver: {
+            AccountNumber: billing.accountNumber,
+            Address:       { PostalCode: billing.zip },
+          },
+        },
+      };
+    } else if(billType === '03'){
+      // Bill 3rd party
+      paymentInfo = {
+        ShipmentCharge: {
+          Type:          '01',
+          BillThirdParty: {
+            AccountNumber: billing.accountNumber,
+            Address: {
+              PostalCode:  billing.zip,
+              CountryCode: billing.country || 'US',
+            },
+          },
+        },
+      };
+    }
 
     const payload = {
       ShipmentRequest: {
@@ -112,6 +152,7 @@ class UPSCarrier {
               StateProvinceCode: recipient.state,
               PostalCode:        recipient.zip,
               CountryCode:       recipient.country || 'US',
+              ResidentialAddressIndicator: recipient.residential ? '' : undefined,
             },
           },
           ShipFrom: {
@@ -125,12 +166,7 @@ class UPSCarrier {
               CountryCode:       shipper.country || 'US',
             },
           },
-          PaymentInformation: {
-            ShipmentCharge: {
-              Type:        '01',
-              BillShipper: { AccountNumber: this.accountNumber },
-            },
-          },
+          PaymentInformation: paymentInfo,
           Service: {
             Code:        serviceCode || '03',
             Description: this.getServiceName(serviceCode),
