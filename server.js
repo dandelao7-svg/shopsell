@@ -31,6 +31,7 @@ const jwt          = require('jsonwebtoken');
 const stripe       = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const path         = require('path');
 const db           = require('./database');
+const carriers     = require('./carriers');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -919,6 +920,167 @@ app.post('/api/stripe/webhook', async (req, res) => {
   }
 
   res.json({ received: true });
+});
+
+/* ============================================================
+   ── SHIPPING ROUTES ──────────────────────────────────────────
+   POST /api/shipping/label        — create UPS/FedEx label
+   POST /api/shipping/return-label — create return label
+   GET  /api/shipping/track/:carrier/:tracking — track shipment
+   POST /api/shipping/pickup       — schedule UPS pickup
+   POST /api/shipping/void         — void/cancel a label
+   GET  /api/shipping/carriers/test — test carrier connections
+   ============================================================ */
+
+// TEST CARRIER CONNECTIONS
+app.get('/api/shipping/carriers/test', requireAuth, async (req, res) => {
+  try {
+    const results = await carriers.testConnections();
+    res.json(results);
+  } catch(err) {
+    res.status(500).json({ error: 'Carrier test failed: '+err.message });
+  }
+});
+
+// CREATE SHIPPING LABEL
+app.post('/api/shipping/label', requireAuth, async (req, res) => {
+  try {
+    const {
+      carrier = 'ups',
+      orderId,
+      shipper,
+      recipient,
+      package: pkg,
+      serviceCode,
+      serviceType,
+      labelFormat,
+    } = req.body;
+
+    if(!shipper || !recipient || !pkg) {
+      return res.status(400).json({ error: 'shipper, recipient, and package are required.' });
+    }
+
+    // Create label with appropriate carrier
+    let label;
+    if(carrier === 'ups') {
+      label = await carriers.ups.createShipment({
+        shipper, recipient,
+        package: pkg,
+        serviceCode: serviceCode || '03',
+        labelFormat: labelFormat || 'GIF',
+        reference: orderId,
+      });
+    } else if(carrier === 'fedex') {
+      label = await carriers.fedex.createShipment({
+        shipper, recipient,
+        package: pkg,
+        serviceType: serviceType || 'FEDEX_GROUND',
+        labelFormat: labelFormat || 'PDF',
+        reference: orderId,
+      });
+    } else {
+      return res.status(400).json({ error: 'Unsupported carrier. Use ups or fedex.' });
+    }
+
+    // Save shipment record to database
+    // API CALL: await db.createShipment({ orderId, carrier, ...label });
+
+    console.log(`Label created: ${carrier.toUpperCase()} ${label.trackingNumber} for order ${orderId}`);
+    res.json({ success: true, label });
+
+  } catch(err) {
+    console.error('Create label error:', err);
+    res.status(500).json({ error: 'Failed to create label: '+err.message });
+  }
+});
+
+// CREATE RETURN LABEL
+app.post('/api/shipping/return-label', requireAuth, async (req, res) => {
+  try {
+    const { carrier = 'ups', returnId, sellerAddress, customerAddress, pkg } = req.body;
+
+    if(!sellerAddress || !customerAddress) {
+      return res.status(400).json({ error: 'sellerAddress and customerAddress are required.' });
+    }
+
+    const label = await carriers.createReturnLabel(carrier, {
+      shipper:   sellerAddress,   // Where it goes back to
+      recipient: customerAddress, // Customer sending it back
+      package:   pkg || { weight: 2, length: 12, width: 9, height: 4 },
+      reference: `RETURN-${returnId}`,
+    });
+
+    console.log(`Return label created: ${carrier.toUpperCase()} ${label.trackingNumber}`);
+    res.json({ success: true, label });
+
+  } catch(err) {
+    console.error('Return label error:', err);
+    res.status(500).json({ error: 'Failed to create return label: '+err.message });
+  }
+});
+
+// TRACK SHIPMENT
+app.get('/api/shipping/track/:carrier/:tracking', async (req, res) => {
+  try {
+    const { carrier, tracking } = req.params;
+    const result = await carriers.track(carrier, tracking);
+    res.json(result);
+  } catch(err) {
+    console.error('Track error:', err);
+    res.status(500).json({ error: 'Tracking failed: '+err.message });
+  }
+});
+
+// SCHEDULE UPS PICKUP
+app.post('/api/shipping/pickup', requireAuth, async (req, res) => {
+  try {
+    const { pickupDate, earliestTime, latestTime, address, packageCount, totalWeight } = req.body;
+
+    if(!pickupDate || !address) {
+      return res.status(400).json({ error: 'pickupDate and address are required.' });
+    }
+
+    const result = await carriers.ups.schedulePickup({
+      pickupDate,
+      earliestTime: earliestTime || '0900',
+      latestTime:   latestTime   || '1700',
+      address,
+      packageCount: packageCount || 1,
+      totalWeight:  totalWeight  || 10,
+    });
+
+    console.log(`UPS pickup scheduled: ${result.confirmationNumber} for ${pickupDate}`);
+    res.json({ success: true, pickup: result });
+
+  } catch(err) {
+    console.error('Pickup error:', err);
+    res.status(500).json({ error: 'Failed to schedule pickup: '+err.message });
+  }
+});
+
+// VOID / CANCEL LABEL
+app.post('/api/shipping/void', requireAuth, async (req, res) => {
+  try {
+    const { carrier, trackingNumber } = req.body;
+
+    if(!carrier || !trackingNumber) {
+      return res.status(400).json({ error: 'carrier and trackingNumber are required.' });
+    }
+
+    let result;
+    if(carrier === 'ups') {
+      result = await carriers.ups.voidShipment(trackingNumber);
+    } else if(carrier === 'fedex') {
+      result = await carriers.fedex.cancelShipment(trackingNumber);
+    } else {
+      return res.status(400).json({ error: 'Unsupported carrier.' });
+    }
+
+    res.json({ success: true, result });
+  } catch(err) {
+    console.error('Void error:', err);
+    res.status(500).json({ error: 'Failed to void label: '+err.message });
+  }
 });
 
 /* ============================================================
