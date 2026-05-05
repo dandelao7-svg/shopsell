@@ -1072,7 +1072,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
 
           <!-- FROM -->
-          <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem">
+          <div id="fromCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
             <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
               From (Sender)
@@ -1118,7 +1118,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           </div>
 
           <!-- TO -->
-          <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem">
+          <div id="toCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
             <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               To (Recipient)
@@ -2355,22 +2355,32 @@ function updateServiceOptions(){
   const carrier  = document.getElementById('qs-carrier').value;
   const select   = document.getElementById('qs-service');
 
-  // Update card border color based on carrier
-  const card = document.getElementById('carrierCard');
-  if(card){
-    const colors = {
-      ups:   'rgba(255,181,0,0.5)',    // UPS brown/gold
-      fedex: 'rgba(123,47,212,0.5)',   // FedEx purple
-      usps:  'rgba(0,80,200,0.5)',     // USPS blue
-    };
-    const shadows = {
-      ups:   '0 0 0 3px rgba(255,181,0,0.08)',
-      fedex: '0 0 0 3px rgba(123,47,212,0.08)',
-      usps:  '0 0 0 3px rgba(0,80,200,0.08)',
-    };
-    card.style.borderColor = colors[carrier] || colors.ups;
-    card.style.boxShadow   = shadows[carrier] || shadows.ups;
-  }
+  // Update card border colors based on carrier
+  const card     = document.getElementById('carrierCard');
+  const fromCard = document.getElementById('fromCard');
+  const toCard   = document.getElementById('toCard');
+
+  const borders = {
+    ups:   { border:'rgba(255,181,0,0.4)',  bg:'rgba(255,181,0,0.03)'  },
+    fedex: { border:'rgba(123,47,212,0.45)', bg:'rgba(123,47,212,0.03)' },
+    usps:  { border:'rgba(0,80,200,0.4)',   bg:'rgba(0,80,200,0.03)'   },
+  };
+  const shadows = {
+    ups:   '0 0 0 3px rgba(255,181,0,0.06)',
+    fedex: '0 0 0 3px rgba(123,47,212,0.06)',
+    usps:  '0 0 0 3px rgba(0,80,200,0.06)',
+  };
+
+  const s = borders[carrier] || borders.ups;
+  const sh = shadows[carrier] || shadows.ups;
+
+  [card, fromCard, toCard].forEach(el => {
+    if(el){
+      el.style.borderColor = s.border;
+      el.style.background  = el === card ? 'var(--card)' : s.bg;
+      el.style.boxShadow   = sh;
+    }
+  });
   const services = {
     ups: [
       {v:'03',l:'UPS Ground'},
@@ -2514,10 +2524,13 @@ async function generateQuickShipLabel(){
   document.getElementById('qsCharge').textContent      = qsLabelData.totalCharge
     ? `Estimated charge: $${qsLabelData.totalCharge} ${qsLabelData.currency||'USD'}` : '';
 
-  toast(`✓ ${qsLabelData.carrier} label generated!`,'success');
+  toast(`✓ ${qsLabelData.carrier} label generated — printing...`,'success');
 
   // Revert to default shipper account after shipment
   revertToDefaultShipper();
+
+  // Auto-print immediately
+  setTimeout(()=>printQSLabel(), 300);
 
   btn.disabled    = false;
   btn.textContent = 'Generate shipping label';
