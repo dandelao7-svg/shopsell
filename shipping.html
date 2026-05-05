@@ -2516,17 +2516,12 @@ async function generateQuickShipLabel(){
     qsLabelData.serviceName    = qsLabelData.service;
   }
 
-  // Print immediately without showing result screen first
+  // Print immediately
   revertToDefaultShipper();
   printQSLabel();
 
-  // Show result screen after print dialog
-  document.getElementById('qsForm').style.display   = 'none';
-  document.getElementById('qsResult').style.display = 'block';
-  document.getElementById('qsTrackingNum').textContent = qsLabelData.trackingNumber;
-  document.getElementById('qsService').textContent     = qsLabelData.serviceName;
-  document.getElementById('qsCharge').textContent      = qsLabelData.totalCharge
-    ? `Estimated charge: $${qsLabelData.totalCharge} ${qsLabelData.currency||'USD'}` : '';
+  // Reset form after short delay so user can ship another
+  setTimeout(()=>resetQuickShip(), 500);
 
   btn.disabled    = false;
   btn.textContent = 'Generate shipping label';
