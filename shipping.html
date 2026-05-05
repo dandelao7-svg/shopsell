@@ -1105,6 +1105,16 @@ tr:hover td{background:rgba(255,255,255,0.02)}
               <label>ZIP code</label>
               <input type="text" id="qs-from-zip" placeholder="90001" maxlength="5" value="90001">
             </div>
+
+            <!-- SHIPPER ACCOUNT SWITCHER -->
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Ship from account</label>
+              <select id="qs-shipper-select" onchange="switchShipperFromDropdown(this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer">
+              </select>
+              <div style="font-size:10px;color:var(--muted);margin-top:5px">
+                Reverts to default after each shipment · <span style="color:var(--accent);cursor:pointer" onclick="showPage('settings')">Manage accounts →</span>
+              </div>
+            </div>
           </div>
 
           <!-- TO -->
@@ -2004,18 +2014,31 @@ function saveShipperAccounts(){
 // ── SHIPPER DROPDOWN IN TOPBAR ────────────────────────────────
 function renderShipperDropdown(){
   const el = document.getElementById('shipperList');
-  if(!el) return;
-
-  el.innerHTML = shipperAccounts.map((acct,i) => `
-    <div onclick="switchShipper(${i})" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:${i===activeShipperIdx?'rgba(255,181,0,0.06)':'transparent'};border-bottom:1px solid var(--border)">
-      <div style="width:7px;height:7px;border-radius:50%;background:${acct.verified?'var(--green)':'var(--muted)'};flex-shrink:0"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:${i===activeShipperIdx?'var(--ups-gold)':'var(--text)'}">${acct.name}</div>
-        <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace">UPS #${acct.acct||'—'} · ${acct.city||'No address'}${acct.state?', '+acct.state:''}</div>
+  if(el){
+    el.innerHTML = shipperAccounts.map((acct,i) => `
+      <div onclick="switchShipper(${i})" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:${i===activeShipperIdx?'rgba(255,181,0,0.06)':'transparent'};border-bottom:1px solid var(--border)">
+        <div style="width:7px;height:7px;border-radius:50%;background:${acct.verified?'var(--green)':'var(--muted)'};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:${i===activeShipperIdx?'var(--ups-gold)':'var(--text)'}">${acct.name}</div>
+          <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace">UPS #${acct.acct||'—'} · ${acct.city||'No address'}${acct.state?', '+acct.state:''}</div>
+        </div>
+        ${i===activeShipperIdx ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffb500" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
       </div>
-      ${i===activeShipperIdx ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffb500" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
-    </div>
-  `).join('');
+    `).join('');
+  }
+
+  // Also populate the inline Quick Ship dropdown
+  const sel = document.getElementById('qs-shipper-select');
+  if(sel){
+    sel.innerHTML = shipperAccounts.map((acct,i) =>
+      `<option value="${i}" ${i===activeShipperIdx?'selected':''}>${acct.name} — UPS #${acct.acct||'?'}${acct.isDefault?' (default)':''}</option>`
+    ).join('');
+  }
+}
+
+function switchShipperFromDropdown(idx){
+  switchShipper(parseInt(idx));
+  // Don't close topbar dropdown since we used the inline one
 }
 
 function toggleShipperDropdown(){
