@@ -1066,6 +1066,39 @@ app.post('/api/shipping/pickup', requireAuth, async (req, res) => {
   }
 });
 
+// ZIP CODE LOOKUP — covers all 42,000+ US ZIP codes
+app.get('/api/shipping/zip-lookup', async (req, res) => {
+  try {
+    const { zip } = req.query;
+    if(!zip || zip.length !== 5) return res.status(400).json({ error: 'Invalid ZIP code.' });
+
+    const nodeFetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+    const response  = await nodeFetch(`https://api.zippopotam.us/us/${zip}`);
+
+    if(!response.ok){
+      return res.json({ city: null, state: null, error: 'ZIP code not found.' });
+    }
+
+    const data  = await response.json();
+    const place = data.places?.[0];
+
+    if(!place){
+      return res.json({ city: null, state: null, error: 'ZIP code not found.' });
+    }
+
+    res.json({
+      zip,
+      city:  place['place name'],
+      state: place['state abbreviation'],
+      county: place['state'],
+    });
+
+  } catch(err) {
+    console.error('ZIP lookup error:', err.message);
+    res.status(500).json({ error: 'ZIP lookup failed.' });
+  }
+});
+
 // VALIDATE ADDRESS
 app.post('/api/shipping/validate-address', async (req, res) => {
   try {
