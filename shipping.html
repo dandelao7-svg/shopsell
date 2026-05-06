@@ -86,7 +86,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .carrier-status-text{font-size:10px;color:var(--muted)}
 
 /* ── MAIN ── */
-.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh;overflow-y:auto;height:100vh}
 
 /* ── TOPBAR ── */
 .topbar{height:var(--header-h);background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
@@ -2190,6 +2190,7 @@ function showPage(name){
   const navEl = document.getElementById('nav-'+name);
   if(navEl) navEl.classList.add('active');
   document.getElementById('topbarTitle').textContent = pageTitles[name]||name;
+  document.querySelector('.main').scrollTop = 0;
   window.scrollTo(0,0);
 }
 
