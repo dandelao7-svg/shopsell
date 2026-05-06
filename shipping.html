@@ -2614,32 +2614,9 @@ function printQSLabel(){
   if(!qsLabelData){ toast('No label to print','error'); return; }
 
   const tn = qsLabelData.trackingNumber || 'XXXXXXXXXX';
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 
-  // If real UPS label image returned (base64)
-  if(qsLabelData.labelImage){
-    const win = window.open('','_blank');
-    win.document.write(`
-      <html><head><title>Label ${tn}</title>
-      <style>body{margin:0;display:flex;justify-content:center;padding:20px;background:#f5f5f5}
-      img{max-width:400px;border:1px solid #ddd;background:#fff}</style></head>
-      <body><img src="data:image/gif;base64,${qsLabelData.labelImage}">
-      <script>window.onload=()=>window.print()<\/script></body></html>
-    `);
-    win.document.close();
-    return;
-  }
-
-  // For FedEx and all others — generate a professional printable label
-  const now    = new Date();
-  const dateStr= now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-
-  const bars = Array.from({length:60},(_,i)=>{
-    const w = [1,2,3,1,2,1,3,2,1,2,3,1][i%12];
-    const h = i%4===0?60:i%3===0?50:i%2===0?55:45;
-    return `<div style="width:${w}px;height:${h}px;background:#000;display:inline-block;margin:0 0.5px"></div>`;
-  }).join('');
-
-  // Carrier specific colors
   const carrierColors = {
     UPS:   { bg:'#351c15', text:'#ffb500' },
     FEDEX: { bg:'#4d148c', text:'#ff6200' },
@@ -2647,69 +2624,84 @@ function printQSLabel(){
   };
   const cc = carrierColors[qsLabelData.carrier] || carrierColors.UPS;
 
-  const win = window.open('','_blank');
-  win.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>${qsLabelData.carrier} Label — ${tn}</title>
-      <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:Arial,sans-serif;background:#fff;padding:20px;display:flex;justify-content:center}
-        .label{width:400px;border:2px solid #000;font-size:11px}
-        .label-hd{background:${cc.bg};color:${cc.text};padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
-        .label-hd-name{font-size:22px;font-weight:900;letter-spacing:1px}
-        .label-hd-service{font-size:11px;font-weight:700;text-align:right}
-        .label-section{padding:10px 14px;border-bottom:1.5px solid #000}
-        .label-section-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:4px}
-        .label-addr{font-size:13px;font-weight:700;line-height:1.4}
-        .barcode-wrap{padding:10px 14px;text-align:center;border-bottom:1.5px solid #000}
-        .barcode{display:flex;align-items:flex-end;justify-content:center;margin-bottom:4px}
-        .tn{font-family:monospace;font-size:13px;letter-spacing:3px;font-weight:700}
-        .label-footer{padding:8px 14px;display:flex;justify-content:space-between;font-size:10px;color:#333}
-        .res-badge{background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;margin-left:6px}
-        @media print{body{padding:0}}
-      </style>
-    </head>
-    <body>
-      <div class="label">
-        <div class="label-hd">
-          <div class="label-hd-name">${qsLabelData.carrier}</div>
-          <div class="label-hd-service">${qsLabelData.serviceName||qsLabelData.service}<br>${dateStr}</div>
-        </div>
-        <div class="label-section">
-          <div class="label-section-title">From</div>
-          <div class="label-addr">
-            ${qsLabelData.fromName}<br>
-            ${qsLabelData.fromAddr}<br>
-            ${qsLabelData.fromCity}, ${qsLabelData.fromState} ${qsLabelData.fromZip}
-          </div>
-        </div>
-        <div class="label-section" style="padding:14px">
-          <div class="label-section-title">Ship To ${qsLabelData.residential ? '<span class=res-badge>RESIDENTIAL</span>' : ''}</div>
-          <div class="label-addr" style="font-size:18px">
-            ${qsLabelData.toName}<br>
-            ${qsLabelData.toCompany ? `<span style="font-size:14px;font-weight:400">${qsLabelData.toCompany}</span><br>` : ''}
-            ${qsLabelData.toAddr}<br>
-            ${qsLabelData.toAddr2 ? `${qsLabelData.toAddr2}<br>` : ''}
-            ${qsLabelData.toCity}, ${qsLabelData.toState} ${qsLabelData.toZip}
-          </div>
-        </div>
-        <div class="barcode-wrap">
-          <div class="barcode">${bars}</div>
-          <div class="tn">${tn}</div>
-        </div>
-        <div class="label-footer">
-          <span>Weight: ${qsLabelData.weight} lbs</span>
-          <span>${qsLabelData.ref ? 'Ref: '+qsLabelData.ref : ''}</span>
-          <span>NextLao</span>
+  const bars = Array.from({length:60},(_,i)=>{
+    const w = [1,2,3,1,2,1,3,2,1,2,3,1][i%12];
+    const h = i%4===0?60:i%3===0?50:i%2===0?55:45;
+    return `<div style="width:${w}px;height:${h}px;background:#000;display:inline-block;margin:0 0.5px"></div>`;
+  }).join('');
+
+  const labelHTML = `
+    <!DOCTYPE html><html><head><title>Label ${tn}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Arial,sans-serif;background:#fff}
+      .label{width:400px;border:2px solid #000;font-size:11px}
+      .label-hd{background:${cc.bg};color:${cc.text};padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+      .label-hd-name{font-size:22px;font-weight:900;letter-spacing:1px}
+      .label-hd-svc{font-size:11px;font-weight:700;text-align:right}
+      .label-section{padding:10px 14px;border-bottom:1.5px solid #000}
+      .label-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:4px}
+      .label-addr{font-size:13px;font-weight:700;line-height:1.5}
+      .res{background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;margin-left:6px}
+      .barcode-wrap{padding:10px 14px;text-align:center;border-bottom:1.5px solid #000}
+      .barcode{display:flex;align-items:flex-end;justify-content:center;margin-bottom:4px}
+      .tn{font-family:monospace;font-size:13px;letter-spacing:3px;font-weight:700}
+      .footer{padding:8px 14px;display:flex;justify-content:space-between;font-size:10px}
+      @media print{@page{margin:0}body{padding:10px}}
+    </style></head><body>
+    <div class="label">
+      <div class="label-hd">
+        <div class="label-hd-name">${qsLabelData.carrier}</div>
+        <div class="label-hd-svc">${qsLabelData.serviceName||''}<br>${dateStr}</div>
+      </div>
+      <div class="label-section">
+        <div class="label-title">From</div>
+        <div class="label-addr">
+          ${qsLabelData.fromName}<br>
+          ${qsLabelData.fromAddr}<br>
+          ${qsLabelData.fromCity}, ${qsLabelData.fromState} ${qsLabelData.fromZip}
         </div>
       </div>
-      <script>window.onload = () => { setTimeout(()=>{ window.print(); window.onafterprint = () => window.close(); }, 500); }<\/script>
-    </body>
-    </html>
-  `);
-  win.document.close();
+      <div class="label-section" style="padding:14px">
+        <div class="label-title">Ship To${qsLabelData.residential?'<span class=res>RESIDENTIAL</span>':''}</div>
+        <div class="label-addr" style="font-size:17px">
+          ${qsLabelData.toName}<br>
+          ${qsLabelData.toCompany?`<span style="font-size:13px;font-weight:400">${qsLabelData.toCompany}</span><br>`:''}
+          ${qsLabelData.toAddr}<br>
+          ${qsLabelData.toAddr2?`${qsLabelData.toAddr2}<br>`:''}
+          ${qsLabelData.toCity}, ${qsLabelData.toState} ${qsLabelData.toZip}
+        </div>
+      </div>
+      <div class="barcode-wrap">
+        <div class="barcode">${bars}</div>
+        <div class="tn">${tn}</div>
+      </div>
+      <div class="footer">
+        <span>Weight: ${qsLabelData.weight} lbs</span>
+        <span>${qsLabelData.ref?'Ref: '+qsLabelData.ref:''}</span>
+        <span>NextLao</span>
+      </div>
+    </div>
+    </body></html>
+  `;
+
+  // Print using hidden iframe — no new tab opens
+  let iframe = document.getElementById('printFrame');
+  if(!iframe){
+    iframe = document.createElement('iframe');
+    iframe.id = 'printFrame';
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
+    document.body.appendChild(iframe);
+  }
+
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(labelHTML);
+  iframe.contentDocument.close();
+
+  setTimeout(()=>{
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+  }, 400);
 }
 
 function resetQuickShip(){
