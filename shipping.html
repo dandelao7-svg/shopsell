@@ -86,7 +86,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .carrier-status-text{font-size:10px;color:var(--muted)}
 
 /* ── MAIN ── */
-.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh;overflow-y:auto;height:100vh}
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
 
 /* ── TOPBAR ── */
 .topbar{height:var(--header-h);background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
@@ -669,6 +669,167 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ═══════════════ QUICK SHIP PAGE ═══════════════ -->
+  <div class="page" id="page-quickship">
+    <div style="max-width:860px;margin:0 auto">
+      <div style="background:rgba(255,181,0,0.08);border:1px solid rgba(255,181,0,0.2);border-radius:10px;padding:12px 16px;margin-bottom:1.5rem;font-size:12px;color:var(--ups-gold);display:flex;align-items:center;gap:10px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Running in <strong style="margin:0 4px">sandbox/test mode</strong> — labels are real but no charges hit your account. Switch off UPS_SANDBOX in Railway to go live.
+      </div>
+      <div id="qsResult" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)">Label generated successfully!</div>
+            <div style="font-size:12px;color:var(--muted)">Your shipping label is ready to print</div>
+          </div>
+        </div>
+        <div style="background:var(--bg2);border-radius:9px;border:1px solid var(--border);padding:14px;font-family:'DM Mono',monospace">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Tracking number</div>
+          <div style="font-size:1.2rem;font-weight:500;color:var(--ups-gold);letter-spacing:3px" id="qsTrackingNum">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px" id="qsService">UPS Ground</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px" id="qsCharge"></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="topbar-btn" onclick="printQSLabel()" style="flex:1;justify-content:center">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Reprint label
+          </button>
+          <button class="topbar-btn primary" onclick="resetQuickShip()" style="flex:1;justify-content:center">Ship another →</button>
+        </div>
+      </div>
+      <div id="qsForm">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
+          <!-- FROM -->
+          <div id="fromCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
+            <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+              From (Sender)
+            </div>
+            <div class="form-field"><label>Full name / Company</label><input type="text" id="qs-from-name" placeholder="NextLao Store" value="NextLao Store"></div>
+            <div class="form-field"><label>Phone</label><input type="tel" id="qs-from-phone" placeholder="555-000-0000" value="5550000000"></div>
+            <div class="form-field"><label>Street address</label><input type="text" id="qs-from-addr" placeholder="123 Main Street" value="123 Main Street"></div>
+            <div class="two-col">
+              <div class="form-field"><label>City</label><input type="text" id="qs-from-city" placeholder="Los Angeles" value="Los Angeles"></div>
+              <div class="form-field"><label>State</label>
+                <select id="qs-from-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option><option>GA</option><option>AZ</option><option>CO</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-field" style="margin-bottom:0"><label>ZIP code</label><input type="text" id="qs-from-zip" placeholder="90001" maxlength="5" value="90001"></div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Ship from account</label>
+              <select id="qs-shipper-select" onchange="switchShipperFromDropdown(this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer"></select>
+              <div style="font-size:10px;color:var(--muted);margin-top:5px">Reverts to default after each shipment · <span style="color:var(--accent);cursor:pointer" onclick="showPage('settings')">Manage accounts →</span></div>
+            </div>
+          </div>
+          <!-- TO -->
+          <div id="toCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
+            <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              To (Recipient)
+              <span style="margin-left:auto;font-size:10px;color:var(--muted);font-weight:400">Paste from email</span>
+            </div>
+            <div class="form-field">
+              <label>Saved customers</label>
+              <div style="display:flex;gap:8px">
+                <select id="qs-saved-customer" onchange="loadSavedCustomer(this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer"><option value="">— Select saved customer —</option></select>
+                <button onclick="deleteSavedCustomer()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px" title="Delete selected">✕</button>
+              </div>
+            </div>
+            <div class="form-field"><label>Company name</label><input type="text" id="qs-to-company" placeholder="Acme Corporation" autocomplete="off"></div>
+            <div class="form-field"><label>Full name</label><input type="text" id="qs-to-name" placeholder="Jane Smith" autocomplete="off"></div>
+            <div class="form-field"><label>Phone (optional)</label><input type="tel" id="qs-to-phone" placeholder="555-000-0000" autocomplete="off"></div>
+            <div class="form-field"><label>Street address</label><input type="text" id="qs-to-addr" placeholder="456 Oak Avenue" autocomplete="off"></div>
+            <div class="form-field"><label>Apt / Suite / Unit (optional)</label><input type="text" id="qs-to-addr2" placeholder="Apt 4B, Suite 200, Unit 3" autocomplete="off"></div>
+            <div class="two-col">
+              <div class="form-field"><label>City</label><input type="text" id="qs-to-city" placeholder="Austin" autocomplete="off"></div>
+              <div class="form-field"><label>State</label>
+                <select id="qs-to-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>DC</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-field" style="margin-bottom:0">
+              <label>ZIP code</label>
+              <input type="text" id="qs-to-zip" placeholder="78701" maxlength="5" oninput="onZipInput(this)" autocomplete="off">
+              <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none"></div>
+            </div>
+            <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
+              <input type="checkbox" id="qs-residential" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0">
+              <div>
+                <label for="qs-residential" style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer">Residential address</label>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Check for homes, apartments, and condos. Leave unchecked for businesses and warehouses.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- PACKAGE & SERVICE -->
+        <div id="carrierCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;margin-top:1.25rem;transition:border-color 0.3s">
+          <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;justify-content:space-between">
+            Package details & carrier
+            <span style="font-size:11px;font-weight:400;color:var(--muted)">Select a box or enter custom dimensions</span>
+          </div>
+          <div class="form-field" style="margin-bottom:14px">
+            <label>Box size</label>
+            <select id="qs-box" onchange="selectBox(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+              <option value="custom">Custom dimensions</option>
+              <option value="small">Small — 8×6×4 in</option>
+              <option value="medium" selected>Medium — 12×9×6 in</option>
+              <option value="large">Large — 18×14×10 in</option>
+              <option value="xlarge">X-Large — 24×18×12 in</option>
+              <option value="envelope">Flat envelope — 13×10×1 in</option>
+              <option value="tube">Tube — 36×6×6 in</option>
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+            <div class="form-field" style="margin-bottom:0"><label>Weight (lbs)</label><input type="number" id="qs-weight" placeholder="2.0" min="0.1" step="0.1" value="2"></div>
+            <div class="form-field" style="margin-bottom:0"><label>Length (in)</label><input type="number" id="qs-length" placeholder="12" value="12"></div>
+            <div class="form-field" style="margin-bottom:0"><label>Width (in)</label><input type="number" id="qs-width" placeholder="9" value="9"></div>
+            <div class="form-field" style="margin-bottom:0"><label>Height (in)</label><input type="number" id="qs-height" placeholder="4" value="4"></div>
+            <div class="form-field" style="margin-bottom:0"><label>Reference #</label><input type="text" id="qs-ref" placeholder="Optional"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.25rem">
+            <div class="form-field" style="margin-bottom:0"><label>Carrier</label>
+              <select id="qs-carrier" onchange="updateServiceOptions()" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                <option value="ups">UPS</option><option value="fedex">FedEx</option><option value="usps">USPS</option>
+              </select>
+            </div>
+            <div class="form-field" style="margin-bottom:0"><label>Service</label>
+              <select id="qs-service" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                <option value="03">UPS Ground</option><option value="12">UPS 3 Day Select</option><option value="02">UPS 2nd Day Air</option><option value="01">UPS Next Day Air</option><option value="13">UPS Next Day Air Saver</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:1.25rem">
+            <label>Package description (optional)</label>
+            <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
+          </div>
+          <div id="addrValidResult" style="display:none;border-radius:9px;padding:12px 14px;margin-bottom:1rem;font-size:12px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+              <div style="display:flex;align-items:flex-start;gap:8px">
+                <div id="addrValidIcon" style="flex-shrink:0;margin-top:1px"></div>
+                <div>
+                  <div id="addrValidMsg" style="font-weight:600;margin-bottom:3px"></div>
+                  <div id="addrValidDetail" style="color:var(--muted);line-height:1.5"></div>
+                  <div id="addrSuggestion" style="margin-top:6px;display:none"><span style="color:var(--ups-gold);cursor:pointer;font-weight:600" onclick="useSuggestedAddress()">✓ Use suggested address →</span></div>
+                </div>
+              </div>
+              <button id="addrOverrideBtn" onclick="overrideAndShip()" style="display:none;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 12px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;white-space:nowrap">Ship anyway</button>
+            </div>
+          </div>
+          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="validateAndShip()" style="width:100%;justify-content:center;padding:13px;font-size:14px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Generate shipping label
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1293,253 +1454,6 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
     </div>
   </div>
 
-  <!-- ═══════════════ QUICK SHIP PAGE ═══════════════ -->
-  <div class="page" id="page-quickship">
-    <div style="max-width:860px;margin:0 auto">
-
-      <div style="background:rgba(255,181,0,0.08);border:1px solid rgba(255,181,0,0.2);border-radius:10px;padding:12px 16px;margin-bottom:1.5rem;font-size:12px;color:var(--ups-gold);display:flex;align-items:center;gap:10px">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Running in <strong style="margin:0 4px">sandbox/test mode</strong> — labels are real but no charges hit your account. Switch off UPS_SANDBOX in Railway to go live.
-      </div>
-
-      <!-- SUCCESS RESULT -->
-      <div id="qsResult" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem">
-          <div style="width:32px;height:32px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          </div>
-          <div>
-            <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)">Label generated successfully!</div>
-            <div style="font-size:12px;color:var(--muted)">Your shipping label is ready to print</div>
-          </div>
-        </div>
-        <div style="background:var(--bg2);border-radius:9px;border:1px solid var(--border);padding:14px;font-family:'DM Mono',monospace">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Tracking number</div>
-          <div style="font-size:1.2rem;font-weight:500;color:var(--ups-gold);letter-spacing:3px" id="qsTrackingNum">—</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:6px" id="qsService">UPS Ground</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px" id="qsCharge"></div>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:14px">
-          <button class="topbar-btn" onclick="printQSLabel()" style="flex:1;justify-content:center">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Reprint label
-          </button>
-          <button class="topbar-btn primary" onclick="resetQuickShip()" style="flex:1;justify-content:center">Ship another →</button>
-        </div>
-      </div>
-
-      <div id="qsForm">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
-
-          <!-- FROM -->
-          <div id="fromCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
-            <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
-              From (Sender)
-            </div>
-            <div class="form-field">
-              <label>Full name / Company</label>
-              <input type="text" id="qs-from-name" placeholder="NextLao Store" value="NextLao Store">
-            </div>
-            <div class="form-field">
-              <label>Phone</label>
-              <input type="tel" id="qs-from-phone" placeholder="555-000-0000" value="5550000000">
-            </div>
-            <div class="form-field">
-              <label>Street address</label>
-              <input type="text" id="qs-from-addr" placeholder="123 Main Street" value="123 Main Street">
-            </div>
-            <div class="two-col">
-              <div class="form-field">
-                <label>City</label>
-                <input type="text" id="qs-from-city" placeholder="Los Angeles" value="Los Angeles">
-              </div>
-              <div class="form-field">
-                <label>State</label>
-                <select id="qs-from-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option><option>GA</option><option>AZ</option><option>CO</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>ZIP code</label>
-              <input type="text" id="qs-from-zip" placeholder="90001" maxlength="5" value="90001">
-            </div>
-
-            <!-- SHIPPER ACCOUNT SWITCHER -->
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-              <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Ship from account</label>
-              <select id="qs-shipper-select" onchange="switchShipperFromDropdown(this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer">
-              </select>
-              <div style="font-size:10px;color:var(--muted);margin-top:5px">
-                Reverts to default after each shipment · <span style="color:var(--accent);cursor:pointer" onclick="showPage('settings')">Manage accounts →</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- TO -->
-          <div id="toCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
-            <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              To (Recipient)
-              <span style="margin-left:auto;font-size:10px;color:var(--muted);font-weight:400">Paste from email</span>
-            </div>
-
-            <!-- SAVED CUSTOMERS -->
-            <div class="form-field">
-              <label>Saved customers</label>
-              <div style="display:flex;gap:8px">
-                <select id="qs-saved-customer" onchange="loadSavedCustomer(this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer">
-                  <option value="">— Select saved customer —</option>
-                </select>
-                <button onclick="deleteSavedCustomer()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px" title="Delete selected">✕</button>
-              </div>
-            </div>
-
-            <div class="form-field">
-              <label>Company name</label>
-              <input type="text" id="qs-to-company" placeholder="Acme Corporation" autocomplete="off">
-            </div>
-            <div class="form-field">
-              <label>Full name</label>
-              <input type="text" id="qs-to-name" placeholder="Jane Smith" autocomplete="off">
-            </div>
-            <div class="form-field">
-              <label>Phone (optional)</label>
-              <input type="tel" id="qs-to-phone" placeholder="555-000-0000" autocomplete="off">
-            </div>
-            <div class="form-field">
-              <label>Street address</label>
-              <input type="text" id="qs-to-addr" placeholder="456 Oak Avenue" autocomplete="off">
-            </div>
-            <div class="form-field">
-              <label>Apt / Suite / Unit (optional)</label>
-              <input type="text" id="qs-to-addr2" placeholder="Apt 4B, Suite 200, Unit 3" autocomplete="off">
-            </div>
-            <div class="two-col">
-              <div class="form-field">
-                <label>City</label>
-                <input type="text" id="qs-to-city" placeholder="Austin" autocomplete="off">
-              </div>
-              <div class="form-field">
-                <label>State</label>
-                <select id="qs-to-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>DC</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>ZIP code</label>
-              <input type="text" id="qs-to-zip" placeholder="78701" maxlength="5" oninput="onZipInput(this)" autocomplete="off">
-              <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none;display:flex;align-items:center;gap:5px"></div>
-            </div>
-
-            <!-- RESIDENTIAL FLAG -->
-            <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
-              <input type="checkbox" id="qs-residential" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0">
-              <div>
-                <label for="qs-residential" style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer">Residential address</label>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Check for homes, apartments, and condos. Leave unchecked for businesses and warehouses.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- PACKAGE & SERVICE -->
-        <div id="carrierCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;margin-top:1.25rem;transition:border-color 0.3s">
-          <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;justify-content:space-between">
-            Package details & carrier
-            <span style="font-size:11px;font-weight:400;color:var(--muted)">Select a box or enter custom dimensions</span>
-          </div>
-
-          <!-- BOX SIZE SELECTOR -->
-          <div class="form-field" style="margin-bottom:14px">
-            <label>Box size</label>
-            <select id="qs-box" onchange="selectBox(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-              <option value="custom">Custom dimensions</option>
-              <option value="small">Small — 8×6×4 in (up to 5 lbs)</option>
-              <option value="medium" selected>Medium — 12×9×6 in (up to 20 lbs)</option>
-              <option value="large">Large — 18×14×10 in (up to 50 lbs)</option>
-              <option value="xlarge">X-Large — 24×18×12 in (up to 70 lbs)</option>
-              <option value="envelope">Flat envelope — 13×10×1 in</option>
-              <option value="tube">Tube — 36×6×6 in</option>
-            </select>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px">
-            <div class="form-field" style="margin-bottom:0">
-              <label>Weight (lbs)</label>
-              <input type="number" id="qs-weight" placeholder="2.0" min="0.1" step="0.1" value="2">
-            </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>Length (in)</label>
-              <input type="number" id="qs-length" placeholder="12" value="12">
-            </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>Width (in)</label>
-              <input type="number" id="qs-width" placeholder="9" value="9">
-            </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>Height (in)</label>
-              <input type="number" id="qs-height" placeholder="4" value="4">
-            </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>Reference #</label>
-              <input type="text" id="qs-ref" placeholder="Optional">
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.25rem">
-            <div class="form-field" style="margin-bottom:0">
-              <label>Carrier</label>
-              <select id="qs-carrier" onchange="updateServiceOptions()" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                <option value="ups">UPS</option>
-                <option value="fedex">FedEx</option>
-                <option value="usps">USPS</option>
-              </select>
-            </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>Service</label>
-              <select id="qs-service" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                <option value="03">UPS Ground</option>
-                <option value="12">UPS 3 Day Select</option>
-                <option value="02">UPS 2nd Day Air</option>
-                <option value="01">UPS Next Day Air</option>
-                <option value="13">UPS Next Day Air Saver</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-field" style="margin-bottom:1.25rem;margin-top:1rem">
-            <label>Package description (optional)</label>
-            <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
-          </div>
-
-          <!-- ADDRESS VALIDATION RESULT -->
-          <div id="addrValidResult" style="display:none;border-radius:9px;padding:12px 14px;margin-bottom:1rem;font-size:12px">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
-              <div style="display:flex;align-items:flex-start;gap:8px">
-                <div id="addrValidIcon" style="flex-shrink:0;margin-top:1px"></div>
-                <div>
-                  <div id="addrValidMsg" style="font-weight:600;margin-bottom:3px"></div>
-                  <div id="addrValidDetail" style="color:var(--muted);line-height:1.5"></div>
-                  <div id="addrSuggestion" style="margin-top:6px;display:none">
-                    <span style="color:var(--ups-gold);cursor:pointer;font-weight:600" onclick="useSuggestedAddress()">✓ Use suggested address →</span>
-                  </div>
-                </div>
-              </div>
-              <button id="addrOverrideBtn" onclick="overrideAndShip()" style="display:none;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 12px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;white-space:nowrap">Ship anyway</button>
-            </div>
-          </div>
-
-          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="validateAndShip()" style="width:100%;justify-content:center;padding:13px;font-size:14px">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Generate shipping label
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
 
 </main>
 </div>
