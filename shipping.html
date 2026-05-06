@@ -6,6 +6,13 @@
 <title>NextLao — Shipping Suite</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Zebra Browser Print SDK — loads silently if not installed -->
+<script>
+  var _zs = document.createElement('script');
+  _zs.src = 'http://localhost:9100/BrowserPrint-3.0.216.min.js';
+  _zs.onerror = function(){ console.log('Zebra Browser Print not installed — using fallback printing'); };
+  document.head.appendChild(_zs);
+</script>
 <style>
 /* ============================================================
    NEXTLAO SHIPPING SUITE
@@ -965,8 +972,120 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
       <div>
         <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Shipping preferences</div>
+
+        <!-- ZEBRA PRINTER SETUP -->
         <div class="settings-card" style="margin-bottom:1rem">
-          <div class="settings-hd">Default carrier</div>
+          <div class="settings-hd" style="display:flex;align-items:center;justify-content:space-between">
+            <span>🦓 Zebra label printer</span>
+            <span id="zebraStatus" style="font-size:11px;font-weight:600;color:var(--muted)">Not configured</span>
+          </div>
+
+          <!-- STEP INDICATOR -->
+          <div style="display:flex;gap:0;margin-bottom:1.25rem" id="zebraSteps">
+            <div class="zebra-step active" id="zstep1" onclick="showZebraStep(1)" style="flex:1;padding:8px;text-align:center;cursor:pointer;border-bottom:2px solid var(--accent);font-size:11px;font-weight:600;color:var(--accent)">1. Install</div>
+            <div class="zebra-step" id="zstep2" onclick="showZebraStep(2)" style="flex:1;padding:8px;text-align:center;cursor:pointer;border-bottom:2px solid var(--border);font-size:11px;font-weight:600;color:var(--muted)">2. Label size</div>
+            <div class="zebra-step" id="zstep3" onclick="showZebraStep(3)" style="flex:1;padding:8px;text-align:center;cursor:pointer;border-bottom:2px solid var(--border);font-size:11px;font-weight:600;color:var(--muted)">3. Connect</div>
+            <div class="zebra-step" id="zstep4" onclick="showZebraStep(4)" style="flex:1;padding:8px;text-align:center;cursor:pointer;border-bottom:2px solid var(--border);font-size:11px;font-weight:600;color:var(--muted)">4. Test</div>
+          </div>
+
+          <!-- STEP 1: INSTALL -->
+          <div id="zebraPanel1">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Install Zebra Browser Print</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:14px">
+              Zebra Browser Print is a free app that lets NextLao send labels directly to your Zebra printer — no print dialog, no extra clicks. Labels shoot out instantly with one click.
+            </div>
+            <div style="background:var(--bg2);border-radius:8px;border:1px solid var(--border);padding:12px;margin-bottom:14px">
+              <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Installation steps</div>
+              <div style="font-size:12px;color:var(--muted);line-height:2">
+                1. Click the download button below<br>
+                2. Run the installer (Windows or Mac)<br>
+                3. Browser Print runs in the background automatically<br>
+                4. Come back here and click Next
+              </div>
+            </div>
+            <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px;border-radius:8px;text-decoration:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;margin-bottom:10px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Zebra Browser Print
+            </a>
+            <button onclick="showZebraStep(2)" class="api-save" style="width:100%;padding:9px;border-radius:8px">Installed — Next →</button>
+          </div>
+
+          <!-- STEP 2: LABEL SIZE -->
+          <div id="zebraPanel2" style="display:none">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Select your label size</div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+
+              <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg2);border-radius:8px;border:2px solid var(--accent);cursor:pointer" id="label4x6opt">
+                <input type="radio" name="zebraSize" value="4x6" checked onchange="selectLabelSize('4x6')" style="margin-top:3px;accent-color:var(--accent)">
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text)">4×6 — Standard shipping label</div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:2px">Most common. Used for UPS, FedEx, USPS domestic shipments. Fits all standard Zebra printers.</div>
+                </div>
+              </label>
+
+              <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);cursor:pointer" id="label4x8opt">
+                <input type="radio" name="zebraSize" value="4x8" onchange="selectLabelSize('4x8')" style="margin-top:3px;accent-color:var(--accent)">
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text)">4×8 — Shipping label + doc label</div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:2px">Top 6" = shipping label. Bottom 2" = peel-off doc label with tracking number, order number, and custom fields.</div>
+                  <div style="margin-top:8px;padding:8px;background:var(--bg3);border-radius:6px;font-size:11px;color:var(--muted)">
+                    <div style="font-weight:600;color:var(--text);margin-bottom:4px">Doc label fields (configure below):</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px" id="docLabelFields">
+                      <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Tracking #</label>
+                      <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Order #</label>
+                      <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" style="accent-color:var(--accent)"> PO #</label>
+                      <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" style="accent-color:var(--accent)"> SKU</label>
+                      <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" style="accent-color:var(--accent)"> Customer ref</label>
+                      <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" style="accent-color:var(--accent)"> Weight</label>
+                    </div>
+                  </div>
+                </div>
+              </label>
+
+            </div>
+            <div style="display:flex;gap:8px">
+              <button onclick="showZebraStep(1)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">← Back</button>
+              <button onclick="showZebraStep(3)" class="api-save" style="flex:2;padding:9px;border-radius:8px">Next →</button>
+            </div>
+          </div>
+
+          <!-- STEP 3: CONNECT -->
+          <div id="zebraPanel3" style="display:none">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Connect to your Zebra printer</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:14px">
+              Make sure your Zebra printer is turned on and connected via USB or network. Browser Print must be running in the background.
+            </div>
+            <div id="zebraDetectResult" style="display:none;background:var(--bg2);border-radius:8px;border:1px solid var(--border);padding:12px;margin-bottom:12px;font-size:12px"></div>
+            <button onclick="detectZebraPrinter()" id="zebraDetectBtn" class="topbar-btn" style="width:100%;justify-content:center;margin-bottom:10px;padding:10px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Detect Zebra printer
+            </button>
+            <div style="display:flex;gap:8px">
+              <button onclick="showZebraStep(2)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">← Back</button>
+              <button onclick="showZebraStep(4)" class="api-save" style="flex:2;padding:9px;border-radius:8px" id="zebraNextBtn">Next →</button>
+            </div>
+          </div>
+
+          <!-- STEP 4: TEST -->
+          <div id="zebraPanel4" style="display:none">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Print a test label</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:14px">
+              Click the button below to print a test label. Make sure it looks correct and the barcode scans properly.
+            </div>
+            <div id="zebraPrinterName" style="background:var(--bg2);border-radius:8px;border:1px solid var(--green);padding:12px;margin-bottom:12px;font-size:12px;display:none">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
+                <span id="zebraPrinterNameText" style="font-weight:600;color:var(--green)"></span>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Ready to print</div>
+            </div>
+            <button onclick="printZebraTestLabel()" class="topbar-btn ups" style="width:100%;justify-content:center;margin-bottom:10px;padding:10px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Print test label
+            </button>
+            <button onclick="completeZebraSetup()" class="api-save" style="width:100%;padding:9px;border-radius:8px">✓ Label looks good — Finish setup</button>
+          </div>
+        </div>
           <div class="toggle-row">
             <div><div class="toggle-label">UPS as primary carrier</div><div class="toggle-desc">Always ship UPS when available</div></div>
             <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
@@ -2195,7 +2314,181 @@ function autoFixAddress(city, state){
   document.getElementById('qs-to-state').value = state;
   showZipMsg('success', `✓ Updated to ${city}, ${state}`);
 }
-// ── BOX SIZES — FULLY EDITABLE ───────────────────────────────
+// ── ZEBRA PRINTER ─────────────────────────────────────────────
+let zebraConfig = JSON.parse(localStorage.getItem('zebraConfig') || 'null') || {
+  configured: false,
+  labelSize:  '4x6',
+  printerName: '',
+  docFields:  { tracking: true, order: true, po: false, sku: false, ref: false, weight: false },
+};
+
+let zebraPrinter = null; // Browser Print device
+
+function showZebraStep(step){
+  [1,2,3,4].forEach(s => {
+    document.getElementById(`zebraPanel${s}`).style.display = s===step ? 'block' : 'none';
+    const stepEl = document.getElementById(`zstep${s}`);
+    stepEl.style.borderBottom = s===step ? '2px solid var(--accent)' : '2px solid var(--border)';
+    stepEl.style.color        = s===step ? 'var(--accent)' : 'var(--muted)';
+  });
+}
+
+function selectLabelSize(size){
+  zebraConfig.labelSize = size;
+  const opt4x6 = document.getElementById('label4x6opt');
+  const opt4x8 = document.getElementById('label4x8opt');
+  if(opt4x6) opt4x6.style.border = size==='4x6' ? '2px solid var(--accent)' : '1px solid var(--border)';
+  if(opt4x8) opt4x8.style.border = size==='4x8' ? '2px solid var(--accent)' : '1px solid var(--border)';
+}
+
+async function detectZebraPrinter(){
+  const btn    = document.getElementById('zebraDetectBtn');
+  const result = document.getElementById('zebraDetectResult');
+  btn.textContent = 'Searching...';
+  btn.disabled    = true;
+  result.style.display = 'none';
+
+  try {
+    // Connect to Zebra Browser Print on localhost
+    const BrowserPrint = window.BrowserPrint;
+    if(!BrowserPrint){
+      throw new Error('Zebra Browser Print not detected');
+    }
+
+    BrowserPrint.getLocalDevices(devices => {
+      btn.disabled    = false;
+      btn.textContent = 'Detect Zebra printer';
+
+      if(!devices || devices.length === 0){
+        result.style.display = 'block';
+        result.innerHTML = `<div style="color:var(--accent)">✗ No Zebra printers found. Make sure your printer is on and Browser Print is running.</div>`;
+        return;
+      }
+
+      zebraPrinter = devices[0];
+      zebraConfig.printerName = zebraPrinter.name;
+
+      result.style.display = 'block';
+      result.innerHTML = devices.map(d =>
+        `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
+          <span style="font-weight:600;color:var(--green)">${d.name}</span>
+          <span style="color:var(--muted);font-size:10px">${d.connection||''}</span>
+        </div>`
+      ).join('');
+
+      // Show printer name on step 4
+      const nameEl = document.getElementById('zebraPrinterName');
+      const nameText = document.getElementById('zebraPrinterNameText');
+      if(nameEl) nameEl.style.display = 'block';
+      if(nameText) nameText.textContent = zebraPrinter.name;
+
+      toast(`✓ Found: ${zebraPrinter.name}`,'success');
+    }, err => {
+      btn.disabled    = false;
+      btn.textContent = 'Detect Zebra printer';
+      result.style.display = 'block';
+      result.innerHTML = `<div style="color:var(--accent)">✗ Could not connect to Browser Print. Is it installed and running?</div>`;
+    }, 'printer');
+
+  } catch(err){
+    btn.disabled    = false;
+    btn.textContent = 'Detect Zebra printer';
+    result.style.display = 'block';
+    result.innerHTML = `
+      <div style="color:var(--accent);font-weight:600;margin-bottom:6px">✗ Zebra Browser Print not found</div>
+      <div style="color:var(--muted)">Please download and install Browser Print from Zebra's website, then try again.</div>
+    `;
+  }
+}
+
+function generateZPL(data){
+  // ZPL for 4×6 label (609 dpi, 4"×6" = 2436×3622 dots)
+  // Using 203dpi standard: 4"×6" = 812×1218 dots
+  const tn      = data.trackingNumber || 'XXXXXXXXXX';
+  const carrier = data.carrier || 'UPS';
+  const service = data.serviceName || 'Ground';
+  const date    = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+  return `
+^XA
+^CI28
+^PW812
+^LL1218
+^LH0,0
+
+^FO20,20^GB772,80,80^FS
+^FO30,28^A0N,60,60^FD${carrier}^FS
+^FO500,30^A0N,28,28^FD${service}^FS
+^FO500,65^A0N,22,22^FD${date}^FS
+
+^FO20,115^A0N,22,22^FDFROM^FS
+^FO20,142^A0N,30,30^FD${data.fromName||''}^FS
+^FO20,178^A0N,26,26^FD${data.fromAddr||''}^FS
+^FO20,210^A0N,26,26^FD${data.fromCity||''}, ${data.fromState||''} ${data.fromZip||''}^FS
+
+^FO20,265^GB772,3,3^FS
+
+^FO20,280^A0N,22,22^FDSHIP TO${data.residential?' [RESIDENTIAL]':''}^FS
+^FO20,310^A0N,45,45^FD${data.toName||''}^FS
+${data.toCompany ? `^FO20,362^A0N,32,32^FD${data.toCompany}^FS` : ''}
+^FO20,${data.toCompany?400:362}^A0N,40,40^FD${data.toAddr||''}^FS
+${data.toAddr2 ? `^FO20,${data.toCompany?448:408}^A0N,32,32^FD${data.toAddr2}^FS` : ''}
+^FO20,${data.toCompany?(data.toAddr2?494:450):(data.toAddr2?454:408)}^A0N,40,40^FD${data.toCity||''}, ${data.toState||''} ${data.toZip||''}^FS
+
+^FO20,560^GB772,3,3^FS
+
+^FO50,590^BCN,120,Y,N,N^FD${tn}^FS
+
+^FO20,740^GB772,3,3^FS
+^FO20,758^A0N,22,22^FDWeight: ${data.weight||''}lbs^FS
+^FO600,758^A0N,22,22^FDNextLao^FS
+
+^XZ
+  `.trim();
+}
+
+function printZebraTestLabel(){
+  const testData = {
+    carrier:      'UPS',
+    serviceName:  'UPS Ground',
+    fromName:     'NextLao Store',
+    fromAddr:     '123 Main Street',
+    fromCity:     'Los Angeles',
+    fromState:    'CA',
+    fromZip:      '90001',
+    toName:       'Test Recipient',
+    toCompany:    'Test Company',
+    toAddr:       '456 Oak Avenue',
+    toCity:       'Austin',
+    toState:      'TX',
+    toZip:        '78701',
+    trackingNumber:'1Z999AA10123456784',
+    weight:       '2',
+    residential:  false,
+  };
+  sendToZebra(generateZPL(testData));
+}
+
+function sendToZebra(zpl){
+  if(!zebraPrinter){
+    toast('No Zebra printer connected — use the setup wizard in Carrier Settings','error');
+    return false;
+  }
+  zebraPrinter.send(zpl,
+    () => toast('✓ Label sent to Zebra printer','success'),
+    err => { console.error('Zebra print error:', err); toast('Zebra print error — check printer connection','error'); }
+  );
+  return true;
+}
+
+function completeZebraSetup(){
+  zebraConfig.configured = true;
+  localStorage.setItem('zebraConfig', JSON.stringify(zebraConfig));
+  document.getElementById('zebraStatus').textContent  = '✓ Configured';
+  document.getElementById('zebraStatus').style.color  = 'var(--green)';
+  toast('🦓 Zebra printer configured! Labels will now print directly.','success');
+}
 const DEFAULT_BOXES = [
   { id:'box1', name:'Small',         l:8,  w:6,  h:4,  isDefault:true  },
   { id:'box2', name:'Medium',        l:12, w:9,  h:6,  isDefault:false },
@@ -2613,6 +2906,13 @@ async function generateQuickShipLabel(){
 function printQSLabel(){
   if(!qsLabelData){ toast('No label to print','error'); return; }
 
+  // If Zebra is configured and connected — send ZPL directly
+  if(zebraConfig.configured && zebraPrinter){
+    const zpl = generateZPL(qsLabelData);
+    sendToZebra(zpl);
+    return;
+  }
+
   const tn = qsLabelData.trackingNumber || 'XXXXXXXXXX';
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -2742,6 +3042,12 @@ function toast(msg, type='success'){
 // ── INIT ──────────────────────────────────────────────────────
 const today = new Date().toISOString().split('T')[0];
 document.getElementById('pickupDate').value = today;
+
+// Initialize Zebra status
+if(zebraConfig.configured){
+  const zs = document.getElementById('zebraStatus');
+  if(zs){ zs.textContent = '✓ Configured'; zs.style.color = 'var(--green)'; }
+}
 
 // Initialize shipper accounts
 renderShipperAccountsList();
