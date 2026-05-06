@@ -1124,13 +1124,25 @@ tr:hover td{background:rgba(255,255,255,0.02)}
               To (Recipient)
               <span style="margin-left:auto;font-size:10px;color:var(--muted);font-weight:400">Paste from email</span>
             </div>
+
+            <!-- SAVED CUSTOMERS -->
+            <div class="form-field">
+              <label>Saved customers</label>
+              <div style="display:flex;gap:8px">
+                <select id="qs-saved-customer" onchange="loadSavedCustomer(this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer">
+                  <option value="">— Select saved customer —</option>
+                </select>
+                <button onclick="deleteSavedCustomer()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px" title="Delete selected">✕</button>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label>Company name</label>
+              <input type="text" id="qs-to-company" placeholder="Acme Corporation" autocomplete="off">
+            </div>
             <div class="form-field">
               <label>Full name</label>
               <input type="text" id="qs-to-name" placeholder="Jane Smith" autocomplete="off">
-            </div>
-            <div class="form-field">
-              <label>Company name (optional)</label>
-              <input type="text" id="qs-to-company" placeholder="Acme Corporation" autocomplete="off">
             </div>
             <div class="form-field">
               <label>Phone (optional)</label>
@@ -1152,7 +1164,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
               <div class="form-field">
                 <label>State</label>
                 <select id="qs-to-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option>TX</option><option>CA</option><option>NY</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option><option>GA</option><option>AZ</option><option>CO</option>
+                  <option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>DC</option>
                 </select>
               </div>
             </div>
@@ -1167,7 +1179,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
               <input type="checkbox" id="qs-residential" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0">
               <div>
                 <label for="qs-residential" style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer">Residential address</label>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Check this for homes, apartments, and condos. UPS charges a residential surcharge. Leave unchecked for businesses, warehouses, and commercial addresses.</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Check for homes, apartments, and condos. Leave unchecked for businesses and warehouses.</div>
               </div>
             </div>
           </div>
@@ -2049,6 +2061,77 @@ document.addEventListener('click', e=>{
   }
 });
 // US ZIP code → city/state lookup table (USPS verified)
+// ── SAVED CUSTOMERS ───────────────────────────────────────────
+let savedCustomers = JSON.parse(localStorage.getItem('savedCustomers') || '[]');
+
+function renderSavedCustomersDropdown(){
+  const sel = document.getElementById('qs-saved-customer');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">— Select saved customer —</option>' +
+    savedCustomers.map((c,i) =>
+      `<option value="${i}">${c.company ? c.company+' — ' : ''}${c.name} · ${c.city}, ${c.state}</option>`
+    ).join('');
+}
+
+function loadSavedCustomer(idx){
+  if(idx === '') return;
+  const c = savedCustomers[parseInt(idx)];
+  if(!c) return;
+  document.getElementById('qs-to-company').value = c.company || '';
+  document.getElementById('qs-to-name').value    = c.name    || '';
+  document.getElementById('qs-to-phone').value   = c.phone   || '';
+  document.getElementById('qs-to-addr').value    = c.addr    || '';
+  document.getElementById('qs-to-addr2').value   = c.addr2   || '';
+  document.getElementById('qs-to-city').value    = c.city    || '';
+  document.getElementById('qs-to-state').value   = c.state   || 'TX';
+  document.getElementById('qs-to-zip').value     = c.zip     || '';
+  const resEl = document.getElementById('qs-residential');
+  if(resEl) resEl.checked = c.residential || false;
+  showZipMsg('success', `✓ ${c.city}, ${c.state}`);
+  toast(`${c.company||c.name} loaded ✓`,'success');
+}
+
+function saveCurrentCustomer(){
+  const company = document.getElementById('qs-to-company').value.trim();
+  const name    = document.getElementById('qs-to-name').value.trim();
+  const addr    = document.getElementById('qs-to-addr').value.trim();
+  const city    = document.getElementById('qs-to-city').value.trim();
+  if(!name && !company) return;
+  if(!addr || !city) return;
+
+  const key = `${company}|${name}|${addr}`.toLowerCase();
+  const exists = savedCustomers.some(c =>
+    `${c.company}|${c.name}|${c.addr}`.toLowerCase() === key
+  );
+  if(exists) return;
+
+  savedCustomers.push({
+    company, name,
+    phone:       document.getElementById('qs-to-phone').value.trim(),
+    addr,
+    addr2:       document.getElementById('qs-to-addr2').value.trim(),
+    city,
+    state:       document.getElementById('qs-to-state').value,
+    zip:         document.getElementById('qs-to-zip').value.trim(),
+    residential: document.getElementById('qs-residential').checked,
+  });
+
+  if(savedCustomers.length > 100) savedCustomers.shift();
+  localStorage.setItem('savedCustomers', JSON.stringify(savedCustomers));
+  renderSavedCustomersDropdown();
+}
+
+function deleteSavedCustomer(){
+  const sel = document.getElementById('qs-saved-customer');
+  if(!sel || sel.value === ''){ toast('Select a customer to delete','info'); return; }
+  const idx  = parseInt(sel.value);
+  const name = savedCustomers[idx]?.company || savedCustomers[idx]?.name || 'customer';
+  savedCustomers.splice(idx, 1);
+  localStorage.setItem('savedCustomers', JSON.stringify(savedCustomers));
+  renderSavedCustomersDropdown();
+  toast(`${name} removed ✓`,'info');
+}
+
 // ── ZIP CODE REAL-TIME LOOKUP ─────────────────────────────────
 // Uses server-side API — covers all 42,000+ US ZIP codes
 let zipValidTimer = null;
@@ -2516,12 +2599,12 @@ async function generateQuickShipLabel(){
     qsLabelData.serviceName    = qsLabelData.service;
   }
 
-  // Print immediately
+  // Save recipient to saved customers automatically
+  saveCurrentCustomer();
+
+  // Print immediately — no result screen
   revertToDefaultShipper();
   printQSLabel();
-
-  // Reset form after short delay so user can ship another
-  setTimeout(()=>resetQuickShip(), 500);
 
   btn.disabled    = false;
   btn.textContent = 'Generate shipping label';
@@ -2638,6 +2721,10 @@ function resetQuickShip(){
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const resEl = document.getElementById('qs-residential');
   if(resEl) resEl.checked = false;
+  const custEl = document.getElementById('qs-saved-customer');
+  if(custEl) custEl.value = '';
+  const zipMsg = document.getElementById('zipValidMsg');
+  if(zipMsg) zipMsg.style.display='none';
 }
 
 // ── TOAST ─────────────────────────────────────────────────────
@@ -2668,6 +2755,9 @@ document.getElementById('pickupDate').value = today;
 renderShipperAccountsList();
 updateActiveShipperDisplay();
 fillQuickShipFromAccount();
+
+// Initialize saved customers dropdown
+renderSavedCustomersDropdown();
 
 // Set initial carrier card color
 updateServiceOptions();
