@@ -2705,7 +2705,7 @@ function printQSLabel(){
           <span>NextLao</span>
         </div>
       </div>
-      <script>window.onload = () => { window.print(); }<\/script>
+      <script>window.onload = () => { setTimeout(()=>{ window.print(); window.onafterprint = () => window.close(); }, 500); }<\/script>
     </body>
     </html>
   `);
