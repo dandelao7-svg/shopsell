@@ -675,9 +675,9 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
   <!-- ═══════════════ QUICK SHIP PAGE ═══════════════ -->
   <div class="page" id="page-quickship">
     <div style="max-width:860px;margin:0 auto">
-      <div style="background:rgba(255,181,0,0.08);border:1px solid rgba(255,181,0,0.2);border-radius:10px;padding:12px 16px;margin-bottom:1.5rem;font-size:12px;color:var(--ups-gold);display:flex;align-items:center;gap:10px">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Running in <strong style="margin:0 4px">sandbox/test mode</strong> — labels are real but no charges hit your account. Switch off UPS_SANDBOX in Railway to go live.
+      <div id="qsModeBanner" style="background:rgba(0,200,150,0.08);border:1px solid rgba(0,200,150,0.25);border-radius:10px;padding:12px 16px;margin-bottom:1.5rem;font-size:12px;color:var(--green);display:flex;align-items:center;gap:10px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span><strong>Production mode</strong> — labels are real and your UPS account will be charged. Void test labels in the UPS dashboard within 24 hours to reverse charges.</span>
       </div>
       <div id="qsResult" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem">
@@ -1550,6 +1550,7 @@ const ORDERS = [
 
 let selectedOrderId = null;
 let selectedOrders  = new Set();
+let qsLabelData = null;
 
 // ── ORDER SIDEBAR ─────────────────────────────────────────────
 function selectOrder(orderId){
@@ -1557,32 +1558,26 @@ function selectOrder(orderId){
   const order = ORDERS.find(o => o.id === orderId);
   if(!order) return;
 
-  // Highlight selected row
   document.querySelectorAll('#ordersTableBody tr').forEach(tr => {
     tr.style.background = tr.id === `row-${orderId}` ? 'rgba(255,181,0,0.06)' : '';
   });
 
-  // Show sidebar
   document.getElementById('sidebarEmpty').style.display  = 'none';
   document.getElementById('sidebarOrder').style.display  = 'block';
 
-  // Populate sidebar fields
   document.getElementById('sb-order-id').textContent       = `#${order.id}`;
   document.getElementById('sb-order-customer').textContent = order.customer;
   document.getElementById('sb-order-status').innerHTML     = statusPill(order.status);
 
-  // Set weight from order
   const weightParts = parseFloat(order.weight)||0;
   const lbs = Math.floor(weightParts);
   const oz  = Math.round((weightParts - lbs) * 16);
   document.getElementById('sb-weight-lbs').value = lbs;
   document.getElementById('sb-weight-oz').value  = oz;
 
-  // Set carrier from order
   document.getElementById('sb-carrier').value = order.carrier || 'ups';
   updateSbServices();
 
-  // Set dimensions from default box
   const defaultBox = userBoxes.find(b=>b.isDefault) || userBoxes[0];
   if(defaultBox){
     document.getElementById('sb-length').value = defaultBox.l;
@@ -1590,13 +1585,11 @@ function selectOrder(orderId){
     document.getElementById('sb-height').value = defaultBox.h;
   }
 
-  // Populate ship from dropdown
   const sbFrom = document.getElementById('sb-from');
   sbFrom.innerHTML = shipperAccounts.map((a,i) =>
     `<option value="${i}" ${a.isDefault?'selected':''}>${a.name} — UPS #${a.acct||'?'}</option>`
   ).join('');
 
-  // Reset rate
   document.getElementById('sb-rate').textContent = '—';
 }
 
@@ -1618,7 +1611,6 @@ function toggleInsureAmt(val){
 async function getRate(){
   const rateEl = document.getElementById('sb-rate');
   rateEl.textContent = '...';
-  // Simulate rate lookup
   await new Promise(r=>setTimeout(r,800));
   const rates = ['$8.45','$9.20','$11.75','$13.50','$15.95','$18.40'];
   rateEl.textContent = rates[Math.floor(Math.random()*rates.length)];
@@ -1641,7 +1633,6 @@ async function createAndPrintFromSidebar(){
   const oz         = parseFloat(document.getElementById('sb-weight-oz').value)||0;
   const weight     = lbs + (oz/16);
 
-  // Build label data for printing
   qsLabelData = {
     fromName:  shipper.name,
     fromAddr:  shipper.address1||'',
@@ -1666,7 +1657,6 @@ async function createAndPrintFromSidebar(){
     labelUrl:   null,
   };
 
-  // Update order status
   order.status = 'printed';
   renderOrders();
   selectOrder(selectedOrderId);
@@ -1674,7 +1664,6 @@ async function createAndPrintFromSidebar(){
   btn.disabled    = false;
   btn.innerHTML   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Create + Print Label';
 
-  // Print label
   printQSLabel();
   toast(`✓ Label created for #${order.id}`,'success');
 }
@@ -1850,7 +1839,6 @@ async function printLabel(){
   const service  = document.querySelector('#labelModal select')?.value || 'UPS Ground';
   const o        = ORDERS.find(x=>x.id===orderId);
 
-  // Map service name to UPS service code
   const serviceCodes = {
     'UPS Ground':'03','UPS 3 Day Select':'12',
     'UPS 2nd Day Air':'02','UPS Next Day Air':'01',
@@ -1858,12 +1846,10 @@ async function printLabel(){
   };
   const serviceCode = serviceCodes[service] || '03';
 
-  // Show loading state
   const btn = document.querySelector('#labelModal .modal-footer .topbar-btn.primary');
   if(btn){ btn.disabled=true; btn.textContent='Generating label...'; }
 
   try {
-    // REAL UPS API CALL via our server
     const token = localStorage.getItem('ss_token');
     const res = await fetch('/api/shipping/label', {
       method: 'POST',
@@ -1906,21 +1892,31 @@ async function printLabel(){
     const data = await res.json();
 
     if(data.success && data.label){
-      // Update tracking number on label preview
       const tn = data.label.trackingNumber;
       document.getElementById('labelTrackingNum').textContent =
         tn ? tn.replace(/(.{4})/g,'$1 ').trim() : 'Generated';
 
-      // Update order status
       if(o) o.status = 'printed';
       closeModal();
       renderOrders();
       toast(`✓ Real UPS label generated! Tracking: ${tn}`,'success');
 
-      // If label image returned, open in new tab for printing
+      // Display the REAL UPS label image so it has a scannable barcode + maxicode
       if(data.label.labelImage){
         const win = window.open('','_blank');
-        win.document.write(`<img src="data:image/gif;base64,${data.label.labelImage}" style="width:100%">`);
+        win.document.write(`
+          <!DOCTYPE html><html><head><title>UPS Label ${tn}</title>
+          <style>
+            *{box-sizing:border-box;margin:0;padding:0}
+            body{font-family:Arial,sans-serif;background:#fff;display:flex;justify-content:center;padding:20px}
+            img{max-width:4in;height:auto;display:block}
+            @media print{@page{size:4in 6in;margin:0}body{padding:0}img{width:4in;height:6in}}
+          </style></head><body>
+            <img src="data:image/gif;base64,${data.label.labelImage}" alt="UPS Label">
+          </body></html>
+        `);
+      } else if(data.label.labelUrl){
+        window.open(data.label.labelUrl, '_blank');
       }
     } else {
       throw new Error(data.error || 'Label generation failed');
@@ -1928,7 +1924,6 @@ async function printLabel(){
 
   } catch(err) {
     console.error('Label error:', err);
-    // Fallback to demo mode if API fails
     if(o) o.status = 'printed';
     closeModal();
     renderOrders();
@@ -1946,7 +1941,6 @@ async function trackPackage(){
   toast('Looking up tracking info...','info');
 
   try {
-    // Detect carrier from tracking number format
     let carrier = 'ups';
     if(num.startsWith('7') && num.length === 22) carrier = 'fedex';
     if(num.length === 22 && num.startsWith('9')) carrier = 'usps';
@@ -1956,21 +1950,11 @@ async function trackPackage(){
 
     if(data.error) throw new Error(data.error);
 
-    // Update tracking display
     document.getElementById('trackingNum').textContent = num;
-
-    // Update timeline based on real status
-    const statusMap = {
-      'I':'current', // In Transit
-      'D':'done',    // Delivered
-      'P':'done',    // Pickup
-      'M':'pending', // Manifest
-    };
 
     document.getElementById('trackingResult').style.display = 'block';
     document.getElementById('trackingEmpty').style.display  = 'none';
 
-    // Update activities if available
     if(data.activities && data.activities.length){
       const latestActivity = data.activities[0];
       toast(`${data.status} — ${latestActivity.location}`,'success');
@@ -1979,7 +1963,6 @@ async function trackPackage(){
     }
 
   } catch(err) {
-    // Fallback to demo tracking display
     document.getElementById('trackingNum').textContent = num;
     document.getElementById('trackingResult').style.display = 'block';
     document.getElementById('trackingEmpty').style.display  = 'none';
@@ -1992,7 +1975,6 @@ async function approveReturn(retId, btn){
   const row        = btn.closest('tr');
   const statusCell = row.querySelector('.status-pill');
 
-  // Show loading
   btn.textContent = 'Generating...';
   btn.disabled    = true;
 
@@ -2027,7 +2009,6 @@ async function approveReturn(retId, btn){
     toast(`Return ${retId} approved — UPS prepaid label emailed to customer ✓`,'success');
 
   } catch(err) {
-    // Fallback demo mode
     statusCell.className   = 'status-pill printed';
     statusCell.textContent = 'Label sent';
     btn.parentElement.innerHTML = `<button class="action-btn" onclick="toast('Return label generated','info')">Track return</button>`;
@@ -2125,8 +2106,8 @@ const DEFAULT_SHIPPER = {
 };
 
 let shipperAccounts = JSON.parse(localStorage.getItem('shipperAccounts') || 'null') || [DEFAULT_SHIPPER];
-let activeShipperIdx = 0; // Index of currently active shipper
-let previousShipperIdx = 0; // To revert after shipment
+let activeShipperIdx = 0;
+let previousShipperIdx = 0;
 
 function renderShipperAccountsList(){
   const el = document.getElementById('shipperAccountsList');
@@ -2252,7 +2233,6 @@ async function verifyShipperAccount(idx){
       btn.disabled    = false;
     }
   } catch(err){
-    // Mark as verified in demo mode
     shipperAccounts[idx].verified = true;
     renderShipperAccountsList();
     toast(`Account ${acct.acct} saved (verification in demo mode) ✓`,'info');
@@ -2265,7 +2245,6 @@ function saveShipperAccounts(){
   toast('Shipper accounts saved ✓','success');
 }
 
-// ── SHIPPER DROPDOWN IN TOPBAR ────────────────────────────────
 function renderShipperDropdown(){
   const el = document.getElementById('shipperList');
   if(el){
@@ -2281,7 +2260,6 @@ function renderShipperDropdown(){
     `).join('');
   }
 
-  // Also populate the inline Quick Ship dropdown
   const sel = document.getElementById('qs-shipper-select');
   if(sel){
     sel.innerHTML = shipperAccounts.map((acct,i) =>
@@ -2292,7 +2270,6 @@ function renderShipperDropdown(){
 
 function switchShipperFromDropdown(idx){
   switchShipper(parseInt(idx));
-  // Don't close topbar dropdown since we used the inline one
 }
 
 function toggleShipperDropdown(){
@@ -2330,7 +2307,6 @@ function fillQuickShipFromAccount(){
     const el = document.getElementById(id);
     if(el) el.value = val;
   });
-  // Set state dropdown
   const stateEl = document.getElementById('qs-from-state');
   if(stateEl && acct.state) stateEl.value = acct.state;
 }
@@ -2344,7 +2320,6 @@ function revertToDefaultShipper(){
   }
 }
 
-// Close dropdown when clicking outside
 document.addEventListener('click', e=>{
   const wrap = document.getElementById('shipperSwitcherWrap');
   const dd   = document.getElementById('shipperDropdown');
@@ -2352,7 +2327,7 @@ document.addEventListener('click', e=>{
     dd.style.display = 'none';
   }
 });
-// US ZIP code → city/state lookup table (USPS verified)
+
 // ── MOCK TRACKING NUMBERS (carrier-appropriate) ───────────────
 function generateMockTracking(carrier){
   const r = () => Math.random().toString(36).toUpperCase().slice(2,10);
@@ -2437,7 +2412,6 @@ function deleteSavedCustomer(){
 }
 
 // ── ZIP CODE REAL-TIME LOOKUP ─────────────────────────────────
-// Uses server-side API — covers all 42,000+ US ZIP codes
 let zipValidTimer = null;
 
 async function onZipInput(el){
@@ -2458,7 +2432,6 @@ async function onZipInput(el){
         const enteredCity = document.getElementById('qs-to-city').value.trim().toLowerCase();
         const changed     = enteredCity && enteredCity !== data.city.toLowerCase();
 
-        // USPS is always the authority — auto-fill city and state
         document.getElementById('qs-to-city').value  = data.city;
         document.getElementById('qs-to-state').value = data.state;
 
@@ -2488,7 +2461,6 @@ function showZipMsg(type, msg, suggestion){
   msgEl.style.color   = colors[type] || colors.checking;
   msgEl.innerHTML     = msg;
 
-  // If warning with suggestion, add auto-fix button
   if(type === 'warning' && suggestion){
     msgEl.innerHTML += ` <span style="cursor:pointer;text-decoration:underline;margin-left:6px;font-weight:600" onclick="autoFixAddress('${suggestion[0]}','${suggestion[1]}')">Fix it →</span>`;
   }
@@ -2499,6 +2471,7 @@ function autoFixAddress(city, state){
   document.getElementById('qs-to-state').value = state;
   showZipMsg('success', `✓ Updated to ${city}, ${state}`);
 }
+
 // ── ZEBRA PRINTER ─────────────────────────────────────────────
 let zebraConfig = JSON.parse(localStorage.getItem('zebraConfig') || 'null') || {
   configured: false,
@@ -2507,7 +2480,7 @@ let zebraConfig = JSON.parse(localStorage.getItem('zebraConfig') || 'null') || {
   docFields:  { tracking: true, order: true, po: false, sku: false, ref: false, weight: false },
 };
 
-let zebraPrinter = null; // Browser Print device
+let zebraPrinter = null;
 
 function showZebraStep(step){
   [1,2,3,4].forEach(s => {
@@ -2534,7 +2507,6 @@ async function detectZebraPrinter(){
   result.style.display = 'none';
 
   try {
-    // Connect to Zebra Browser Print on localhost
     const BrowserPrint = window.BrowserPrint;
     if(!BrowserPrint){
       throw new Error('Zebra Browser Print not detected');
@@ -2562,7 +2534,6 @@ async function detectZebraPrinter(){
         </div>`
       ).join('');
 
-      // Show printer name on step 4
       const nameEl = document.getElementById('zebraPrinterName');
       const nameText = document.getElementById('zebraPrinterNameText');
       if(nameEl) nameEl.style.display = 'block';
@@ -2588,8 +2559,6 @@ async function detectZebraPrinter(){
 }
 
 function generateZPL(data){
-  // ZPL for 4×6 label (609 dpi, 4"×6" = 2436×3622 dots)
-  // Using 203dpi standard: 4"×6" = 812×1218 dots
   const tn      = data.trackingNumber || 'XXXXXXXXXX';
   const carrier = data.carrier || 'UPS';
   const service = data.serviceName || 'Ground';
@@ -2674,6 +2643,8 @@ function completeZebraSetup(){
   document.getElementById('zebraStatus').style.color  = 'var(--green)';
   toast('🦓 Zebra printer configured! Labels will now print directly.','success');
 }
+
+// ── BOX SIZES ─────────────────────────────────────────────────
 const DEFAULT_BOXES = [
   { id:'box1', name:'Small',         l:8,  w:6,  h:4,  isDefault:true  },
   { id:'box2', name:'Medium',        l:12, w:9,  h:6,  isDefault:false },
@@ -2837,7 +2808,6 @@ function showAddrValidResult(type, msg, detail, suggestion){
     suggEl.style.display = 'none';
   }
 
-  // Show override button for warnings and errors
   overBtn.style.display = (type !== 'success') ? 'block' : 'none';
 }
 
@@ -2862,7 +2832,6 @@ function overrideAndShip(){
 async function validateAndShip(){
   addrValidOverridden = false;
 
-  // Basic field validation
   const toName = document.getElementById('qs-to-name').value.trim();
   const toAddr = document.getElementById('qs-to-addr').value.trim();
   const toCity = document.getElementById('qs-to-city').value.trim();
@@ -2873,7 +2842,6 @@ async function validateAndShip(){
     return;
   }
 
-  // Skip validation if disabled
   if(!addrValidEnabled){
     generateQuickShipLabel();
     return;
@@ -2894,7 +2862,6 @@ async function validateAndShip(){
   btn.innerHTML   = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Generate shipping label';
 
   if(!result){
-    // API unavailable — ship anyway
     generateQuickShipLabel();
     return;
   }
@@ -2916,7 +2883,6 @@ function updateServiceOptions(){
   const carrier  = document.getElementById('qs-carrier').value;
   const select   = document.getElementById('qs-service');
 
-  // Update card border colors based on carrier
   const card     = document.getElementById('carrierCard');
   const fromCard = document.getElementById('fromCard');
   const toCard   = document.getElementById('toCard');
@@ -2970,7 +2936,6 @@ function updateServiceOptions(){
 }
 
 async function generateQuickShipLabel(){
-  // Validate required fields
   const toName = document.getElementById('qs-to-name').value.trim();
   const toAddr = document.getElementById('qs-to-addr').value.trim();
   const toCity = document.getElementById('qs-to-city').value.trim();
@@ -3045,6 +3010,9 @@ async function generateQuickShipLabel(){
     },
   };
 
+  let apiSuccess = false;
+  let apiError   = null;
+
   try {
     const token = localStorage.getItem('ss_token');
     const res   = await fetch('/api/shipping/label', {
@@ -3065,27 +3033,37 @@ async function generateQuickShipLabel(){
       qsLabelData.totalCharge    = data.label.totalCharge;
       qsLabelData.currency       = data.label.currency;
       qsLabelData.serviceName    = data.label.serviceName || qsLabelData.service;
+      apiSuccess = true;
     } else {
-      qsLabelData.trackingNumber = generateMockTracking(carrier);
-      qsLabelData.serviceName    = qsLabelData.service;
+      apiError = data.error || 'Unknown error from carrier';
     }
   } catch(err) {
     console.error('Quick ship error:', err);
-    qsLabelData.trackingNumber = generateMockTracking(carrier);
-    qsLabelData.serviceName    = qsLabelData.service;
+    apiError = err.message || 'Network error';
+  }
+
+  btn.disabled    = false;
+  btn.textContent = 'Generate shipping label';
+
+  // If the carrier API failed, STOP. Don't fake a tracking number — show the error.
+  if(!apiSuccess){
+    toast(`✗ Carrier error: ${apiError}. No label generated.`,'error');
+    qsLabelData = null;
+    return;
   }
 
   // Save recipient to saved customers automatically
   saveCurrentCustomer();
 
-  // Print immediately — no result screen
+  // Print the real label
   revertToDefaultShipper();
   printQSLabel();
-
-  btn.disabled    = false;
-  btn.textContent = 'Generate shipping label';
+  toast(`✓ Label generated! Tracking: ${qsLabelData.trackingNumber}`,'success');
 }
 
+// ── PRINT QUICK SHIP LABEL ────────────────────────────────────
+// THE FIX: This now displays the real UPS label image (with real
+// barcode + maxicode) instead of drawing a fake one.
 function printQSLabel(){
   if(!qsLabelData){ toast('No label to print','error'); return; }
 
@@ -3095,6 +3073,62 @@ function printQSLabel(){
     sendToZebra(zpl);
     return;
   }
+
+  // ── REAL CARRIER LABEL (preferred path) ──────────────────────
+  // UPS returns base64 GIF in labelImage; FedEx returns a URL in labelUrl.
+  // Render the real image — this is what gives us a scannable barcode + maxicode.
+  if(qsLabelData.labelImage || qsLabelData.labelUrl){
+    const imgSrc = qsLabelData.labelImage
+      ? `data:image/gif;base64,${qsLabelData.labelImage}`
+      : qsLabelData.labelUrl;
+
+    const realLabelHTML = `
+      <!DOCTYPE html><html><head><title>Label ${qsLabelData.trackingNumber||''}</title>
+      <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:Arial,sans-serif;background:#fff;display:flex;justify-content:center;padding:20px}
+        img{max-width:4in;height:auto;display:block}
+        @media print{
+          @page{size:4in 6in;margin:0}
+          body{padding:0}
+          img{width:4in;height:6in}
+        }
+      </style></head><body>
+        <img src="${imgSrc}" alt="Shipping label">
+      </body></html>
+    `;
+
+    let iframe = document.getElementById('printFrame');
+    if(!iframe){
+      iframe = document.createElement('iframe');
+      iframe.id = 'printFrame';
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
+      document.body.appendChild(iframe);
+    }
+
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(realLabelHTML);
+    iframe.contentDocument.close();
+
+    // Wait for image to load before printing
+    const printWhenReady = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    };
+    const img = iframe.contentDocument.querySelector('img');
+    if(img && !img.complete){
+      img.onload  = printWhenReady;
+      img.onerror = () => toast('Label image failed to load','error');
+    } else {
+      setTimeout(printWhenReady, 400);
+    }
+    return;
+  }
+
+  // ── FALLBACK: drawn label (no real image returned) ───────────
+  // Should rarely happen. If it does, warn the user — drawn labels
+  // aren't scannable by carriers.
+  toast('⚠ No label image from carrier — printing drawn fallback (may not be scannable)','error');
 
   const tn = qsLabelData.trackingNumber || 'XXXXXXXXXX';
   const now = new Date();
@@ -3168,7 +3202,6 @@ function printQSLabel(){
     </body></html>
   `;
 
-  // Print using hidden iframe — no new tab opens
   let iframe = document.getElementById('printFrame');
   if(!iframe){
     iframe = document.createElement('iframe');
@@ -3191,7 +3224,6 @@ function resetQuickShip(){
   qsLabelData = null;
   document.getElementById('qsForm').style.display='block';
   document.getElementById('qsResult').style.display='none';
-  // Clear recipient fields only
   ['qs-to-name','qs-to-company','qs-to-phone','qs-to-addr','qs-to-addr2','qs-to-city','qs-to-zip','qs-ref','qs-desc']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const resEl = document.getElementById('qs-residential');
@@ -3224,29 +3256,21 @@ function toast(msg, type='success'){
 
 // ── INIT ──────────────────────────────────────────────────────
 const today = new Date().toISOString().split('T')[0];
-document.getElementById('pickupDate').value = today;
+const pickupDateEl = document.getElementById('pickupDate');
+if(pickupDateEl) pickupDateEl.value = today;
 
-// Initialize Zebra status
 if(zebraConfig.configured){
   const zs = document.getElementById('zebraStatus');
   if(zs){ zs.textContent = '✓ Configured'; zs.style.color = 'var(--green)'; }
 }
 
-// Initialize shipper accounts
 renderShipperAccountsList();
 updateActiveShipperDisplay();
 fillQuickShipFromAccount();
-
-// Initialize saved customers dropdown
 renderSavedCustomersDropdown();
-
-// Set initial carrier card color
 updateServiceOptions();
-
-// Render editable box sizes in settings
 renderBoxSizesList();
 
-// Load saved dimensions
 const savedDims = localStorage.getItem('defaultDims');
 if(savedDims){
   const d = JSON.parse(savedDims);
@@ -3258,7 +3282,6 @@ if(savedDims){
   if(hEl) hEl.value=d.h;
 }
 
-// Set address validation toggle
 const avToggle = document.getElementById('addrValidToggle');
 if(avToggle) avToggle.checked = addrValidEnabled;
 
