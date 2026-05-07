@@ -2982,6 +2982,12 @@ async function generateQuickShipLabel(){
   }
 
   const carrier  = document.getElementById('qs-carrier').value;
+  const service  = document.getElementById('qs-service').value;
+  const btn      = document.getElementById('qsSubmitBtn');
+  btn.disabled   = true;
+  btn.textContent= 'Generating label...';
+
+  qsLabelData = {
     fromName:  document.getElementById('qs-from-name').value,
     fromAddr:  document.getElementById('qs-from-addr').value,
     fromCity:  document.getElementById('qs-from-city').value,
