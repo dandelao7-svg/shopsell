@@ -634,34 +634,119 @@ class FedExCarrier {
 
 class USPSCarrier {
   constructor(){
-    this.apiKey  = process.env.USPS_API_KEY;
-    this.baseUrl = 'https://secure.shippingapis.com/ShippingAPI.dll';
+    this.apiKey  = process.env.SHIPPO_API_KEY;
+    this.baseUrl = 'https://api.goshippo.com';
+  }
+
+  async createShipment({ shipper, recipient, package: pkg, serviceToken, reference }){
+    if(!this.apiKey) throw new Error('SHIPPO_API_KEY not configured');
+
+    const nodeFetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+
+    // Step 1 — Create shipment and get rates
+    const shipmentRes = await nodeFetch(`${this.baseUrl}/shipments/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `ShippoToken ${this.apiKey}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        address_from: {
+          name:    shipper.name,
+          street1: shipper.address1,
+          city:    shipper.city,
+          state:   shipper.state,
+          zip:     shipper.zip,
+          country: shipper.country || 'US',
+          phone:   shipper.phone,
+        },
+        address_to: {
+          name:    recipient.name,
+          company: recipient.company || '',
+          street1: recipient.address1,
+          street2: recipient.address2 || '',
+          city:    recipient.city,
+          state:   recipient.state,
+          zip:     recipient.zip,
+          country: recipient.country || 'US',
+          phone:   recipient.phone,
+          is_residential: recipient.residential || false,
+        },
+        parcels: [{
+          length:        String(pkg.length || 12),
+          width:         String(pkg.width  || 9),
+          height:        String(pkg.height || 4),
+          distance_unit: 'in',
+          weight:        String(pkg.weight || 1),
+          mass_unit:     'lb',
+        }],
+        async:           false,
+        reference_1:     reference || '',
+        label_file_type: 'PDF',
+      }),
+    });
+
+    const shipment = await shipmentRes.json();
+
+    if(!shipment.rates || shipment.rates.length === 0){
+      throw new Error('No USPS rates available for this shipment');
+    }
+
+    // Find requested service or use cheapest USPS rate
+    const selectedRate = shipment.rates.find(r =>
+      r.servicelevel?.token === serviceToken
+    ) || shipment.rates.find(r =>
+      r.provider === 'USPS'
+    ) || shipment.rates[0];
+
+    // Step 2 — Purchase label
+    const transactionRes = await nodeFetch(`${this.baseUrl}/transactions/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `ShippoToken ${this.apiKey}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        rate:            selectedRate.object_id,
+        label_file_type: 'PDF',
+        async:           false,
+      }),
+    });
+
+    const transaction = await transactionRes.json();
+
+    if(transaction.status !== 'SUCCESS'){
+      throw new Error(transaction.messages?.[0]?.text || 'USPS label generation failed');
+    }
+
+    return {
+      trackingNumber: transaction.tracking_number,
+      labelUrl:       transaction.label_url,
+      serviceName:    selectedRate.servicelevel?.name || 'USPS',
+      totalCharge:    selectedRate.amount,
+      currency:       selectedRate.currency,
+      carrier:        'USPS',
+    };
   }
 
   async trackShipment(trackingNumber){
-    if(!this.apiKey) throw new Error('USPS API key not configured');
-
-    const xml = `<TrackFieldRequest USERID="${this.apiKey}">
-      <TrackID ID="${trackingNumber}"/>
-    </TrackFieldRequest>`;
-
-    const res  = await fetch(`${this.baseUrl}?API=TrackV2&XML=${encodeURIComponent(xml)}`);
-    const text = await res.text();
-
-    const eventMatch = text.match(/<Event>(.*?)<\/Event>/);
-    const cityMatch  = text.match(/<EventCity>(.*?)<\/EventCity>/);
-    const dateMatch  = text.match(/<EventDate>(.*?)<\/EventDate>/);
-    const timeMatch  = text.match(/<EventTime>(.*?)<\/EventTime>/);
-
+    // Use Shippo tracking
+    if(!this.apiKey) throw new Error('SHIPPO_API_KEY not configured');
+    const nodeFetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+    const res  = await nodeFetch(`${this.baseUrl}/tracks/usps/${trackingNumber}`, {
+      headers: { 'Authorization': `ShippoToken ${this.apiKey}` },
+    });
+    const data = await res.json();
     return {
       carrier:       'usps',
       trackingNumber,
-      status:        eventMatch?.[1] || 'In Transit',
-      location:      cityMatch?.[1]  || '',
-      lastUpdate:    `${dateMatch?.[1] || ''} ${timeMatch?.[1] || ''}`.trim(),
+      status:        data.tracking_status?.status || 'In Transit',
+      location:      data.tracking_status?.location?.city || '',
+      lastUpdate:    data.tracking_status?.status_date || '',
     };
   }
 }
+
 
 /* ============================================================
    ── CARRIER SERVICE ──────────────────────────────────────────
@@ -720,10 +805,10 @@ class CarrierService {
     }
 
     results.usps = {
-      connected: !!process.env.USPS_API_KEY,
-      message:   process.env.USPS_API_KEY
-        ? 'USPS API key configured'
-        : 'USPS API key not set',
+      connected: !!process.env.SHIPPO_API_KEY,
+      message:   process.env.SHIPPO_API_KEY
+        ? 'USPS via Shippo connected'
+        : 'SHIPPO_API_KEY not set',
     };
 
     return results;
