@@ -139,6 +139,9 @@ class UPS {
               UnitOfMeasurement: { Code: 'LBS', Description: 'Pounds' },
               Weight:            String(pkg.weight || 1),
             },
+            ...(reference ? {
+              ReferenceNumber: [{ Code: '02', Value: String(reference).slice(0, 35) }],
+            } : {}),
           },
         },
         LabelSpecification: {
@@ -649,6 +652,7 @@ class USPS {
     return {
       carrier:        'usps',
       trackingNumber: txData.tracking_number,
+      transactionId:  txData.object_id,    // ← needed for refunds
       labelImage:     null,
       labelUrl:       txData.label_url,
       labelFormat:    'PDF',
@@ -656,6 +660,44 @@ class USPS {
       serviceName:    rate.servicelevel?.name || 'USPS',
       totalCharge:    rate.amount,
       currency:       rate.currency || 'USD',
+    };
+  }
+
+  async refundLabel(transactionId) {
+    if (!this.apiKey) {
+      throw new Error('Shippo API key not configured');
+    }
+    if (!transactionId) {
+      throw new Error('Shippo transactionId is required to refund a USPS label');
+    }
+
+    const res = await nodeFetch(`${this.baseUrl}/refunds/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `ShippoToken ${this.apiKey}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        transaction: transactionId,
+        async:       false,
+      }),
+    });
+
+    const data = await res.json();
+
+    // Shippo returns status: QUEUED | PENDING | SUCCESS | ERROR
+    if (!res.ok || data.status === 'ERROR') {
+      const msg = (data.messages || []).map(m => m.text).join('; ') || data.detail || 'Refund request failed';
+      throw new Error(`Shippo refund error: ${msg}`);
+    }
+
+    return {
+      success:        true,
+      carrier:        'usps',
+      transactionId,
+      status:         data.status, // QUEUED, PENDING, SUCCESS
+      message:        'Refund requested. USPS reviews unused labels — refund typically issued in 14–21 days if approved.',
+      refundId:       data.object_id,
     };
   }
 

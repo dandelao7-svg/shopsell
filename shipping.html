@@ -689,10 +689,11 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div style="width:32px;height:32px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
-          <div>
+          <div style="flex:1">
             <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)">Label generated successfully!</div>
             <div style="font-size:12px;color:var(--muted)">Your shipping label is ready to print</div>
           </div>
+          <div id="qsVoidedBadge" style="display:none;background:var(--red-bg);color:var(--red);font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;letter-spacing:0.5px">VOIDED</div>
         </div>
         <div style="background:var(--bg2);border-radius:9px;border:1px solid var(--border);padding:14px;font-family:'DM Mono',monospace">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Tracking number</div>
@@ -704,6 +705,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <button class="topbar-btn" onclick="printQSLabel()" style="flex:1;justify-content:center">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
             Reprint label
+          </button>
+          <button id="qsVoidBtn" onclick="confirmVoidLabel()" style="flex:1;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;justify-content:center">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+            Void label
           </button>
           <button class="topbar-btn primary" onclick="resetQuickShip()" style="flex:1;justify-content:center">Ship another →</button>
         </div>
@@ -1073,7 +1078,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             </div>
           </div>
         </div>
-        <div style="display:flex;gap:10px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="topbar-btn" onclick="toast('Tracking notification sent to customer','success')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             Email customer update
@@ -1081,6 +1086,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <button class="topbar-btn" onclick="toast('Tracking page link copied!','success')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
             Copy tracking link
+          </button>
+          <button id="trackingVoidBtn" onclick="voidFromTrackingPage()" style="display:none;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:none;align-items:center;gap:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+            <span id="trackingVoidBtnLabel">Void label</span>
           </button>
         </div>
       </div>
@@ -1539,6 +1548,32 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
   </div>
 </div>
 
+<!-- VOID / REFUND CONFIRMATION MODAL -->
+<div class="modal-overlay" id="voidModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-hd">
+      <div class="modal-title" id="voidModalTitle">Void label?</div>
+      <button class="modal-close" onclick="closeVoidModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="voidModalBody" style="font-size:13px;line-height:1.6;color:var(--text2)">
+        Loading...
+      </div>
+      <div style="background:var(--bg2);border-radius:9px;border:1px solid var(--border);padding:14px;margin-top:14px;font-family:'DM Mono',monospace">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px" id="voidModalCarrierLabel">Tracking number</div>
+        <div style="font-size:1rem;font-weight:500;color:var(--text);letter-spacing:2px" id="voidModalTracking">—</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="topbar-btn" onclick="closeVoidModal()">Cancel</button>
+      <button class="topbar-btn primary" id="voidModalConfirmBtn" onclick="executeVoidLabel()" style="background:var(--accent);border-color:var(--accent)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        <span id="voidModalConfirmText">Yes, void it</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toastEl">
   <div class="toast-icon success" id="toastIcon">
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1955,6 +1990,9 @@ async function printLabel(){
   }
 }
 
+// Module-level state for the tracking page (used by void from tracking)
+let lastTrackedShipment = null;
+
 // ── TRACKING — REAL API CALL ──────────────────────────────────
 async function trackPackage(){
   const num = document.getElementById('trackingInput').value.trim();
@@ -1962,34 +2000,89 @@ async function trackPackage(){
 
   toast('Looking up tracking info...','info');
 
-  try {
-    let carrier = 'ups';
-    if(num.startsWith('7') && num.length === 22) carrier = 'fedex';
-    if(num.length === 22 && num.startsWith('9')) carrier = 'usps';
+  // Hide void button until we know the status
+  const voidBtn = document.getElementById('trackingVoidBtn');
+  if(voidBtn) voidBtn.style.display = 'none';
 
-    const res = await fetch(`/api/shipping/track/${carrier}/${num}`);
+  // Detect carrier from tracking number format
+  let carrier = 'ups';
+  if(num.startsWith('7') && num.length === 22) carrier = 'fedex';
+  else if(num.length === 22 && num.startsWith('9')) carrier = 'usps';
+
+  try {
+    const res  = await fetch(`/api/shipping/track/${carrier}/${num}`);
     const data = await res.json();
 
     if(data.error) throw new Error(data.error);
 
     document.getElementById('trackingNum').textContent = num;
-
     document.getElementById('trackingResult').style.display = 'block';
     document.getElementById('trackingEmpty').style.display  = 'none';
+
+    // Save context for potential void action
+    lastTrackedShipment = { trackingNumber: num, carrier, status: data.status };
+
+    // Show void button if label is unscanned (status indicates "Label Created" or similar)
+    showTrackingVoidIfApplicable(data.status, carrier);
 
     if(data.activities && data.activities.length){
       const latestActivity = data.activities[0];
       toast(`${data.status} — ${latestActivity.location}`,'success');
     } else {
-      toast('Tracking info loaded','success');
+      toast(`${data.status || 'Tracking info loaded'}`,'success');
     }
 
   } catch(err) {
     document.getElementById('trackingNum').textContent = num;
     document.getElementById('trackingResult').style.display = 'block';
     document.getElementById('trackingEmpty').style.display  = 'none';
+
+    // Without a confirmed status from the API, allow void as a safety option
+    // (user can decide whether label was scanned)
+    lastTrackedShipment = { trackingNumber: num, carrier, status: 'unknown' };
+    showTrackingVoidIfApplicable('label_created', carrier);
+
     toast('Showing demo tracking (enter a real UPS tracking number for live data)','info');
   }
+}
+
+// Show void button on tracking page only if package hasn't been scanned yet
+function showTrackingVoidIfApplicable(status, carrier){
+  const voidBtn = document.getElementById('trackingVoidBtn');
+  const voidLbl = document.getElementById('trackingVoidBtnLabel');
+  if(!voidBtn) return;
+
+  const s = (status || '').toLowerCase();
+  // Patterns that mean "label created but not yet picked up"
+  const unscanned =
+    s.includes('label') ||
+    s.includes('manifest') ||
+    s.includes('order processed') ||
+    s.includes('shipment ready') ||
+    s.includes('pre-shipment') ||
+    s === 'unknown';
+
+  if(unscanned){
+    voidBtn.style.display = 'inline-flex';
+    voidBtn.disabled      = false;
+    voidBtn.style.opacity = '1';
+    voidLbl.textContent   = carrier === 'usps' ? 'Request refund' : 'Void label';
+  } else {
+    voidBtn.style.display = 'none';
+  }
+}
+
+function voidFromTrackingPage(){
+  if(!lastTrackedShipment){ toast('Track a label first','info'); return; }
+  // Note: USPS refund needs transactionId which we don't have from tracking lookup.
+  // This only works for UPS/FedEx from the tracking page. For USPS we would need
+  // to look up the transactionId — best handled via the Quick Ship success panel
+  // immediately after creation, where we still have the transactionId in context.
+  if(lastTrackedShipment.carrier === 'usps'){
+    toast('USPS refunds must be requested from the Quick Ship success panel right after generating the label (we need the Shippo transaction ID).','info');
+    return;
+  }
+  confirmVoidFromTracking(lastTrackedShipment.trackingNumber, lastTrackedShipment.carrier, null);
 }
 
 // ── RETURNS — REAL RETURN LABEL ───────────────────────────────
@@ -3207,11 +3300,13 @@ async function generateQuickShipLabel(){
 
     if(data.success && data.label){
       qsLabelData.trackingNumber = data.label.trackingNumber;
+      qsLabelData.transactionId  = data.label.transactionId || null; // USPS only — needed for refunds
       qsLabelData.labelImage     = data.label.labelImage || null;
       qsLabelData.labelUrl       = data.label.labelUrl   || null;
       qsLabelData.totalCharge    = data.label.totalCharge;
       qsLabelData.currency       = data.label.currency;
       qsLabelData.serviceName    = data.label.serviceName || qsLabelData.service;
+      qsLabelData.voided         = false;
       apiSuccess = true;
     } else {
       apiError = data.error || 'Unknown error from carrier';
@@ -3237,7 +3332,57 @@ async function generateQuickShipLabel(){
   // Print the real label
   revertToDefaultShipper();
   printQSLabel();
+
+  // Show success panel with reprint + void controls
+  showQuickShipSuccess();
+
   toast(`✓ Label generated! Tracking: ${qsLabelData.trackingNumber}`,'success');
+}
+
+// ── SHOW QUICK SHIP SUCCESS ───────────────────────────────────
+function showQuickShipSuccess(){
+  if(!qsLabelData || !qsLabelData.trackingNumber) return;
+
+  const carrier = (qsLabelData.carrier || 'UPS').toLowerCase();
+
+  // Format the tracking number with spaces every 4 chars for readability
+  const tn = qsLabelData.trackingNumber;
+  const tnSpaced = tn.replace(/(.{4})/g,'$1 ').trim();
+
+  document.getElementById('qsTrackingNum').textContent = tnSpaced;
+  document.getElementById('qsService').textContent     = qsLabelData.serviceName || qsLabelData.service || '';
+
+  const chargeEl = document.getElementById('qsCharge');
+  if(qsLabelData.totalCharge){
+    chargeEl.textContent = `Charge: $${qsLabelData.totalCharge} ${qsLabelData.currency||'USD'}`;
+  } else {
+    chargeEl.textContent = '';
+  }
+
+  // Hide form, show success panel
+  document.getElementById('qsForm').style.display   = 'none';
+  document.getElementById('qsResult').style.display = 'block';
+
+  // Reset void state on the panel
+  const voidBtn = document.getElementById('qsVoidBtn');
+  if(voidBtn){
+    voidBtn.disabled    = false;
+    voidBtn.style.opacity = '1';
+
+    // Carrier-aware label
+    if(carrier === 'usps'){
+      voidBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Request refund';
+    } else {
+      voidBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Void label';
+    }
+  }
+
+  // Hide voided badge
+  const badge = document.getElementById('qsVoidedBadge');
+  if(badge) badge.style.display = 'none';
+
+  // Scroll to top so user sees success panel
+  document.querySelector('.main')?.scrollTo({top:0, behavior:'smooth'});
 }
 
 // ── PRINT QUICK SHIP LABEL ────────────────────────────────────
@@ -3508,6 +3653,160 @@ ${data.toAddr2 ? `^FO20,${tearY+(data.toCompany?458:418)}^A0N,32,32^FD${data.toA
 ^XZ
   `.trim();
 }
+
+// ── VOID / REFUND LABEL ───────────────────────────────────────
+// Carrier-aware: UPS/FedEx void instantly with no charge.
+// USPS goes through Shippo refund flow (charges refunded in 14-21 days).
+let pendingVoidContext = null; // { trackingNumber, carrier, transactionId, source }
+
+function confirmVoidLabel(){
+  if(!qsLabelData || !qsLabelData.trackingNumber){
+    toast('No label to void','error');
+    return;
+  }
+  if(qsLabelData.voided){
+    toast('This label has already been voided','info');
+    return;
+  }
+
+  pendingVoidContext = {
+    trackingNumber: qsLabelData.trackingNumber,
+    carrier:        (qsLabelData.carrier || 'UPS').toLowerCase(),
+    transactionId:  qsLabelData.transactionId || null,
+    source:         'quickship',
+  };
+
+  openVoidModal(pendingVoidContext);
+}
+
+function openVoidModal(ctx){
+  const carrier = ctx.carrier;
+  const isUSPS  = carrier === 'usps';
+
+  const titleEl     = document.getElementById('voidModalTitle');
+  const bodyEl      = document.getElementById('voidModalBody');
+  const trackingEl  = document.getElementById('voidModalTracking');
+  const confirmText = document.getElementById('voidModalConfirmText');
+  const carrierLbl  = document.getElementById('voidModalCarrierLabel');
+
+  // Format tracking number with spaces
+  const tnSpaced = ctx.trackingNumber.replace(/(.{4})/g,'$1 ').trim();
+
+  if(isUSPS){
+    titleEl.textContent = 'Request USPS refund?';
+    bodyEl.innerHTML = `
+      <p style="margin-bottom:10px"><strong style="color:var(--text)">USPS labels charge immediately.</strong> When you purchase a USPS label through Shippo, your Shippo balance is charged right away.</p>
+      <p style="margin-bottom:10px">Requesting a refund submits a request to USPS. They review unused labels and typically issue refunds within <strong>14–21 days</strong> if the label was never scanned.</p>
+      <p style="color:var(--muted);font-size:12px">If the package was already scanned, USPS will deny the refund.</p>
+    `;
+    confirmText.textContent = 'Request refund';
+    carrierLbl.textContent  = 'USPS Tracking number';
+  } else {
+    titleEl.textContent = `Void ${carrier.toUpperCase()} label?`;
+    const carrierName = carrier === 'fedex' ? 'FedEx' : 'UPS';
+    bodyEl.innerHTML = `
+      <p style="margin-bottom:10px"><strong style="color:var(--text)">${carrierName} only charges when the package is scanned.</strong> Voiding this label now means no charge will ever be applied.</p>
+      <p style="margin-bottom:10px">This action is instant. The tracking number will be cancelled with ${carrierName} and the label is no longer valid.</p>
+      <p style="color:var(--muted);font-size:12px">If you've already handed the package to ${carrierName}, do not void — let it ship.</p>
+    `;
+    confirmText.textContent = `Yes, void it`;
+    carrierLbl.textContent  = `${carrierName} Tracking number`;
+  }
+
+  trackingEl.textContent = tnSpaced;
+
+  document.getElementById('voidModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeVoidModal(){
+  document.getElementById('voidModal').classList.remove('open');
+  document.body.style.overflow = '';
+  pendingVoidContext = null;
+
+  // Re-enable the confirm button in case it was disabled
+  const btn = document.getElementById('voidModalConfirmBtn');
+  if(btn){ btn.disabled = false; }
+}
+
+async function executeVoidLabel(){
+  if(!pendingVoidContext){ closeVoidModal(); return; }
+
+  const ctx = pendingVoidContext;
+  const btn = document.getElementById('voidModalConfirmBtn');
+
+  btn.disabled = true;
+  document.getElementById('voidModalConfirmText').textContent = 'Processing...';
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/void', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${token||'demo_token'}`,
+      },
+      body: JSON.stringify({
+        carrier:        ctx.carrier,
+        trackingNumber: ctx.trackingNumber,
+        transactionId:  ctx.transactionId,
+      }),
+    });
+
+    const data = await res.json();
+
+    if(!res.ok || !data.success){
+      throw new Error(data.error || 'Void request failed');
+    }
+
+    // Success — mark as voided and close modal
+    if(ctx.source === 'quickship' && qsLabelData){
+      qsLabelData.voided = true;
+      // Update success panel
+      const voidBtn = document.getElementById('qsVoidBtn');
+      if(voidBtn){
+        voidBtn.disabled    = true;
+        voidBtn.style.opacity = '0.4';
+        voidBtn.innerHTML   = ctx.carrier === 'usps' ? 'Refund requested' : 'Voided ✓';
+      }
+      const badge = document.getElementById('qsVoidedBadge');
+      if(badge){
+        badge.style.display = 'block';
+        badge.textContent   = ctx.carrier === 'usps' ? 'REFUND REQUESTED' : 'VOIDED';
+      }
+    }
+
+    if(ctx.source === 'tracking'){
+      const trackVoidBtn = document.getElementById('trackingVoidBtn');
+      if(trackVoidBtn){
+        trackVoidBtn.disabled = true;
+        trackVoidBtn.style.opacity = '0.4';
+        trackVoidBtn.textContent = ctx.carrier === 'usps' ? 'Refund requested' : 'Voided ✓';
+      }
+    }
+
+    closeVoidModal();
+    toast(`✓ ${data.result?.userMessage || 'Label voided successfully'}`, 'success');
+
+  } catch(err){
+    console.error('Void error:', err);
+    btn.disabled = false;
+    document.getElementById('voidModalConfirmText').textContent = ctx.carrier === 'usps' ? 'Request refund' : 'Yes, void it';
+    toast(`✗ ${err.message}`, 'error');
+  }
+}
+
+// Called from the Tracking page
+function confirmVoidFromTracking(trackingNumber, carrier, transactionId){
+  pendingVoidContext = {
+    trackingNumber,
+    carrier:        (carrier || 'ups').toLowerCase(),
+    transactionId:  transactionId || null,
+    source:         'tracking',
+  };
+  openVoidModal(pendingVoidContext);
+}
+
 
 function resetQuickShip(){
   qsLabelData = null;
