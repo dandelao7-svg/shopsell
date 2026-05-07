@@ -986,8 +986,15 @@ app.post('/api/shipping/label', async (req, res) => {
         reference: orderId,
         billing: billingInfo,
       });
+    } else if(carrier === 'usps') {
+      label = await carriers.usps.createShipment({
+        shipper, recipient,
+        package: pkg,
+        serviceToken: serviceType || 'usps_priority',
+        reference: orderId,
+      });
     } else {
-      return res.status(400).json({ error: 'Unsupported carrier. Use ups or fedex.' });
+      return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
     }
 
     // Save shipment record to database
