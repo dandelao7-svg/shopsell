@@ -931,7 +931,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
    POST /api/shipping/return-label — create return label
    GET  /api/shipping/track/:carrier/:tracking — track shipment
    POST /api/shipping/pickup       — schedule UPS pickup
-   POST /api/shipping/void         — void/cancel a label
+   POST /api/shipping/void         — void/cancel/refund a label
    GET  /api/shipping/carriers/test — test carrier connections
    ============================================================ */
 
@@ -1258,28 +1258,56 @@ app.post('/api/shipping/verify-account', async (req, res) => {
   }
 });
 
-// VOID / CANCEL LABEL
-app.post('/api/shipping/void', requireAuth, async (req, res) => {
+// VOID / CANCEL / REFUND LABEL
+// Carrier-aware:
+//   - UPS:   instant void, no charge if package never scanned
+//   - FedEx: instant cancel, no charge if package never scanned
+//   - USPS:  refund request through Shippo (charges immediately, refund in 14-21 days)
+app.post('/api/shipping/void', async (req, res) => {
   try {
-    const { carrier, trackingNumber } = req.body;
+    const { carrier, trackingNumber, transactionId } = req.body;
 
-    if(!carrier || !trackingNumber) {
+    if (!carrier || !trackingNumber) {
       return res.status(400).json({ error: 'carrier and trackingNumber are required.' });
     }
 
     let result;
-    if(carrier === 'ups') {
+
+    if (carrier === 'ups') {
       result = await carriers.ups.voidShipment(trackingNumber);
-    } else if(carrier === 'fedex') {
+      result.carrier      = 'ups';
+      result.action       = 'voided';
+      result.userMessage  = 'UPS label voided. No charge applied since package was never scanned.';
+
+    } else if (carrier === 'fedex') {
       result = await carriers.fedex.cancelShipment(trackingNumber);
+      result.carrier      = 'fedex';
+      result.action       = 'cancelled';
+      result.userMessage  = 'FedEx label cancelled. No charge applied since package was never scanned.';
+
+    } else if (carrier === 'usps') {
+      // USPS via Shippo: requires the transactionId from when the label was created.
+      // Shippo charges immediately on label purchase — refund is requested from USPS.
+      if (!transactionId) {
+        return res.status(400).json({
+          error: 'USPS refunds require a transactionId. Pass the Shippo transactionId from when the label was created.'
+        });
+      }
+      result = await carriers.usps.refundLabel(transactionId);
+      result.carrier      = 'usps';
+      result.action       = 'refund_requested';
+      result.userMessage  = 'Refund requested through Shippo. USPS reviews unused labels — refund typically issued in 14-21 days if approved.';
+
     } else {
-      return res.status(400).json({ error: 'Unsupported carrier.' });
+      return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
     }
 
+    console.log(`Label ${result.action}: ${carrier.toUpperCase()} ${trackingNumber}`);
     res.json({ success: true, result });
-  } catch(err) {
-    console.error('Void error:', err);
-    res.status(500).json({ error: 'Failed to void label: '+err.message });
+
+  } catch (err) {
+    console.error('Void/refund error:', err);
+    res.status(500).json({ error: 'Failed to void/refund label: ' + err.message });
   }
 });
 
