@@ -140,9 +140,6 @@ class UPS {
               Weight:            String(pkg.weight || 1),
             },
           },
-          ...(reference ? {
-            ReferenceNumber: { Code: '00', Value: String(reference).slice(0, 35) },
-          } : {}),
         },
         LabelSpecification: {
           LabelImageFormat: { Code: labelFormat || 'GIF', Description: labelFormat || 'GIF' },
