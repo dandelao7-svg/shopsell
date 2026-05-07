@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2353,6 +2353,18 @@ document.addEventListener('click', e=>{
   }
 });
 // US ZIP code → city/state lookup table (USPS verified)
+// ── MOCK TRACKING NUMBERS (carrier-appropriate) ───────────────
+function generateMockTracking(carrier){
+  const r = () => Math.random().toString(36).toUpperCase().slice(2,10);
+  const n = () => Math.floor(Math.random()*90000000+10000000);
+  switch((carrier||'ups').toLowerCase()){
+    case 'ups':   return `1Z${r()}${Math.floor(Math.random()*9000+1000)}`;
+    case 'fedex': return `${n()}${n()}`;
+    case 'usps':  return `9400111899223${Math.floor(Math.random()*90000000+10000000)}`;
+    default:      return `1Z${r()}${Math.floor(Math.random()*9000+1000)}`;
+  }
+}
+
 // ── SAVED CUSTOMERS ───────────────────────────────────────────
 let savedCustomers = JSON.parse(localStorage.getItem('savedCustomers') || '[]');
 
@@ -2970,13 +2982,6 @@ async function generateQuickShipLabel(){
   }
 
   const carrier  = document.getElementById('qs-carrier').value;
-  const service  = document.getElementById('qs-service').value;
-  const btn      = document.getElementById('qsSubmitBtn');
-  btn.disabled   = true;
-  btn.textContent= 'Generating label...';
-
-  // Capture form data for label printing
-  qsLabelData = {
     fromName:  document.getElementById('qs-from-name').value,
     fromAddr:  document.getElementById('qs-from-addr').value,
     fromCity:  document.getElementById('qs-from-city').value,
@@ -3055,13 +3060,12 @@ async function generateQuickShipLabel(){
       qsLabelData.currency       = data.label.currency;
       qsLabelData.serviceName    = data.label.serviceName || qsLabelData.service;
     } else {
-      // Use demo tracking number if API doesn't return one
-      qsLabelData.trackingNumber = `1Z${Math.random().toString(36).toUpperCase().slice(2,10)}${Math.floor(Math.random()*9000+1000)}`;
+      qsLabelData.trackingNumber = generateMockTracking(carrier);
       qsLabelData.serviceName    = qsLabelData.service;
     }
   } catch(err) {
     console.error('Quick ship error:', err);
-    qsLabelData.trackingNumber = `1Z${Math.random().toString(36).toUpperCase().slice(2,10)}${Math.floor(Math.random()*9000+1000)}`;
+    qsLabelData.trackingNumber = generateMockTracking(carrier);
     qsLabelData.serviceName    = qsLabelData.service;
   }
 
