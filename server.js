@@ -957,6 +957,7 @@ app.post('/api/shipping/label', async (req, res) => {
       serviceCode,
       serviceType,
       labelFormat,
+      billing,
     } = req.body;
 
     if(!shipper || !recipient || !pkg) {
