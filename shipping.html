@@ -421,6 +421,11 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           </div>
         </div>
       </div>
+      <!-- ACTIVE PRINT PROFILE PILL -->
+      <button onclick="showPage('settings')" id="topbarPrintProfile" style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;color:var(--text2);max-width:170px" title="Click to change in Settings">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <span id="topbarPrintProfileLabel" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-weight:500">Standard Paper</span>
+      </button>
       <button class="topbar-btn" onclick="toast('Exporting orders to CSV...','info')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export
@@ -1274,6 +1279,23 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 
       <div>
         <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Shipping preferences</div>
+
+        <!-- PRINT PROFILES -->
+        <div class="settings-card" style="margin-bottom:1rem">
+          <div class="settings-hd" style="display:flex;align-items:center;justify-content:space-between">
+            <span>🖨️ Print profiles</span>
+            <span id="activePrintProfileName" style="font-size:11px;font-weight:600;color:var(--green)">Standard Paper</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.6">
+            Configure where and how labels are printed. The active profile is used everywhere — Quick Ship, Orders, Returns. Switch between profiles as needed.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px" id="printProfilesList"></div>
+          <button onclick="addPrintProfile()" style="width:100%;background:var(--bg3);border:1px dashed var(--border2);color:var(--text2);padding:9px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add print profile
+          </button>
+          <button class="api-save" style="width:100%;padding:9px;border-radius:8px;font-size:13px" onclick="savePrintProfiles()">Save print profiles</button>
+        </div>
 
         <!-- ZEBRA PRINTER SETUP -->
         <div class="settings-card" style="margin-bottom:1rem">
@@ -2328,6 +2350,163 @@ document.addEventListener('click', e=>{
   }
 });
 
+// ── PRINT PROFILES ────────────────────────────────────────────
+// Each profile defines HOW labels print:
+//   - paperType: 'standard' (8.5×11) or 'thermal-4x6' or 'thermal-4x8'
+//   - For 4×8: docFields lists which fields show in the top 2" doc label
+const DEFAULT_PRINT_PROFILES = [
+  {
+    id:        'profile-standard',
+    name:      'Standard Paper',
+    paperType: 'standard',         // 8.5×11 letter
+    description:'8.5×11 paper printer — UPS label sized to 4×6 area on the page',
+    isDefault: true,
+    docFields: { tracking:true, order:true, po:false, sku:false, ref:false, weight:false, customer:false, notes:false },
+  },
+  {
+    id:        'profile-thermal-4x6',
+    name:      'Thermal 4×6 (Zebra)',
+    paperType: 'thermal-4x6',
+    description:'4×6 thermal label — sent directly to Zebra printer via Browser Print',
+    isDefault: false,
+    docFields: { tracking:true, order:true, po:false, sku:false, ref:false, weight:false, customer:false, notes:false },
+  },
+  {
+    id:        'profile-thermal-4x8',
+    name:      'Thermal 4×8 (label + doc)',
+    paperType: 'thermal-4x8',
+    description:'4×8 thermal label — top 2" is a tear-off doc label with order details',
+    isDefault: false,
+    docFields: { tracking:true, order:true, po:false, sku:false, ref:false, weight:true, customer:true, notes:false },
+  },
+];
+
+let printProfiles = JSON.parse(localStorage.getItem('printProfiles') || 'null') || DEFAULT_PRINT_PROFILES;
+
+// Make sure exactly one profile is the active default
+function getActivePrintProfile(){
+  return printProfiles.find(p => p.isDefault) || printProfiles[0];
+}
+
+function renderPrintProfilesList(){
+  const el = document.getElementById('printProfilesList');
+  if(!el) return;
+
+  el.innerHTML = printProfiles.map((p,i) => {
+    const isStandard = p.paperType === 'standard';
+    const isThermal4x8 = p.paperType === 'thermal-4x8';
+    const paperTypeLabel = {
+      'standard':    'Standard Paper 8.5×11',
+      'thermal-4x6': 'Thermal Label 4×6',
+      'thermal-4x8': 'Thermal Label 4×8 (label + doc)',
+    }[p.paperType] || p.paperType;
+
+    return `
+      <div style="background:var(--bg2);border-radius:9px;border:1px solid ${p.isDefault?'var(--green)':'var(--border)'};padding:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${p.isDefault?'var(--green)':'var(--muted)'}"></div>
+            <span style="font-size:13px;font-weight:600;color:var(--text)">${p.name}</span>
+            ${p.isDefault ? '<span style="background:var(--green-bg);color:var(--green);font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px">Active</span>' : ''}
+          </div>
+          <div style="display:flex;gap:6px">
+            ${!p.isDefault ? `<button onclick="setActivePrintProfile(${i})" style="background:none;border:1px solid var(--border);color:var(--muted);padding:4px 8px;border-radius:5px;font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif">Set active</button>` : ''}
+            ${printProfiles.length > 1 ? `<button onclick="deletePrintProfile(${i})" style="background:none;border:1px solid var(--border);color:var(--muted);width:24px;height:24px;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>` : ''}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div class="form-field" style="margin-bottom:0">
+            <label>Profile name</label>
+            <input type="text" value="${p.name}" onchange="updatePrintProfile(${i},'name',this.value)"
+              style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:'Outfit',sans-serif;font-size:12px;outline:none;width:100%">
+          </div>
+          <div class="form-field" style="margin-bottom:0">
+            <label>Paper / Label size</label>
+            <select onchange="updatePrintProfile(${i},'paperType',this.value)"
+              style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:'Outfit',sans-serif;font-size:12px;outline:none;width:100%">
+              <option value="standard"    ${p.paperType==='standard'?'selected':''}>Standard Paper 8.5×11</option>
+              <option value="thermal-4x6" ${p.paperType==='thermal-4x6'?'selected':''}>Thermal 4×6 (Zebra)</option>
+              <option value="thermal-4x8" ${p.paperType==='thermal-4x8'?'selected':''}>Thermal 4×8 (label + doc)</option>
+            </select>
+          </div>
+        </div>
+        ${isThermal4x8 ? `
+          <div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:6px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Doc label fields (top 2 inches)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.tracking?'checked':''} onchange="updateDocField(${i},'tracking',this.checked)" style="accent-color:var(--accent)"> Tracking #</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.order?'checked':''}    onchange="updateDocField(${i},'order',this.checked)" style="accent-color:var(--accent)"> Order #</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.po?'checked':''}       onchange="updateDocField(${i},'po',this.checked)" style="accent-color:var(--accent)"> PO #</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.sku?'checked':''}      onchange="updateDocField(${i},'sku',this.checked)" style="accent-color:var(--accent)"> SKU</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.ref?'checked':''}      onchange="updateDocField(${i},'ref',this.checked)" style="accent-color:var(--accent)"> Customer ref</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.weight?'checked':''}   onchange="updateDocField(${i},'weight',this.checked)" style="accent-color:var(--accent)"> Weight</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.customer?'checked':''} onchange="updateDocField(${i},'customer',this.checked)" style="accent-color:var(--accent)"> Customer name</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" ${p.docFields?.notes?'checked':''}    onchange="updateDocField(${i},'notes',this.checked)" style="accent-color:var(--accent)"> Notes / Service</label>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--muted);line-height:1.5">These print on the top 2-inch tear-off doc label. The bottom 6 inches is the carrier shipping label.</div>
+          </div>
+        ` : ''}
+        <div style="margin-top:8px;font-size:11px;color:var(--muted);line-height:1.4">${p.description||paperTypeLabel}</div>
+      </div>
+    `;
+  }).join('');
+
+  updateActivePrintProfileDisplay();
+}
+
+function updatePrintProfile(idx, field, val){
+  printProfiles[idx][field] = val;
+  // Re-render so doc fields panel toggles in/out when paperType changes
+  if(field === 'paperType') renderPrintProfilesList();
+}
+
+function updateDocField(idx, field, checked){
+  if(!printProfiles[idx].docFields) printProfiles[idx].docFields = {};
+  printProfiles[idx].docFields[field] = !!checked;
+}
+
+function setActivePrintProfile(idx){
+  printProfiles.forEach((p,i) => p.isDefault = i===idx);
+  renderPrintProfilesList();
+  toast(`Active print profile: ${printProfiles[idx].name}`,'success');
+}
+
+function deletePrintProfile(idx){
+  if(printProfiles.length <= 1){ toast('You need at least one print profile','error'); return; }
+  if(printProfiles[idx].isDefault) printProfiles[0].isDefault = true;
+  printProfiles.splice(idx,1);
+  renderPrintProfilesList();
+}
+
+function addPrintProfile(){
+  printProfiles.push({
+    id:        'profile-'+Date.now(),
+    name:      'New profile',
+    paperType: 'standard',
+    description:'',
+    isDefault: false,
+    docFields: { tracking:true, order:true, po:false, sku:false, ref:false, weight:false, customer:false, notes:false },
+  });
+  renderPrintProfilesList();
+  document.getElementById('printProfilesList')?.lastElementChild?.scrollIntoView({behavior:'smooth'});
+}
+
+function savePrintProfiles(){
+  localStorage.setItem('printProfiles', JSON.stringify(printProfiles));
+  updateActivePrintProfileDisplay();
+  toast('Print profiles saved ✓','success');
+}
+
+function updateActivePrintProfileDisplay(){
+  const active = getActivePrintProfile();
+  const topbarLabel = document.getElementById('topbarPrintProfileLabel');
+  const settingsLabel = document.getElementById('activePrintProfileName');
+  if(topbarLabel)   topbarLabel.textContent   = active.name;
+  if(settingsLabel) settingsLabel.textContent = active.name;
+}
+
 // ── MOCK TRACKING NUMBERS (carrier-appropriate) ───────────────
 function generateMockTracking(carrier){
   const r = () => Math.random().toString(36).toUpperCase().slice(2,10);
@@ -3062,21 +3241,30 @@ async function generateQuickShipLabel(){
 }
 
 // ── PRINT QUICK SHIP LABEL ────────────────────────────────────
-// THE FIX: This now displays the real UPS label image (with real
-// barcode + maxicode) instead of drawing a fake one.
+// Branches based on the active print profile:
+//   - 'standard'    → real UPS GIF in iframe, rotated upright on 8.5×11
+//   - 'thermal-4x6' → ZPL sent to Zebra printer
+//   - 'thermal-4x8' → ZPL with top 2" doc label + bottom 6" shipping label
 function printQSLabel(){
   if(!qsLabelData){ toast('No label to print','error'); return; }
 
-  // If Zebra is configured and connected — send ZPL directly
-  if(zebraConfig.configured && zebraPrinter){
-    const zpl = generateZPL(qsLabelData);
+  const profile = getActivePrintProfile();
+  const paperType = profile.paperType || 'standard';
+
+  // ── THERMAL PROFILES (4×6 or 4×8) ─────────────────────────
+  if(paperType === 'thermal-4x6' || paperType === 'thermal-4x8'){
+    if(!zebraPrinter){
+      toast(`✗ "${profile.name}" requires a connected Zebra printer. Configure it in Settings → Zebra label printer.`,'error');
+      return;
+    }
+    const zpl = paperType === 'thermal-4x8'
+      ? generateZPL4x8(qsLabelData, profile)
+      : generateZPL(qsLabelData);
     sendToZebra(zpl);
     return;
   }
 
-  // ── REAL CARRIER LABEL (preferred path) ──────────────────────
-  // UPS returns base64 GIF in labelImage; FedEx returns a URL in labelUrl.
-  // Render the real image — this is what gives us a scannable barcode + maxicode.
+  // ── STANDARD PAPER (8.5×11) — real carrier label in iframe ─
   if(qsLabelData.labelImage || qsLabelData.labelUrl){
     const imgSrc = qsLabelData.labelImage
       ? `data:image/gif;base64,${qsLabelData.labelImage}`
@@ -3086,15 +3274,41 @@ function printQSLabel(){
       <!DOCTYPE html><html><head><title>Label ${qsLabelData.trackingNumber||''}</title>
       <style>
         *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:Arial,sans-serif;background:#fff;display:flex;justify-content:center;padding:20px}
-        img{max-width:4in;height:auto;display:block}
+        html,body{background:#fff;font-family:Arial,sans-serif}
+        /* UPS returns the label image in landscape orientation (6in wide × 4in tall)
+           designed for thermal label printers. We rotate it -90° so it prints
+           upright on standard 8.5×11 paper, sized to 4in × 6in. */
+        .page{
+          width:8.5in;
+          min-height:11in;
+          padding:0.5in 0;
+          display:flex;
+          justify-content:center;
+        }
+        .label-box{
+          width:4in;
+          height:6in;
+          position:relative;
+          overflow:hidden;
+        }
+        .label-box img{
+          width:6in;
+          height:4in;
+          position:absolute;
+          top:50%;
+          left:50%;
+          transform:translate(-50%,-50%) rotate(-90deg);
+        }
         @media print{
-          @page{size:4in 6in;margin:0}
-          body{padding:0}
-          img{width:4in;height:6in}
+          @page{size:letter portrait;margin:0}
+          .page{padding:0.5in 0;width:8.5in;min-height:11in}
         }
       </style></head><body>
-        <img src="${imgSrc}" alt="Shipping label">
+        <div class="page">
+          <div class="label-box">
+            <img src="${imgSrc}" alt="Shipping label">
+          </div>
+        </div>
       </body></html>
     `;
 
@@ -3110,7 +3324,6 @@ function printQSLabel(){
     iframe.contentDocument.write(realLabelHTML);
     iframe.contentDocument.close();
 
-    // Wait for image to load before printing
     const printWhenReady = () => {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
@@ -3126,8 +3339,6 @@ function printQSLabel(){
   }
 
   // ── FALLBACK: drawn label (no real image returned) ───────────
-  // Should rarely happen. If it does, warn the user — drawn labels
-  // aren't scannable by carriers.
   toast('⚠ No label image from carrier — printing drawn fallback (may not be scannable)','error');
 
   const tn = qsLabelData.trackingNumber || 'XXXXXXXXXX';
@@ -3220,6 +3431,84 @@ function printQSLabel(){
   }, 400);
 }
 
+// ── ZPL FOR 4×8 LABEL (top 2" doc label + bottom 6" shipping) ─
+// 203 dpi standard: 4"×8" = 812 × 1624 dots
+// Top 2" = doc label (rows 0-406 dots), bottom 6" = shipping label
+function generateZPL4x8(data, profile){
+  const tn       = data.trackingNumber || 'XXXXXXXXXX';
+  const carrier  = data.carrier || 'UPS';
+  const service  = data.serviceName || 'Ground';
+  const date     = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  const fields   = profile?.docFields || {};
+
+  // Build doc label content lines from configured fields
+  const docLines = [];
+  if(fields.tracking) docLines.push({ label:'TRACKING', value: tn });
+  if(fields.order)    docLines.push({ label:'ORDER',    value: data.ref || '—' });
+  if(fields.po)       docLines.push({ label:'PO',       value: data.po  || '—' });
+  if(fields.sku)      docLines.push({ label:'SKU',      value: data.sku || '—' });
+  if(fields.ref)      docLines.push({ label:'CUST REF', value: data.customerRef || data.ref || '—' });
+  if(fields.weight)   docLines.push({ label:'WEIGHT',   value: `${data.weight} lbs` });
+  if(fields.customer) docLines.push({ label:'CUSTOMER', value: data.toName || '—' });
+  if(fields.notes)    docLines.push({ label:'SERVICE',  value: service });
+
+  // Render doc lines as ZPL text rows (simple two-col layout in top 2")
+  let docZpl = `^FO20,20^A0N,28,28^FDDOC LABEL — ${date}^FS\n`;
+  docZpl += `^FO20,55^GB772,2,2^FS\n`; // separator under header
+  let y = 75;
+  docLines.slice(0,7).forEach(line => {
+    docZpl += `^FO20,${y}^A0N,22,22^FD${line.label}:^FS\n`;
+    docZpl += `^FO180,${y}^A0N,22,22^FD${(line.value||'').slice(0,40)}^FS\n`;
+    y += 32;
+  });
+
+  // Tear-off perforation indicator at 2" (406 dots)
+  const tearY = 406;
+
+  // Shipping label section (bottom 6" — rows 416-1624)
+  return `
+^XA
+^CI28
+^PW812
+^LL1624
+^LH0,0
+
+${docZpl}
+
+^FO0,${tearY}^GB812,2,2^FS
+^FO330,${tearY-12}^A0N,18,18^FD✄ TEAR HERE ✄^FS
+
+^FO20,${tearY+30}^GB772,80,80^FS
+^FO30,${tearY+38}^A0N,60,60^FD${carrier}^FS
+^FO500,${tearY+40}^A0N,28,28^FD${service}^FS
+^FO500,${tearY+75}^A0N,22,22^FD${date}^FS
+
+^FO20,${tearY+125}^A0N,22,22^FDFROM^FS
+^FO20,${tearY+152}^A0N,30,30^FD${data.fromName||''}^FS
+^FO20,${tearY+188}^A0N,26,26^FD${data.fromAddr||''}^FS
+^FO20,${tearY+220}^A0N,26,26^FD${data.fromCity||''}, ${data.fromState||''} ${data.fromZip||''}^FS
+
+^FO20,${tearY+275}^GB772,3,3^FS
+
+^FO20,${tearY+290}^A0N,22,22^FDSHIP TO${data.residential?' [RESIDENTIAL]':''}^FS
+^FO20,${tearY+320}^A0N,45,45^FD${data.toName||''}^FS
+${data.toCompany ? `^FO20,${tearY+372}^A0N,32,32^FD${data.toCompany}^FS` : ''}
+^FO20,${tearY+(data.toCompany?410:372)}^A0N,40,40^FD${data.toAddr||''}^FS
+${data.toAddr2 ? `^FO20,${tearY+(data.toCompany?458:418)}^A0N,32,32^FD${data.toAddr2}^FS` : ''}
+^FO20,${tearY+(data.toCompany?(data.toAddr2?504:460):(data.toAddr2?464:418))}^A0N,40,40^FD${data.toCity||''}, ${data.toState||''} ${data.toZip||''}^FS
+
+^FO20,${tearY+570}^GB772,3,3^FS
+
+^FO50,${tearY+600}^BCN,120,Y,N,N^FD${tn}^FS
+
+^FO20,${tearY+750}^GB772,3,3^FS
+^FO20,${tearY+768}^A0N,22,22^FDWeight: ${data.weight||''}lbs^FS
+^FO600,${tearY+768}^A0N,22,22^FDNextLao^FS
+
+^XZ
+  `.trim();
+}
+
 function resetQuickShip(){
   qsLabelData = null;
   document.getElementById('qsForm').style.display='block';
@@ -3270,6 +3559,8 @@ fillQuickShipFromAccount();
 renderSavedCustomersDropdown();
 updateServiceOptions();
 renderBoxSizesList();
+renderPrintProfilesList();
+updateActivePrintProfileDisplay();
 
 const savedDims = localStorage.getItem('defaultDims');
 if(savedDims){
