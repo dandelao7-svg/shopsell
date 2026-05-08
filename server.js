@@ -998,8 +998,45 @@ app.post('/api/shipping/label', async (req, res) => {
       return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
     }
 
-    // Save shipment record to database
-    // API CALL: await db.createShipment({ orderId, carrier, ...label });
+    // Save shipment record to the database for the Shipping History page.
+    // We capture the full from/to addresses + label image so the history page
+    // can reprint, void, and email customers without re-calling the carrier API.
+    try {
+      await db.createShipment({
+        sellerId:       null,                              // wire when auth is added
+        orderId:        Number.isFinite(parseInt(orderId)) ? parseInt(orderId) : null,
+        trackingNumber: label.trackingNumber,
+        carrier,
+        serviceCode:    label.serviceCode || serviceCode || serviceType || null,
+        serviceName:    label.serviceName || null,
+        fromName:       shipper.name || '',
+        fromAddr:       shipper.address1 || shipper.address || '',
+        fromCity:       shipper.city || '',
+        fromState:      shipper.state || '',
+        fromZip:        shipper.zip || shipper.postalCode || '',
+        toName:         recipient.name || '',
+        toCompany:      recipient.company || '',
+        toAddr:         recipient.address1 || recipient.address || '',
+        toAddr2:        recipient.address2 || '',
+        toCity:         recipient.city || '',
+        toState:        recipient.state || '',
+        toZip:          recipient.zip || recipient.postalCode || '',
+        toPhone:        recipient.phone || '',
+        toEmail:        recipient.email || '',
+        residential:    !!recipient.residential,
+        weight:         (pkg && pkg.weight) ? String(pkg.weight) : '',
+        totalCharge:    label.totalCharge || null,
+        currency:       label.currency || 'USD',
+        ref:            orderId || '',
+        labelImage:     label.labelImage || null,
+        labelUrl:       label.labelUrl   || null,
+        transactionId:  label.transactionId || null,       // USPS / Shippo refunds need this
+        status:         'created',
+      });
+    } catch(dbErr){
+      // Don't fail the whole request if the DB write fails — the label is real.
+      console.error('Shipment DB write failed (label still valid):', dbErr.message);
+    }
 
     console.log(`Label created: ${carrier.toUpperCase()} ${label.trackingNumber} for order ${orderId}`);
     res.json({ success: true, label });
@@ -1302,12 +1339,41 @@ app.post('/api/shipping/void', async (req, res) => {
       return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
     }
 
+    // Update the shipment status in the database so the Shipping History
+    // page reflects the new state. Don't fail the response if this errors.
+    try {
+      await db.markShipmentVoided(trackingNumber, result.action);
+    } catch(dbErr){
+      console.error('Shipment DB update failed (void at carrier still succeeded):', dbErr.message);
+    }
+
     console.log(`Label ${result.action}: ${carrier.toUpperCase()} ${trackingNumber}`);
     res.json({ success: true, result });
 
   } catch (err) {
     console.error('Void/refund error:', err);
     res.status(500).json({ error: 'Failed to void/refund label: ' + err.message });
+  }
+});
+
+/* ============================================================
+   ── SHIPPING HISTORY ROUTES ──────────────────────────────────
+   GET /api/shipping/history — list shipments for the history page
+   ============================================================ */
+
+app.get('/api/shipping/history', async (req, res) => {
+  try {
+    const limit  = Math.min(parseInt(req.query.limit)  || 200, 1000);
+    const offset = parseInt(req.query.offset) || 0;
+
+    // When auth is wired into shipping routes, switch to getShipmentsBySeller(req.seller.sellerId, ...).
+    // For now we return all recent shipments (acceptable while there's a single seller).
+    const shipments = await db.getRecentShipments({ limit, offset });
+
+    res.json({ shipments, total: shipments.length });
+  } catch (err) {
+    console.error('Get shipping history error:', err);
+    res.status(500).json({ error: 'Failed to load shipping history: ' + err.message });
   }
 });
 

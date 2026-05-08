@@ -2384,6 +2384,8 @@ function showPage(name){
 
   // Refresh page-specific data
   if(name === 'history'){
+    // Force-refresh so user sees the latest shipments after navigating away
+    historyCacheLoaded = false;
     renderHistoryTable();
   }
 }
@@ -3845,113 +3847,86 @@ ${data.toAddr2 ? `^FO20,${tearY+(data.toCompany?458:418)}^A0N,32,32^FD${data.toA
 }
 
 // ── SHIPPING HISTORY ──────────────────────────────────────────
-// Persistent label history stored in localStorage, auto-purged after 120 days.
-// UPS/FedEx/USPS all stop tracking past that, so there's no point keeping older.
-const HISTORY_KEY = 'shippingHistory_v1';
-const HISTORY_RETENTION_DAYS = 120;
-
+// Persistent shipping history backed by the server's `shipments` Postgres table.
+// The server auto-purges shipments older than 120 days (UPS stops tracking past that).
 let historyFilter = 'all';   // all | active | voided | today | week
 let historyPage   = 1;
 const HISTORY_PAGE_SIZE = 25;
 
-// Load history from localStorage, purging anything older than 120 days
-function loadHistory(){
-  let arr = [];
-  try {
-    arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-    if(!Array.isArray(arr)) arr = [];
-  } catch(e){ arr = []; }
+// In-memory cache so we don't hit the API on every filter/search keystroke.
+// Refreshed when: page is opened, label generated, label voided.
+let historyCache = [];
+let historyCacheLoaded = false;
+let historyLoadInFlight = null;
 
-  const cutoff = Date.now() - (HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  const fresh = arr.filter(s => (s.createdAt || 0) > cutoff);
-
-  // Save back if anything was purged
-  if(fresh.length !== arr.length){
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(fresh)); } catch(e){}
+// Fetch shipments from the server. Returns the array.
+async function loadHistory(forceRefresh = false){
+  if(historyCacheLoaded && !forceRefresh){
+    return historyCache;
   }
-  return fresh;
+  // De-dupe concurrent calls
+  if(historyLoadInFlight) return historyLoadInFlight;
+
+  historyLoadInFlight = (async () => {
+    try {
+      const res  = await fetch('/api/shipping/history?limit=500');
+      const data = await res.json();
+      if(data.error) throw new Error(data.error);
+
+      // Normalize server records to the shape the UI expects:
+      // - convert Postgres timestamps to numeric createdAt (ms)
+      // - keep field names already aligned (server camelizes them)
+      historyCache = (data.shipments || []).map(s => ({
+        ...s,
+        createdAt: s.createdAt ? new Date(s.createdAt).getTime() : Date.now(),
+        voidedAt:  s.voidedAt  ? new Date(s.voidedAt).getTime()  : null,
+      }));
+      historyCacheLoaded = true;
+      return historyCache;
+    } catch(err){
+      console.error('Failed to load shipping history:', err);
+      // Return whatever we had (or empty) so the page doesn't break
+      return historyCache;
+    } finally {
+      historyLoadInFlight = null;
+    }
+  })();
+
+  return historyLoadInFlight;
 }
 
-function saveHistory(arr){
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
-    return true;
-  } catch(e){
-    console.error('Failed to save history:', e);
-    return false;
-  }
-}
+// Server saves shipments automatically when /api/shipping/label succeeds.
+// This client-side function just refreshes the cache so the UI shows the new label.
+async function recordShipment(/* data */){
+  // Force-refresh from server so we pick up the newly-created shipment
+  historyCacheLoaded = false;
+  await loadHistory(true);
 
-// Record a shipment in history. Called every time a label is successfully generated.
-function recordShipment(data){
-  if(!data || !data.trackingNumber){ return; }
-
-  const arr = loadHistory();
-
-  // Avoid duplicates if user reprints/regenerates
-  const existing = arr.find(s => s.trackingNumber === data.trackingNumber);
-  if(existing){ return; }
-
-  const record = {
-    trackingNumber: data.trackingNumber,
-    carrier:        (data.carrier || 'UPS').toLowerCase(),
-    serviceName:    data.serviceName || data.service || '',
-    serviceCode:    data.service || '',
-    createdAt:      Date.now(),
-
-    // Sender
-    fromName:  data.fromName  || '',
-    fromAddr:  data.fromAddr  || '',
-    fromCity:  data.fromCity  || '',
-    fromState: data.fromState || '',
-    fromZip:   data.fromZip   || '',
-
-    // Recipient
-    toName:    data.toName    || '',
-    toCompany: data.toCompany || '',
-    toAddr:    data.toAddr    || '',
-    toAddr2:   data.toAddr2   || '',
-    toCity:    data.toCity    || '',
-    toState:   data.toState   || '',
-    toZip:     data.toZip     || '',
-    toPhone:   data.toPhone   || '',
-    toEmail:   data.toEmail   || '',
-    residential: !!data.residential,
-
-    // Package
-    weight:      data.weight || '',
-    totalCharge: data.totalCharge || null,
-    currency:    data.currency || 'USD',
-    ref:         data.ref || '',
-
-    // For reprint and refund
-    labelImage:    data.labelImage || null,
-    labelUrl:      data.labelUrl   || null,
-    transactionId: data.transactionId || null,
-
-    // State
-    status:    'created',     // created | voided | refund_requested
-    voidedAt:  null,
-  };
-
-  arr.unshift(record);             // newest first
-  saveHistory(arr);
-
-  // If history page is open, refresh it
+  // If history page is currently open, re-render with the new data
   const histPage = document.getElementById('page-history');
   if(histPage && histPage.classList.contains('active')){
     renderHistoryTable();
   }
 }
 
-// Mark a tracking number as voided (called after successful void/refund)
-function markHistoryVoided(trackingNumber, action){
-  const arr = loadHistory();
-  const rec = arr.find(s => s.trackingNumber === trackingNumber);
-  if(!rec) return;
-  rec.status   = action === 'refund_requested' ? 'refund_requested' : 'voided';
-  rec.voidedAt = Date.now();
-  saveHistory(arr);
+// Server marks shipments as voided automatically when /api/shipping/void succeeds.
+// This refreshes the cache so the UI shows the new state.
+async function markHistoryVoided(trackingNumber /*, action */){
+  // Optimistic update on the local cache so the UI feels instant
+  const rec = historyCache.find(s => s.trackingNumber === trackingNumber);
+  if(rec){
+    rec.status   = 'voided';
+    rec.voidedAt = Date.now();
+  }
+  // Then force-refresh from server to get authoritative state
+  historyCacheLoaded = false;
+  loadHistory(true).then(() => {
+    const histPage = document.getElementById('page-history');
+    if(histPage && histPage.classList.contains('active')){
+      renderHistoryTable();
+    }
+  });
+
   const histPage = document.getElementById('page-history');
   if(histPage && histPage.classList.contains('active')){
     renderHistoryTable();
@@ -3967,9 +3942,9 @@ function setHistoryFilter(filter, btn){
   renderHistoryTable();
 }
 
-// Apply current filter + search to history
+// Apply current filter + search to history (synchronous — reads cache)
 function getFilteredHistory(){
-  let arr = loadHistory();
+  let arr = historyCache.slice(); // copy so we don't mutate
 
   // Tab filter
   const now = new Date();
@@ -4001,8 +3976,10 @@ function getFilteredHistory(){
   return arr;
 }
 
-function renderHistoryTable(){
-  const all = loadHistory();
+async function renderHistoryTable(){
+  // Make sure we have data. Will return cache if already loaded.
+  await loadHistory();
+  const all = historyCache;
   const filtered = getFilteredHistory();
 
   // Stats
@@ -4121,7 +4098,7 @@ function toggleRowMenu(trackingNumber, btn){
   }
   closeRowMenu();
 
-  const arr = loadHistory();
+  const arr = historyCache;
   const s = arr.find(x => x.trackingNumber === trackingNumber);
   if(!s){ return; }
 
@@ -4188,7 +4165,7 @@ function closeRowMenu(){
 // ── ROW ACTIONS ──────────────────────────────────────────────
 function historyReprint(trackingNumber){
   closeRowMenu();
-  const arr = loadHistory();
+  const arr = historyCache;
   const s = arr.find(x => x.trackingNumber === trackingNumber);
   if(!s){ toast('Shipment not found','error'); return; }
   if(!s.labelImage && !s.labelUrl){
@@ -4231,7 +4208,7 @@ function historyTrack(trackingNumber){
 
 function historyEmailCustomer(trackingNumber){
   closeRowMenu();
-  const arr = loadHistory();
+  const arr = historyCache;
   const s = arr.find(x => x.trackingNumber === trackingNumber);
   if(!s){ toast('Shipment not found','error'); return; }
 
@@ -4263,7 +4240,7 @@ Thanks for shopping with NextLao.
 
 function historyVoid(trackingNumber){
   closeRowMenu();
-  const arr = loadHistory();
+  const arr = historyCache;
   const s = arr.find(x => x.trackingNumber === trackingNumber);
   if(!s){ toast('Shipment not found','error'); return; }
 
