@@ -207,7 +207,11 @@ async function initSchema() {
 }
 
 // Kick off schema init on module load. Don't block, but log errors.
-initSchema().catch(err => console.error('Schema init error:', err));
+// The purge below waits for this to complete before running.
+const schemaReady = initSchema().catch(err => {
+  console.error('Schema init error:', err);
+  throw err;
+});
 
 // ── HELPERS ──────────────────────────────────────────────────
 // Convert snake_case DB rows to camelCase JS objects (matches old API)
@@ -600,8 +604,11 @@ async function purgeOldShipments(retentionDays = 120) {
   return rowCount;
 }
 
-// Run a purge on app startup, then once a day after that
-purgeOldShipments(120).catch(err => console.error('Initial purge error:', err));
+// Run a purge on app startup (after schema is ready), then once a day after that
+schemaReady
+  .then(() => purgeOldShipments(120))
+  .catch(err => console.error('Initial purge error:', err));
+
 setInterval(() => {
   purgeOldShipments(120).catch(err => console.error('Daily purge error:', err));
 }, 24 * 60 * 60 * 1000);
