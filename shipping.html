@@ -1029,53 +1029,16 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
         <div class="tracking-card">
           <div class="tracking-hd">
             <div>
-              <div class="tracking-num-label">UPS Tracking Number</div>
+              <div class="tracking-num-label" id="trackingCarrierLabel">UPS Tracking Number</div>
               <div class="tracking-num" id="trackingNum">1Z999AA10123456784</div>
             </div>
             <div style="text-align:right">
-              <span class="status-pill shipped" style="font-size:12px">In Transit</span>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">Est. delivery: Tomorrow by 8pm</div>
+              <span class="status-pill shipped" id="trackingStatusBadge" style="font-size:12px">—</span>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px" id="trackingEstDelivery"></div>
             </div>
           </div>
-          <div class="tracking-timeline">
-            <div class="tl-item">
-              <div class="tl-dot done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-              <div>
-                <div class="tl-label">Order shipped</div>
-                <div class="tl-desc">Package picked up — Los Angeles, CA</div>
-                <div class="tl-time">Apr 30, 2026 · 9:14 AM</div>
-              </div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-dot done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-              <div>
-                <div class="tl-label">Departed facility</div>
-                <div class="tl-desc">UPS Sort Facility — Commerce, CA</div>
-                <div class="tl-time">Apr 30, 2026 · 11:42 PM</div>
-              </div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-dot current"></div>
-              <div>
-                <div class="tl-label" style="color:var(--accent)">In transit</div>
-                <div class="tl-desc">UPS Hub — Phoenix, AZ</div>
-                <div class="tl-time">May 1, 2026 · 4:22 AM</div>
-              </div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-dot pending"></div>
-              <div>
-                <div class="tl-label" style="color:var(--muted)">Out for delivery</div>
-                <div class="tl-desc">Expected tomorrow morning</div>
-              </div>
-            </div>
-            <div class="tl-item">
-              <div class="tl-dot pending"></div>
-              <div>
-                <div class="tl-label" style="color:var(--muted)">Delivered</div>
-                <div class="tl-desc">Estimated May 2, 2026 by 8:00 PM</div>
-              </div>
-            </div>
+          <div class="tracking-timeline" id="trackingTimeline">
+            <!-- Populated dynamically by trackPackage() -->
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1995,7 +1958,8 @@ let lastTrackedShipment = null;
 
 // ── TRACKING — REAL API CALL ──────────────────────────────────
 async function trackPackage(){
-  const num = document.getElementById('trackingInput').value.trim();
+  // Strip ALL whitespace (UPS labels often display with spaces but the API rejects them)
+  const num = document.getElementById('trackingInput').value.replace(/\s+/g, '');
   if(!num){ toast('Enter a tracking number first','info'); return; }
 
   toast('Looking up tracking info...','info');
@@ -2006,8 +1970,9 @@ async function trackPackage(){
 
   // Detect carrier from tracking number format
   let carrier = 'ups';
-  if(num.startsWith('7') && num.length === 22) carrier = 'fedex';
-  else if(num.length === 22 && num.startsWith('9')) carrier = 'usps';
+  if(/^7/.test(num) && num.length === 22) carrier = 'fedex';
+  else if(num.length === 22 && /^9/.test(num)) carrier = 'usps';
+  else if(/^1Z/i.test(num)) carrier = 'ups';
 
   try {
     const res  = await fetch(`/api/shipping/track/${carrier}/${num}`);
@@ -2015,54 +1980,168 @@ async function trackPackage(){
 
     if(data.error) throw new Error(data.error);
 
-    document.getElementById('trackingNum').textContent = num;
-    document.getElementById('trackingResult').style.display = 'block';
-    document.getElementById('trackingEmpty').style.display  = 'none';
+    // Render the real tracking data into the page
+    renderTrackingResult(num, carrier, data);
 
     // Save context for potential void action
     lastTrackedShipment = { trackingNumber: num, carrier, status: data.status };
 
-    // Show void button if label is unscanned (status indicates "Label Created" or similar)
+    // Show void button if label is unscanned
     showTrackingVoidIfApplicable(data.status, carrier);
 
     if(data.activities && data.activities.length){
       const latestActivity = data.activities[0];
-      toast(`${data.status} — ${latestActivity.location}`,'success');
+      toast(`${data.status} — ${latestActivity.location || ''}`,'success');
     } else {
       toast(`${data.status || 'Tracking info loaded'}`,'success');
     }
 
   } catch(err) {
-    document.getElementById('trackingNum').textContent = num;
-    document.getElementById('trackingResult').style.display = 'block';
-    document.getElementById('trackingEmpty').style.display  = 'none';
-
-    // Without a confirmed status from the API, allow void as a safety option
-    // (user can decide whether label was scanned)
-    lastTrackedShipment = { trackingNumber: num, carrier, status: 'unknown' };
-    showTrackingVoidIfApplicable('label_created', carrier);
-
-    toast('Showing demo tracking (enter a real UPS tracking number for live data)','info');
+    console.error('Tracking error:', err);
+    // API failed — render the number but with an error state. Hide void button.
+    renderTrackingResult(num, carrier, { status: 'Unable to retrieve tracking info', activities: [] });
+    lastTrackedShipment = null;
+    if(voidBtn) voidBtn.style.display = 'none';
+    toast(`Tracking lookup failed: ${err.message}`,'error');
   }
 }
 
-// Show void button on tracking page only if package hasn't been scanned yet
+// Build the tracking card from real API data
+function renderTrackingResult(trackingNumber, carrier, data){
+  // Format tracking number with spaces every 4 chars for display
+  const tnDisplay = trackingNumber.replace(/(.{4})/g,'$1 ').trim();
+
+  document.getElementById('trackingNum').textContent       = tnDisplay;
+  document.getElementById('trackingCarrierLabel').textContent =
+    `${carrier.toUpperCase()} Tracking Number`;
+
+  // Status badge — color it based on the actual status
+  const badge = document.getElementById('trackingStatusBadge');
+  const status = data.status || 'Unknown';
+  badge.textContent = status;
+
+  const s = status.toLowerCase();
+  let badgeClass = 'shipped'; // green default
+  if(/label\s*created|pre[-\s]?shipment|ready\s+for\s+ups|awaiting/.test(s))
+    badgeClass = 'awaiting';   // amber
+  else if(/delivered/.test(s))
+    badgeClass = 'delivered';  // green
+  else if(/transit|departed|arrived|out\s+for\s+delivery|picked\s*up/.test(s))
+    badgeClass = 'shipped';    // green
+  else if(/exception|delay|return|fail/.test(s))
+    badgeClass = 'exception';  // red
+  badge.className = `status-pill ${badgeClass}`;
+
+  // Estimated delivery — only show if available
+  const estEl = document.getElementById('trackingEstDelivery');
+  if(data.estimatedDelivery){
+    estEl.textContent = `Est. delivery: ${data.estimatedDelivery}`;
+    estEl.style.display = 'block';
+  } else {
+    estEl.textContent = '';
+  }
+
+  // Build the timeline from real activities
+  const timeline = document.getElementById('trackingTimeline');
+  const acts = (data.activities || []);
+
+  if(acts.length === 0){
+    // No activities yet — show the single current state
+    timeline.innerHTML = `
+      <div class="tl-item">
+        <div class="tl-dot ${badgeClass==='awaiting' ? 'current' : 'done'}"></div>
+        <div>
+          <div class="tl-label">${status}</div>
+          <div class="tl-desc">${
+            badgeClass === 'awaiting'
+              ? 'Label created — package not yet handed to carrier'
+              : 'No tracking activity yet'
+          }</div>
+        </div>
+      </div>
+    `;
+  } else {
+    // Real activities — newest first from API, render in chronological order
+    timeline.innerHTML = acts.map((a, idx) => {
+      const isCurrent = idx === 0;   // most recent = current
+      const dotClass  = isCurrent ? 'current' : 'done';
+      const labelText = a.description || a.status || '—';
+      const location  = (a.location || '').trim().replace(/^,\s*|,\s*$/g,'');
+      const timeStr   = formatTrackingTime(a.date, a.time);
+      return `
+        <div class="tl-item">
+          <div class="tl-dot ${dotClass}">${isCurrent ? '' : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'}</div>
+          <div>
+            <div class="tl-label" ${isCurrent ? 'style="color:var(--accent)"' : ''}>${labelText}</div>
+            ${location ? `<div class="tl-desc">${location}</div>` : ''}
+            ${timeStr ? `<div class="tl-time">${timeStr}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('trackingResult').style.display = 'block';
+  document.getElementById('trackingEmpty').style.display  = 'none';
+}
+
+// Format UPS-style date "20260507" + time "160443" into readable form
+function formatTrackingTime(date, time){
+  if(!date) return '';
+  let formatted = date;
+  if(/^\d{8}$/.test(date)){
+    const y = date.slice(0,4), m = date.slice(4,6), d = date.slice(6,8);
+    const dt = new Date(`${y}-${m}-${d}T00:00:00`);
+    formatted = dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  }
+  if(time && /^\d{4,6}$/.test(time)){
+    const h = parseInt(time.slice(0,2));
+    const mn = time.slice(2,4);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h === 0 ? 12 : (h > 12 ? h-12 : h);
+    formatted += ` · ${h12}:${mn} ${ampm}`;
+  }
+  return formatted;
+}
+
+// Show void button on tracking page only if package hasn't been scanned yet.
+// Strict rule: only show on confirmed unscanned statuses returned by the
+// carrier API. If we can't confirm, we hide the button.
 function showTrackingVoidIfApplicable(status, carrier){
   const voidBtn = document.getElementById('trackingVoidBtn');
   const voidLbl = document.getElementById('trackingVoidBtnLabel');
   if(!voidBtn) return;
 
-  const s = (status || '').toLowerCase();
-  // Patterns that mean "label created but not yet picked up"
-  const unscanned =
-    s.includes('label') ||
-    s.includes('manifest') ||
-    s.includes('order processed') ||
-    s.includes('shipment ready') ||
-    s.includes('pre-shipment') ||
-    s === 'unknown';
+  const s = (status || '').toLowerCase().trim();
 
-  if(unscanned){
+  // Confirmed unscanned states — covers all real carrier responses for unpicked-up labels:
+  //   UPS:   "Label Created", "Shipment Ready for UPS", "Order Processed: Ready for UPS"
+  //   FedEx: "Label Created", "Shipment information sent to FedEx"
+  //   USPS:  "Pre-Shipment", "Shipping Label Created, USPS Awaiting Item"
+  const isUnscanned =
+    /label\s*created/.test(s) ||
+    /pre[-\s]?shipment/.test(s) ||
+    /shipping\s+label\s+created/.test(s) ||
+    /awaiting\s+(item|pickup|carrier)/.test(s) ||
+    /ready\s+for\s+ups/.test(s) ||
+    /shipment\s+information\s+sent/.test(s) ||
+    /shipment\s+ready/.test(s) ||
+    /manifest(ed)?$/.test(s) ||
+    s === 'manifested';
+
+  // Explicit scanned/in-transit states — NEVER show void button
+  const isScanned =
+    /in\s*transit/.test(s) ||
+    /pickup\s*scan/.test(s) ||
+    /picked\s*up/.test(s) ||
+    /out\s+for\s+delivery/.test(s) ||
+    /delivered/.test(s) ||
+    /departed/.test(s) ||
+    /arrived/.test(s) ||
+    /processing\s+at/.test(s) ||
+    s === 'shipped';
+
+  if(isUnscanned && !isScanned){
     voidBtn.style.display = 'inline-flex';
     voidBtn.disabled      = false;
     voidBtn.style.opacity = '1';
