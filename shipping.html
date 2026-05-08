@@ -541,6 +541,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
               <th>Items</th>
               <th>Weight</th>
               <th>Carrier</th>
+              <th>Tracking #</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -568,6 +569,30 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
               <div style="font-size:11px;color:var(--muted);margin-top:2px" id="sb-order-customer">Jane Smith</div>
             </div>
             <div id="sb-order-status"></div>
+          </div>
+
+          <!-- SHIPMENT CARD (only shown when order has a label) -->
+          <div id="sb-shipment-card" style="display:none;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--bg2)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">Shipment</div>
+              <div id="sb-shipment-status-badge"></div>
+            </div>
+            <div style="font-family:'DM Mono',monospace;font-size:12px;letter-spacing:1.5px;color:var(--text);margin-bottom:8px;word-break:break-all" id="sb-tracking-number">—</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px" id="sb-shipment-service">—</div>
+            <div style="display:flex;gap:6px">
+              <button id="sb-track-btn" onclick="sidebarTrack()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Track
+              </button>
+              <button id="sb-reprint-btn" onclick="sidebarReprint()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Reprint
+              </button>
+              <button id="sb-void-btn" onclick="sidebarVoid()" style="flex:1;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                <span id="sb-void-btn-label">Void</span>
+              </button>
+            </div>
           </div>
 
           <!-- SHIPPING CONFIG -->
@@ -1653,20 +1678,132 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 
 // ── SAMPLE ORDERS ─────────────────────────────────────────────
 // API CALL: Replace with fetch('/api/shipping/orders') from server
-const ORDERS = [
-  {id:'SS-10312',channel:'nextlao',customer:'Sarah Johnson',addr:'456 Oak Ave, Austin TX',items:'Linen Tote Bag × 2',weight:'3.2 lbs',carrier:'ups',status:'awaiting'},
-  {id:'SS-10311',channel:'nextlao',customer:'Michael Chen',addr:'789 Pine St, Seattle WA',items:'Glow Face Serum × 1',weight:'0.8 lbs',carrier:'ups',status:'awaiting'},
-  {id:'SS-10310',channel:'nextlao',customer:'Emma Williams',addr:'321 Elm Rd, Chicago IL',items:'Scented Candle × 3',weight:'4.5 lbs',carrier:'ups',status:'printed'},
-  {id:'SS-10309',channel:'nextlao',customer:'James Rodriguez',addr:'654 Maple Dr, Miami FL',items:'Classic White Tee × 1',weight:'0.6 lbs',carrier:'usps',status:'awaiting'},
-  {id:'SS-10308',channel:'nextlao',customer:'Olivia Martinez',addr:'987 Cedar Ln, Denver CO',items:'Floral Sundress × 1',weight:'1.2 lbs',carrier:'ups',status:'shipped'},
-  {id:'SS-10307',channel:'nextlao',customer:'David Kim',addr:'147 Birch Ave, Portland OR',items:'Leather Wallet × 1',weight:'0.5 lbs',carrier:'fedex',status:'shipped'},
-  {id:'SS-10306',channel:'nextlao',customer:'Lisa Thompson',addr:'258 Willow St, Nashville TN',items:'Ceramic Mug Set × 1',weight:'3.8 lbs',carrier:'ups',status:'shipped'},
-  {id:'AMZ-8841923',channel:'amazon',customer:'Robert Davis',addr:'369 Oak Blvd, Phoenix AZ',items:'Rose Water Mist × 2',weight:'1.4 lbs',carrier:'ups',status:'awaiting'},
-  {id:'AMZ-8841891',channel:'amazon',customer:'Jennifer Wilson',addr:'741 Pine Ave, Atlanta GA',items:'Lip Tint Trio × 1',weight:'0.4 lbs',carrier:'usps',status:'awaiting'},
-  {id:'EBY-992847',channel:'ebay',customer:'Mark Johnson',addr:'852 Elm St, Boston MA',items:'Silk Scrunchie Set × 3',weight:'0.9 lbs',carrier:'ups',status:'awaiting'},
-  {id:'SS-10305',channel:'nextlao',customer:'Amanda Brown',addr:'963 Cedar Rd, Las Vegas NV',items:'Bamboo Cutting Board × 1',weight:'2.1 lbs',carrier:'ups',status:'exception'},
-  {id:'SS-10304',channel:'nextlao',customer:'Chris Taylor',addr:'159 Maple Ln, San Diego CA',items:'Linen Joggers × 1',weight:'1.6 lbs',carrier:'fedex',status:'exception'},
-];
+// ── ORDERS DATA ───────────────────────────────────────────────
+// Real orders are fetched from the database via /api/seller/orders.
+// While loading, ordersData is empty and the table shows a loading state.
+// If the user isn't logged in, we show an empty state with a Log in CTA.
+let ordersData       = [];      // current orders from server
+let ordersShipments  = [];      // matching shipments (joined client-side by ref/orderId)
+let ordersLoaded     = false;
+let ordersLoading    = false;
+
+async function loadOrders(forceRefresh = false){
+  if(ordersLoaded && !forceRefresh) return ordersData;
+  if(ordersLoading) return ordersData;
+
+  ordersLoading = true;
+  try {
+    const token = localStorage.getItem('ss_token');
+    if(!token){
+      ordersData = [];
+      ordersShipments = [];
+      ordersLoaded = true;
+      return ordersData;
+    }
+
+    // Fetch real orders + shipments in parallel
+    const [ordersRes, shipmentsRes] = await Promise.all([
+      fetch('/api/seller/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
+      fetch('/api/shipping/history?limit=500'),
+    ]);
+
+    if(ordersRes.status === 401){
+      ordersData = [];
+      ordersShipments = [];
+      ordersLoaded = true;
+      return ordersData;
+    }
+
+    const ordersJson    = await ordersRes.json();
+    const shipmentsJson = await shipmentsRes.json();
+
+    // Server returns { orders, total, page } from /api/seller/orders
+    const rawOrders = ordersJson.orders || [];
+
+    // Map DB orders to the UI shape the table/sidebar expect
+    ordersData = rawOrders.map(o => mapDbOrderToUI(o));
+    ordersShipments = shipmentsJson.shipments || [];
+
+    // Attach matching shipment to each order
+    ordersData.forEach(o => {
+      const ship = ordersShipments.find(s =>
+        s.orderId == o._dbId ||
+        (s.ref && o._dbId && String(s.ref) === String(o._dbId)) ||
+        (s.ref && String(s.ref) === o.id)
+      );
+      if(ship){
+        o.tracking = ship.trackingNumber;
+        o.carrier  = ship.carrier;
+        o.shipmentStatus = ship.status; // created | voided | refund_requested
+        o.transactionId  = ship.transactionId || null;
+        o.shipment = ship;
+        // Update visible status based on shipment
+        if(ship.status === 'voided' || ship.status === 'refund_requested'){
+          o.status = 'voided';
+        } else if(o.status === 'pending' || o.status === 'processing'){
+          o.status = 'printed';
+        }
+      }
+    });
+
+    ordersLoaded = true;
+    return ordersData;
+  } catch(err){
+    console.error('Failed to load orders:', err);
+    return ordersData;
+  } finally {
+    ordersLoading = false;
+  }
+}
+
+// Map a DB order row to the UI shape the orders table expects.
+function mapDbOrderToUI(o){
+  const customerInfo = o.customerInfo || {};
+  const items = Array.isArray(o.items) ? o.items : [];
+  const itemsLabel = items.length
+    ? items.map(it => `${it.name||'Item'} × ${it.qty||1}`).join(', ')
+    : `${items.length || 0} items`;
+
+  // Status mapping from DB to UI:
+  //   pending/processing → awaiting (no label printed)
+  //   shipped            → shipped
+  //   delivered          → delivered
+  //   cancelled/refunded → exception (visual cue)
+  let uiStatus = 'awaiting';
+  if(o.status === 'shipped')   uiStatus = 'shipped';
+  else if(o.status === 'delivered') uiStatus = 'delivered';
+  else if(o.status === 'cancelled' || o.status === 'refunded') uiStatus = 'exception';
+
+  return {
+    _dbId:    o.id,
+    id:       `SS-${o.id}`,                              // display ID
+    channel:  'nextlao',                                 // we only have one channel for now
+    customer: customerInfo.firstName || customerInfo.lastName
+                ? `${customerInfo.firstName||''} ${customerInfo.lastName||''}`.trim()
+                : (o.customerEmail || 'Customer'),
+    customerEmail: o.customerEmail || customerInfo.email || '',
+    addr:     [
+      customerInfo.address1,
+      customerInfo.city ? `${customerInfo.city}${customerInfo.state ? ', '+customerInfo.state : ''}` : '',
+    ].filter(Boolean).join(', ') || '—',
+    city:     customerInfo.city  || '',
+    state:    customerInfo.state || '',
+    zip:      customerInfo.zip   || '',
+    items:    itemsLabel,
+    rawItems: items,
+    weight:   '— lbs',
+    carrier:  null,                                      // set when shipment exists
+    status:   uiStatus,
+    tracking: null,                                      // set when shipment exists
+    shipment: null,
+    total:    o.total,
+    createdAt: o.createdAt,
+  };
+}
+
+// Used as a fallback so other parts of the codebase that still reference ORDERS
+// don't break. Same shape as ordersData.
+const ORDERS = ordersData;
 
 let selectedOrderId = null;
 let selectedOrders  = new Set();
@@ -1675,7 +1812,7 @@ let qsLabelData = null;
 // ── ORDER SIDEBAR ─────────────────────────────────────────────
 function selectOrder(orderId){
   selectedOrderId = orderId;
-  const order = ORDERS.find(o => o.id === orderId);
+  const order = ordersData.find(o => o.id === orderId);
   if(!order) return;
 
   document.querySelectorAll('#ordersTableBody tr').forEach(tr => {
@@ -1688,6 +1825,45 @@ function selectOrder(orderId){
   document.getElementById('sb-order-id').textContent       = `#${order.id}`;
   document.getElementById('sb-order-customer').textContent = order.customer;
   document.getElementById('sb-order-status').innerHTML     = statusPill(order.status);
+
+  // Populate shipment card if this order has a tracking number
+  const shipmentCard = document.getElementById('sb-shipment-card');
+  if(order.tracking && order.shipment){
+    shipmentCard.style.display = 'block';
+    const tn = order.tracking.replace(/(.{4})/g,'$1 ').trim();
+    document.getElementById('sb-tracking-number').textContent = tn;
+
+    const carrierName = order.carrier === 'fedex' ? 'FedEx'
+                      : order.carrier === 'usps'  ? 'USPS'
+                      : 'UPS';
+    document.getElementById('sb-shipment-service').textContent =
+      `${carrierName}${order.shipment.serviceName ? ' • ' + order.shipment.serviceName : ''}`;
+
+    // Status badge
+    const statusBadgeEl = document.getElementById('sb-shipment-status-badge');
+    if(order.shipmentStatus === 'voided'){
+      statusBadgeEl.innerHTML = `<span class="status-pill exception">Voided</span>`;
+    } else if(order.shipmentStatus === 'refund_requested'){
+      statusBadgeEl.innerHTML = `<span class="status-pill exception">Refund pending</span>`;
+    } else {
+      statusBadgeEl.innerHTML = `<span class="status-pill shipped">Active</span>`;
+    }
+
+    // Disable void button if already voided
+    const voidBtn = document.getElementById('sb-void-btn');
+    const voidLbl = document.getElementById('sb-void-btn-label');
+    if(order.shipmentStatus === 'voided' || order.shipmentStatus === 'refund_requested'){
+      voidBtn.disabled = true;
+      voidBtn.style.opacity = '0.4';
+      voidLbl.textContent = order.shipmentStatus === 'refund_requested' ? 'Refund pending' : 'Voided';
+    } else {
+      voidBtn.disabled = false;
+      voidBtn.style.opacity = '1';
+      voidLbl.textContent = order.carrier === 'usps' ? 'Refund' : 'Void';
+    }
+  } else {
+    shipmentCard.style.display = 'none';
+  }
 
   const weightParts = parseFloat(order.weight)||0;
   const lbs = Math.floor(weightParts);
@@ -1711,6 +1887,36 @@ function selectOrder(orderId){
   ).join('');
 
   document.getElementById('sb-rate').textContent = '—';
+}
+
+// Sidebar shipment card actions — reuse the history page handlers
+function sidebarTrack(){
+  const order = ordersData.find(o => o.id === selectedOrderId);
+  if(!order || !order.tracking){ toast('No tracking number on this order','info'); return; }
+  historyTrack(order.tracking);   // navigates to Tracking page and looks up
+}
+
+function sidebarReprint(){
+  const order = ordersData.find(o => o.id === selectedOrderId);
+  if(!order || !order.tracking){ toast('No label on this order','info'); return; }
+  historyReprint(order.tracking); // reuses the history reprint flow
+}
+
+function sidebarVoid(){
+  const order = ordersData.find(o => o.id === selectedOrderId);
+  if(!order || !order.tracking){ toast('No label to void','info'); return; }
+  if(order.shipmentStatus === 'voided' || order.shipmentStatus === 'refund_requested'){
+    toast('Already voided','info');
+    return;
+  }
+  // Open the same void modal used by Quick Ship and History
+  pendingVoidContext = {
+    trackingNumber: order.tracking,
+    carrier:        order.carrier,
+    transactionId:  order.transactionId || null,
+    source:         'orders',
+  };
+  openVoidModal(pendingVoidContext);
 }
 
 function updateSbServices(){
@@ -1739,7 +1945,7 @@ async function getRate(){
 
 async function createAndPrintFromSidebar(){
   if(!selectedOrderId){ toast('Select an order first','error'); return; }
-  const order = ORDERS.find(o=>o.id===selectedOrderId);
+  const order = ordersData.find(o=>o.id===selectedOrderId);
   if(!order){ return; }
 
   const btn = event.target.closest('button');
@@ -1791,20 +1997,64 @@ let currentFilter = 'all';
 let currentSearch = '';
 
 // ── RENDER ORDERS ─────────────────────────────────────────────
-function renderOrders(){
-  let list = [...ORDERS];
+async function renderOrders(){
+  // Make sure we've fetched orders from the server
+  if(!ordersLoaded && !ordersLoading){
+    // Show loading state while fetching
+    const tbody = document.getElementById('ordersTableBody');
+    if(tbody){
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:3rem;color:var(--muted)">Loading orders...</td></tr>`;
+    }
+    await loadOrders();
+  }
+
+  // Authentication / empty states
+  const token = localStorage.getItem('ss_token');
+  const tbody = document.getElementById('ordersTableBody');
+  if(!tbody) return;
+
+  if(!token){
+    tbody.innerHTML = `
+      <tr><td colspan="9" style="text-align:center;padding:3rem;color:var(--muted)">
+        <div style="font-size:14px;margin-bottom:8px;color:var(--text)">Sign in to view your orders</div>
+        <div style="font-size:12px;margin-bottom:14px">Orders are tied to your seller account.</div>
+        <a href="/login" style="display:inline-block;background:var(--accent);color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:500">Log in</a>
+      </td></tr>`;
+    return;
+  }
+
+  if(ordersData.length === 0){
+    tbody.innerHTML = `
+      <tr><td colspan="9" style="text-align:center;padding:3rem;color:var(--muted)">
+        <div style="font-size:14px;margin-bottom:6px;color:var(--text)">No orders yet</div>
+        <div style="font-size:12px">When customers place orders on your store, they'll show up here.</div>
+      </td></tr>`;
+    return;
+  }
+
+  let list = [...ordersData];
   if(currentFilter !== 'all') list = list.filter(o=>o.status===currentFilter);
   if(currentSearch){
     const q=currentSearch.toLowerCase();
     list=list.filter(o=>
       o.id.toLowerCase().includes(q)||
-      o.customer.toLowerCase().includes(q)||
-      o.items.toLowerCase().includes(q)
+      (o.customer||'').toLowerCase().includes(q)||
+      (o.items||'').toLowerCase().includes(q)||
+      (o.tracking||'').toLowerCase().includes(q)
     );
   }
 
-  const tbody = document.getElementById('ordersTableBody');
-  tbody.innerHTML = list.map(o => `
+  if(list.length === 0){
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:3rem;color:var(--muted)">No orders match this filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(o => {
+    const trackingCell = o.tracking
+      ? `<div style="font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text2)" onclick="event.stopPropagation();historyTrack('${o.tracking}')" title="Click to track" style="cursor:pointer">${(o.tracking||'').replace(/(.{4})/g,'$1 ').trim()}</div>`
+      : `<span style="font-size:11px;color:var(--muted)">—</span>`;
+
+    return `
     <tr onclick="selectOrder('${o.id}')" id="row-${o.id}" style="cursor:pointer" class="${selectedOrderId===o.id?'selected-row':''}">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="order-cb" data-id="${o.id}" onchange="toggleOrder('${o.id}',this)" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer" ${selectedOrders.has(o.id)?'checked':''}></td>
       <td><span class="order-num">#${o.id}</span></td>
@@ -1815,10 +2065,12 @@ function renderOrders(){
       </td>
       <td style="font-size:12px;color:var(--text2)">${o.items}</td>
       <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${o.weight}</td>
-      <td>${carrierPill(o.carrier)}</td>
+      <td>${o.carrier ? carrierPill(o.carrier) : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td>
+      <td>${trackingCell}</td>
       <td>${statusPill(o.status)}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function channelBadge(ch){
@@ -1907,7 +2159,7 @@ function bulkPrint(){
   toast(`Printing ${selectedOrders.size} labels... 🖨️`,'success');
   setTimeout(()=>{
     selectedOrders.forEach(id=>{
-      const o = ORDERS.find(x=>x.id===id);
+      const o = ordersData.find(x=>x.id===id);
       if(o) o.status='printed';
     });
     clearSelection();
@@ -1916,10 +2168,10 @@ function bulkPrint(){
 }
 
 function printSelected(){
-  const awaiting = ORDERS.filter(o=>o.status==='awaiting').length;
+  const awaiting = ordersData.filter(o=>o.status==='awaiting').length;
   toast(`Printing ${awaiting} labels for all awaiting orders... 🖨️`,'success');
   setTimeout(()=>{
-    ORDERS.forEach(o=>{if(o.status==='awaiting')o.status='printed'});
+    ordersData.forEach(o=>{if(o.status==='awaiting')o.status='printed'});
     renderOrders();
   },1500);
 }
@@ -1957,7 +2209,7 @@ async function printLabel(){
   const orderId  = document.getElementById('modalOrderNum').textContent.replace('#','');
   const weight   = document.querySelector('#labelModal input[type="number"]')?.value || 1;
   const service  = document.querySelector('#labelModal select')?.value || 'UPS Ground';
-  const o        = ORDERS.find(x=>x.id===orderId);
+  const o        = ordersData.find(x=>x.id===orderId);
 
   const serviceCodes = {
     'UPS Ground':'03','UPS 3 Day Select':'12',
@@ -2387,6 +2639,11 @@ function showPage(name){
     // Force-refresh so user sees the latest shipments after navigating away
     historyCacheLoaded = false;
     renderHistoryTable();
+  }
+  if(name === 'orders'){
+    // Re-fetch on every navigation so user sees latest order/shipment state
+    ordersLoaded = false;
+    renderOrders();
   }
 }
 
@@ -4433,6 +4690,20 @@ async function executeVoidLabel(){
         trackVoidBtn.style.opacity = '0.4';
         trackVoidBtn.textContent = ctx.carrier === 'usps' ? 'Refund requested' : 'Voided ✓';
       }
+    }
+
+    if(ctx.source === 'orders'){
+      // Update the local order data optimistically, then refresh
+      const order = ordersData.find(o => o.tracking === ctx.trackingNumber);
+      if(order){
+        order.shipmentStatus = data.result?.action === 'refund_requested' ? 'refund_requested' : 'voided';
+        order.status = 'voided';
+      }
+      ordersLoaded = false;
+      loadOrders(true).then(() => {
+        renderOrders();
+        if(selectedOrderId) selectOrder(selectedOrderId);
+      });
     }
 
     // Update the persistent history regardless of where the void was triggered
