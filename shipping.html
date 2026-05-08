@@ -284,6 +284,18 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .mini-bar.accent{background:rgba(230,57,70,0.3)}
 .mini-bar.accent:hover{background:var(--accent)}
 
+/* ── ROW ACTION MENU ── */
+.row-action-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text2);width:30px;height:30px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.row-action-btn:hover{border-color:var(--accent);color:var(--accent)}
+.row-action-menu{position:absolute;background:var(--card);border:1px solid var(--border2);border-radius:9px;min-width:180px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,0.4);overflow:hidden;font-family:'Outfit',sans-serif}
+.row-action-menu .item{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:12px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border)}
+.row-action-menu .item:last-child{border-bottom:none}
+.row-action-menu .item:hover{background:var(--bg3)}
+.row-action-menu .item.danger{color:var(--accent)}
+.row-action-menu .item.disabled{color:var(--muted);cursor:not-allowed}
+.row-action-menu .item.disabled:hover{background:none}
+.row-action-menu .item svg{width:13px;height:13px;flex-shrink:0}
+
 /* ── TOAST ── */
 .toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--card);border:1px solid var(--border2);color:var(--text);padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;transform:translateY(80px);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);pointer-events:none;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:300px;display:flex;align-items:center;gap:10px}
 .toast.show{transform:translateY(0)}
@@ -326,6 +338,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
     <a class="nav-item" onclick="showPage('tracking')" id="nav-tracking">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       Tracking
+    </a>
+    <a class="nav-item" onclick="showPage('history')" id="nav-history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+      Shipping history
     </a>
     <a class="nav-item" onclick="showPage('pickup')" id="nav-pickup">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -1062,6 +1078,90 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
         <div style="font-size:14px;font-weight:500;margin-bottom:6px">Enter a tracking number above</div>
         <div style="font-size:12px">Track any UPS, FedEx, or USPS shipment</div>
       </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ SHIPPING HISTORY PAGE ═══════════════ -->
+  <div class="page" id="page-history">
+
+    <!-- HISTORY STATS -->
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="stat-card gold">
+        <div class="stat-icon gold">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb500" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="stat-val" id="histStatTotal">0</div>
+        <div class="stat-label">Total labels (last 120 days)</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-icon green">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="stat-val" id="histStatActive">0</div>
+        <div class="stat-label">Active shipments</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon red">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e63946" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        </div>
+        <div class="stat-val" id="histStatVoided">0</div>
+        <div class="stat-label">Voided / refunded</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon blue">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4d9fff" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        </div>
+        <div class="stat-val" id="histStatSpent">$0.00</div>
+        <div class="stat-label">Total shipping spent</div>
+      </div>
+    </div>
+
+    <!-- HISTORY TABLE -->
+    <div class="table-card">
+      <div class="table-hd">
+        <div class="table-title">All shipments</div>
+        <div class="table-actions">
+          <div class="search-bar">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60607a" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="histSearchInput" placeholder="Search tracking #, recipient..." oninput="renderHistoryTable()">
+          </div>
+          <button class="action-btn" onclick="exportHistoryCSV()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div class="filter-tabs">
+        <div class="filter-tab active" id="histTab-all" onclick="setHistoryFilter('all', this)">All <span class="ct" id="histTabCount-all">0</span></div>
+        <div class="filter-tab" id="histTab-active" onclick="setHistoryFilter('active', this)">Active <span class="ct" id="histTabCount-active">0</span></div>
+        <div class="filter-tab" id="histTab-voided" onclick="setHistoryFilter('voided', this)">Voided <span class="ct" id="histTabCount-voided">0</span></div>
+        <div class="filter-tab" id="histTab-today" onclick="setHistoryFilter('today', this)">Today <span class="ct" id="histTabCount-today">0</span></div>
+        <div class="filter-tab" id="histTab-week" onclick="setHistoryFilter('week', this)">Last 7 days <span class="ct" id="histTabCount-week">0</span></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px"></th>
+            <th>Date</th>
+            <th>Recipient</th>
+            <th>Service</th>
+            <th>Tracking #</th>
+            <th>Charge</th>
+            <th>Status</th>
+            <th style="width:60px;text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody">
+          <tr><td colspan="8" style="text-align:center;padding:3rem;color:var(--muted)">No shipments yet. Your generated labels will appear here.</td></tr>
+        </tbody>
+      </table>
+      <div id="histPagination" style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);font-size:12px;color:var(--muted)"></div>
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);margin-top:1rem;text-align:center">
+      Shipments are stored locally for 120 days, after which they are automatically purged (UPS stops tracking after 120 days anyway).
     </div>
   </div>
 
@@ -2268,7 +2368,7 @@ function toggleReveal(id, btn){
 // ── NAVIGATION ────────────────────────────────────────────────
 const pageTitles = {
   orders:'Orders', quickship:'Quick Ship', returns:'Returns',
-  tracking:'Tracking', pickup:'Schedule UPS Pickup',
+  tracking:'Tracking', history:'Shipping history', pickup:'Schedule UPS Pickup',
   settings:'Carrier settings'
 };
 
@@ -2281,6 +2381,11 @@ function showPage(name){
   document.getElementById('topbarTitle').textContent = pageTitles[name]||name;
   document.querySelector('.main').scrollTop = 0;
   window.scrollTo(0,0);
+
+  // Refresh page-specific data
+  if(name === 'history'){
+    renderHistoryTable();
+  }
 }
 
 // ── SHIPPER ACCOUNTS ──────────────────────────────────────────
@@ -3316,9 +3421,12 @@ async function generateQuickShipLabel(){
     toCity,
     toState:   document.getElementById('qs-to-state').value,
     toZip,
+    toPhone:   document.getElementById('qs-to-phone').value.trim()||'',
+    toEmail:   '', // not captured in form yet — placeholder for future email field
     residential: document.getElementById('qs-residential').checked,
     weight:    document.getElementById('qs-weight').value,
     carrier:   carrier.toUpperCase(),
+    serviceCode: service,
     service:   document.getElementById('qs-service').options[document.getElementById('qs-service').selectedIndex].text,
     ref:        document.getElementById('qs-ref').value || '',
     trackingNumber: null,
@@ -3407,6 +3515,9 @@ async function generateQuickShipLabel(){
 
   // Save recipient to saved customers automatically
   saveCurrentCustomer();
+
+  // Record this shipment in the persistent history (used by Shipping History page)
+  recordShipment(qsLabelData);
 
   // Print the real label
   revertToDefaultShipper();
@@ -3733,6 +3844,489 @@ ${data.toAddr2 ? `^FO20,${tearY+(data.toCompany?458:418)}^A0N,32,32^FD${data.toA
   `.trim();
 }
 
+// ── SHIPPING HISTORY ──────────────────────────────────────────
+// Persistent label history stored in localStorage, auto-purged after 120 days.
+// UPS/FedEx/USPS all stop tracking past that, so there's no point keeping older.
+const HISTORY_KEY = 'shippingHistory_v1';
+const HISTORY_RETENTION_DAYS = 120;
+
+let historyFilter = 'all';   // all | active | voided | today | week
+let historyPage   = 1;
+const HISTORY_PAGE_SIZE = 25;
+
+// Load history from localStorage, purging anything older than 120 days
+function loadHistory(){
+  let arr = [];
+  try {
+    arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    if(!Array.isArray(arr)) arr = [];
+  } catch(e){ arr = []; }
+
+  const cutoff = Date.now() - (HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const fresh = arr.filter(s => (s.createdAt || 0) > cutoff);
+
+  // Save back if anything was purged
+  if(fresh.length !== arr.length){
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(fresh)); } catch(e){}
+  }
+  return fresh;
+}
+
+function saveHistory(arr){
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+    return true;
+  } catch(e){
+    console.error('Failed to save history:', e);
+    return false;
+  }
+}
+
+// Record a shipment in history. Called every time a label is successfully generated.
+function recordShipment(data){
+  if(!data || !data.trackingNumber){ return; }
+
+  const arr = loadHistory();
+
+  // Avoid duplicates if user reprints/regenerates
+  const existing = arr.find(s => s.trackingNumber === data.trackingNumber);
+  if(existing){ return; }
+
+  const record = {
+    trackingNumber: data.trackingNumber,
+    carrier:        (data.carrier || 'UPS').toLowerCase(),
+    serviceName:    data.serviceName || data.service || '',
+    serviceCode:    data.service || '',
+    createdAt:      Date.now(),
+
+    // Sender
+    fromName:  data.fromName  || '',
+    fromAddr:  data.fromAddr  || '',
+    fromCity:  data.fromCity  || '',
+    fromState: data.fromState || '',
+    fromZip:   data.fromZip   || '',
+
+    // Recipient
+    toName:    data.toName    || '',
+    toCompany: data.toCompany || '',
+    toAddr:    data.toAddr    || '',
+    toAddr2:   data.toAddr2   || '',
+    toCity:    data.toCity    || '',
+    toState:   data.toState   || '',
+    toZip:     data.toZip     || '',
+    toPhone:   data.toPhone   || '',
+    toEmail:   data.toEmail   || '',
+    residential: !!data.residential,
+
+    // Package
+    weight:      data.weight || '',
+    totalCharge: data.totalCharge || null,
+    currency:    data.currency || 'USD',
+    ref:         data.ref || '',
+
+    // For reprint and refund
+    labelImage:    data.labelImage || null,
+    labelUrl:      data.labelUrl   || null,
+    transactionId: data.transactionId || null,
+
+    // State
+    status:    'created',     // created | voided | refund_requested
+    voidedAt:  null,
+  };
+
+  arr.unshift(record);             // newest first
+  saveHistory(arr);
+
+  // If history page is open, refresh it
+  const histPage = document.getElementById('page-history');
+  if(histPage && histPage.classList.contains('active')){
+    renderHistoryTable();
+  }
+}
+
+// Mark a tracking number as voided (called after successful void/refund)
+function markHistoryVoided(trackingNumber, action){
+  const arr = loadHistory();
+  const rec = arr.find(s => s.trackingNumber === trackingNumber);
+  if(!rec) return;
+  rec.status   = action === 'refund_requested' ? 'refund_requested' : 'voided';
+  rec.voidedAt = Date.now();
+  saveHistory(arr);
+  const histPage = document.getElementById('page-history');
+  if(histPage && histPage.classList.contains('active')){
+    renderHistoryTable();
+  }
+}
+
+// Filter button click
+function setHistoryFilter(filter, btn){
+  historyFilter = filter;
+  historyPage   = 1;
+  document.querySelectorAll('#page-history .filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistoryTable();
+}
+
+// Apply current filter + search to history
+function getFilteredHistory(){
+  let arr = loadHistory();
+
+  // Tab filter
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const weekAgo      = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+
+  if(historyFilter === 'active'){
+    arr = arr.filter(s => s.status === 'created');
+  } else if(historyFilter === 'voided'){
+    arr = arr.filter(s => s.status === 'voided' || s.status === 'refund_requested');
+  } else if(historyFilter === 'today'){
+    arr = arr.filter(s => s.createdAt >= startOfToday);
+  } else if(historyFilter === 'week'){
+    arr = arr.filter(s => s.createdAt >= weekAgo);
+  }
+
+  // Search
+  const q = (document.getElementById('histSearchInput')?.value || '').trim().toLowerCase();
+  if(q){
+    arr = arr.filter(s =>
+      (s.trackingNumber || '').toLowerCase().includes(q) ||
+      (s.toName    || '').toLowerCase().includes(q) ||
+      (s.toCompany || '').toLowerCase().includes(q) ||
+      (s.toCity    || '').toLowerCase().includes(q) ||
+      (s.ref       || '').toLowerCase().includes(q)
+    );
+  }
+
+  return arr;
+}
+
+function renderHistoryTable(){
+  const all = loadHistory();
+  const filtered = getFilteredHistory();
+
+  // Stats
+  document.getElementById('histStatTotal').textContent  = all.length;
+  document.getElementById('histStatActive').textContent = all.filter(s => s.status === 'created').length;
+  document.getElementById('histStatVoided').textContent = all.filter(s => s.status === 'voided' || s.status === 'refund_requested').length;
+  const totalSpent = all
+    .filter(s => s.status === 'created' && s.totalCharge)
+    .reduce((sum, s) => sum + parseFloat(s.totalCharge || 0), 0);
+  document.getElementById('histStatSpent').textContent = `$${totalSpent.toFixed(2)}`;
+
+  // Tab counts
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const weekAgo      = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+  const counts = {
+    all:    all.length,
+    active: all.filter(s => s.status === 'created').length,
+    voided: all.filter(s => s.status === 'voided' || s.status === 'refund_requested').length,
+    today:  all.filter(s => s.createdAt >= startOfToday).length,
+    week:   all.filter(s => s.createdAt >= weekAgo).length,
+  };
+  Object.entries(counts).forEach(([k,v]) => {
+    const el = document.getElementById(`histTabCount-${k}`);
+    if(el) el.textContent = v;
+  });
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / HISTORY_PAGE_SIZE));
+  if(historyPage > totalPages) historyPage = totalPages;
+  const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + HISTORY_PAGE_SIZE);
+
+  // Render table
+  const tbody = document.getElementById('historyTableBody');
+  if(filtered.length === 0){
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:3rem;color:var(--muted)">${
+      historyFilter === 'all' ? 'No shipments yet. Your generated labels will appear here.' : 'No shipments match this filter.'
+    }</td></tr>`;
+  } else {
+    tbody.innerHTML = pageItems.map(s => {
+      const date = new Date(s.createdAt);
+      const dateStr = date.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+      const timeStr = date.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+      const tnSpaced = (s.trackingNumber || '').replace(/(.{4})/g,'$1 ').trim();
+      const recipient = s.toCompany ? `${s.toCompany}<br><span style="font-size:11px;color:var(--muted)">${s.toName}</span>` : (s.toName || '—');
+      const charge = s.totalCharge ? `$${parseFloat(s.totalCharge).toFixed(2)}` : '—';
+
+      let statusPill = '';
+      if(s.status === 'voided'){
+        statusPill = `<span class="status-pill exception">Voided</span>`;
+      } else if(s.status === 'refund_requested'){
+        statusPill = `<span class="status-pill exception">Refund pending</span>`;
+      } else {
+        statusPill = `<span class="status-pill shipped">Active</span>`;
+      }
+
+      const carrierPillHtml = carrierPill(s.carrier);
+
+      return `
+        <tr>
+          <td>${carrierPillHtml}</td>
+          <td>
+            <div style="font-size:12px;font-weight:500">${dateStr}</div>
+            <div style="font-size:11px;color:var(--muted)">${timeStr}</div>
+          </td>
+          <td>
+            <div style="font-size:13px;font-weight:500">${recipient}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">${s.toCity || ''}${s.toState ? ', '+s.toState : ''} ${s.toZip || ''}</div>
+          </td>
+          <td style="font-size:12px">${s.serviceName || '—'}</td>
+          <td>
+            <div style="font-family:'DM Mono',monospace;font-size:12px;font-weight:500;letter-spacing:1px">${tnSpaced}</div>
+          </td>
+          <td style="font-family:'DM Mono',monospace;font-size:12px;font-weight:500">${charge}</td>
+          <td>${statusPill}</td>
+          <td style="text-align:right;position:relative">
+            <button class="row-action-btn" onclick="event.stopPropagation();toggleRowMenu('${s.trackingNumber}', this)" title="Actions">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Pagination footer
+  const pag = document.getElementById('histPagination');
+  if(filtered.length > HISTORY_PAGE_SIZE){
+    pag.innerHTML = `
+      <div>Showing ${start + 1}–${Math.min(start + HISTORY_PAGE_SIZE, filtered.length)} of ${filtered.length}</div>
+      <div style="display:flex;gap:6px">
+        <button class="action-btn" onclick="goHistoryPage(${historyPage - 1})" ${historyPage <= 1 ? 'disabled style="opacity:0.4"' : ''}>← Previous</button>
+        <button class="action-btn" onclick="goHistoryPage(${historyPage + 1})" ${historyPage >= totalPages ? 'disabled style="opacity:0.4"' : ''}>Next →</button>
+      </div>
+    `;
+  } else {
+    pag.innerHTML = filtered.length > 0 ? `<div>Showing ${filtered.length} of ${filtered.length}</div>` : '';
+  }
+}
+
+function goHistoryPage(p){
+  if(p < 1) return;
+  historyPage = p;
+  renderHistoryTable();
+}
+
+// ── ROW ACTION MENU ──────────────────────────────────────────
+let openRowMenuTracking = null;
+
+function toggleRowMenu(trackingNumber, btn){
+  // If same menu is open, close it
+  if(openRowMenuTracking === trackingNumber){
+    closeRowMenu();
+    return;
+  }
+  closeRowMenu();
+
+  const arr = loadHistory();
+  const s = arr.find(x => x.trackingNumber === trackingNumber);
+  if(!s){ return; }
+
+  const isVoided = s.status === 'voided' || s.status === 'refund_requested';
+  const carrier = s.carrier;
+  const voidLabel = carrier === 'usps' ? 'Request refund' : 'Void label';
+  const canReprint = !!(s.labelImage || s.labelUrl);
+
+  const menu = document.createElement('div');
+  menu.className = 'row-action-menu';
+  menu.id = 'activeRowMenu';
+  menu.innerHTML = `
+    <div class="item ${canReprint ? '' : 'disabled'}" onclick="${canReprint ? `historyReprint('${trackingNumber}')` : ''}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Reprint label${canReprint ? '' : ' (unavailable)'}
+    </div>
+    <div class="item" onclick="historyTrack('${trackingNumber}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Track shipment
+    </div>
+    <div class="item" onclick="historyEmailCustomer('${trackingNumber}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      Email customer
+    </div>
+    <div class="item ${isVoided ? 'disabled' : 'danger'}" onclick="${isVoided ? '' : `historyVoid('${trackingNumber}')`}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+      ${isVoided ? (s.status === 'refund_requested' ? 'Refund requested' : 'Voided') : voidLabel}
+    </div>
+  `;
+
+  // Position menu next to the button
+  const rect = btn.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.top  = `${rect.bottom + 4}px`;
+  menu.style.left = `${rect.right - 180}px`; // align right edge with button
+  document.body.appendChild(menu);
+
+  openRowMenuTracking = trackingNumber;
+
+  // Close on next outside click
+  setTimeout(() => {
+    document.addEventListener('click', closeRowMenuOnClick, { once: true });
+  }, 0);
+}
+
+function closeRowMenuOnClick(e){
+  if(!e.target.closest('.row-action-menu') && !e.target.closest('.row-action-btn')){
+    closeRowMenu();
+  } else if(e.target.closest('.row-action-btn')){
+    // Don't auto-close — user is clicking another row's menu
+    document.addEventListener('click', closeRowMenuOnClick, { once: true });
+  } else {
+    // Click was inside menu — let the action handler run, then re-arm listener for outside click
+    document.addEventListener('click', closeRowMenuOnClick, { once: true });
+  }
+}
+
+function closeRowMenu(){
+  const m = document.getElementById('activeRowMenu');
+  if(m) m.remove();
+  openRowMenuTracking = null;
+}
+
+// ── ROW ACTIONS ──────────────────────────────────────────────
+function historyReprint(trackingNumber){
+  closeRowMenu();
+  const arr = loadHistory();
+  const s = arr.find(x => x.trackingNumber === trackingNumber);
+  if(!s){ toast('Shipment not found','error'); return; }
+  if(!s.labelImage && !s.labelUrl){
+    toast('Label image not available for this shipment — reprint unavailable','error');
+    return;
+  }
+
+  // Reuse the printQSLabel infrastructure by setting qsLabelData
+  qsLabelData = {
+    trackingNumber: s.trackingNumber,
+    carrier:        (s.carrier || 'ups').toUpperCase(),
+    serviceName:    s.serviceName,
+    service:        s.serviceCode,
+    fromName:  s.fromName, fromAddr: s.fromAddr, fromCity: s.fromCity,
+    fromState: s.fromState, fromZip: s.fromZip,
+    toName: s.toName, toCompany: s.toCompany, toAddr: s.toAddr, toAddr2: s.toAddr2,
+    toCity: s.toCity, toState: s.toState, toZip: s.toZip,
+    residential: s.residential,
+    weight: s.weight,
+    ref: s.ref,
+    labelImage: s.labelImage,
+    labelUrl:   s.labelUrl,
+  };
+  printQSLabel();
+  toast(`Reprinting ${s.trackingNumber}...`,'info');
+}
+
+function historyTrack(trackingNumber){
+  closeRowMenu();
+  showPage('tracking');
+  // Wait one tick for the page to be visible, then populate and trigger
+  setTimeout(() => {
+    const input = document.getElementById('trackingInput');
+    if(input){
+      input.value = trackingNumber;
+      trackPackage();
+    }
+  }, 50);
+}
+
+function historyEmailCustomer(trackingNumber){
+  closeRowMenu();
+  const arr = loadHistory();
+  const s = arr.find(x => x.trackingNumber === trackingNumber);
+  if(!s){ toast('Shipment not found','error'); return; }
+
+  const tnDisplay = (s.trackingNumber || '').replace(/(.{4})/g,'$1 ').trim();
+  const carrier = (s.carrier || 'ups').toUpperCase();
+  const trackUrl = carrier === 'UPS'
+    ? `https://www.ups.com/track?tracknum=${s.trackingNumber}`
+    : carrier === 'FEDEX'
+    ? `https://www.fedex.com/fedextrack/?trknbr=${s.trackingNumber}`
+    : `https://tools.usps.com/go/TrackConfirmAction?tLabels=${s.trackingNumber}`;
+
+  const subject = `Your order has shipped — Tracking ${tnDisplay}`;
+  const body = `Hi ${s.toName || 'there'},
+
+Good news — your order has shipped via ${carrier}!
+
+Tracking number: ${tnDisplay}
+Service: ${s.serviceName || carrier}
+Track your package: ${trackUrl}
+
+Thanks for shopping with NextLao.
+`;
+
+  // Open user's default mail client
+  const mailto = `mailto:${s.toEmail || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailto;
+  toast('Opening email client...','info');
+}
+
+function historyVoid(trackingNumber){
+  closeRowMenu();
+  const arr = loadHistory();
+  const s = arr.find(x => x.trackingNumber === trackingNumber);
+  if(!s){ toast('Shipment not found','error'); return; }
+
+  // Use the existing void modal infrastructure
+  pendingVoidContext = {
+    trackingNumber,
+    carrier:       s.carrier,
+    transactionId: s.transactionId || null,
+    source:        'history',
+  };
+  openVoidModal(pendingVoidContext);
+}
+
+// ── EXPORT TO CSV ─────────────────────────────────────────────
+function exportHistoryCSV(){
+  const arr = getFilteredHistory();
+  if(arr.length === 0){ toast('No shipments to export','info'); return; }
+
+  const headers = [
+    'Date','Time','Carrier','Service','Tracking Number','Status',
+    'Recipient Name','Recipient Company','Recipient City','Recipient State','Recipient Zip',
+    'Weight','Charge','Currency','Reference'
+  ];
+
+  const escape = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+  };
+
+  const rows = arr.map(s => {
+    const d = new Date(s.createdAt);
+    return [
+      d.toLocaleDateString('en-US'),
+      d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }),
+      (s.carrier || '').toUpperCase(),
+      s.serviceName || '',
+      s.trackingNumber || '',
+      s.status || '',
+      s.toName || '',
+      s.toCompany || '',
+      s.toCity || '',
+      s.toState || '',
+      s.toZip || '',
+      s.weight || '',
+      s.totalCharge || '',
+      s.currency || '',
+      s.ref || '',
+    ].map(escape).join(',');
+  });
+
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `nextlao-shipments-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Exported ${arr.length} shipments to CSV`,'success');
+}
+
 // ── VOID / REFUND LABEL ───────────────────────────────────────
 // Carrier-aware: UPS/FedEx void instantly with no charge.
 // USPS goes through Shippo refund flow (charges refunded in 14-21 days).
@@ -3863,6 +4457,9 @@ async function executeVoidLabel(){
         trackVoidBtn.textContent = ctx.carrier === 'usps' ? 'Refund requested' : 'Voided ✓';
       }
     }
+
+    // Update the persistent history regardless of where the void was triggered
+    markHistoryVoided(ctx.trackingNumber, data.result?.action);
 
     closeVoidModal();
     toast(`✓ ${data.result?.userMessage || 'Label voided successfully'}`, 'success');
