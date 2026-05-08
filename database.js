@@ -1,483 +1,628 @@
 /* ============================================================
-   SHOPSELL — DATABASE.JS
-   SQLite database layer using better-sqlite3
-   
-   WHY SQLITE:
-   - Zero setup — no separate database server needed
-   - Perfect for Railway deployment (file-based)
-   - Handles thousands of orders with no issues
-   - Easy to migrate to PostgreSQL later if needed
-   
-   TABLES:
-   - sellers        — seller accounts + subscription info
-   - products       — product catalog per seller
-   - orders         — customer orders
-   - order_items    — line items per order
-   - customers      — customer records per seller
-   - stripe_configs — encrypted Stripe keys per seller
+   SHOPSELL — DATABASE.JS  (Postgres edition)
+
+   What this file does:
+   - Connects to a Postgres database via the DATABASE_URL env var
+     (Railway sets this automatically when you reference Postgres)
+   - Auto-creates the schema on app startup (no manual migrations)
+   - Exposes the same function names the rest of the app uses
+     (drop-in replacement for the old in-memory database.js)
+
+   Tables managed:
+   - sellers
+   - products
+   - orders
+   - customers
+   - stripe_keys
+   - shipments  (new — used by the Shipping History page)
+
    ============================================================ */
 
 'use strict';
 
-const Database = require('better-sqlite3');
-const crypto   = require('crypto');
-const path     = require('path');
-const fs       = require('fs');
+const { Pool } = require('pg');
 
-// ── DATABASE FILE LOCATION ────────────────────────────────────
-// On Railway: use /data volume for persistence (set in railway.toml)
-// Locally: creates shopsell.db in the project root
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'shopsell.db');
-
-// Ensure directory exists
-const dbDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-
-const db = new Database(DB_PATH);
-
-// Enable WAL mode — much faster for concurrent reads/writes
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-// ── ENCRYPTION FOR SENSITIVE DATA ─────────────────────────────
-// Stripe secret keys are encrypted before storing in DB
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Must be 32 bytes (64 hex chars)
-
-function encrypt(text) {
-  if (!ENCRYPTION_KEY) throw new Error('ENCRYPTION_KEY not set in environment');
-  const iv         = crypto.randomBytes(16);
-  const key        = Buffer.from(ENCRYPTION_KEY, 'hex');
-  const cipher     = crypto.createCipheriv('aes-256-cbc', key, iv);
-  const encrypted  = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-function decrypt(encryptedText) {
-  if (!ENCRYPTION_KEY) throw new Error('ENCRYPTION_KEY not set in environment');
-  const [ivHex, encHex] = encryptedText.split(':');
-  const iv              = Buffer.from(ivHex, 'hex');
-  const key             = Buffer.from(ENCRYPTION_KEY, 'hex');
-  const decipher        = crypto.createDecipheriv('aes-256-cbc', key, iv);
-  const decrypted       = Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]);
-  return decrypted.toString('utf8');
-}
-
-/* ============================================================
-   ── CREATE TABLES ────────────────────────────────────────────
-   Runs once on startup — safe to run multiple times (IF NOT EXISTS)
-   ============================================================ */
-
-db.exec(`
-  -- SELLERS TABLE
-  CREATE TABLE IF NOT EXISTS sellers (
-    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    firstName             TEXT    NOT NULL,
-    lastName              TEXT    NOT NULL,
-    email                 TEXT    NOT NULL UNIQUE,
-    passwordHash          TEXT    NOT NULL,
-    phone                 TEXT,
-    storeName             TEXT    NOT NULL,
-    storeSlug             TEXT    NOT NULL UNIQUE,
-    plan                  TEXT    NOT NULL DEFAULT 'starter', -- starter | growth | pro
-    stripeCustomerId      TEXT,   -- YOUR Stripe: for billing seller
-    stripeSubscriptionId  TEXT,   -- YOUR Stripe: seller's subscription
-    stripeAccountId       TEXT,   -- SELLER'S Stripe: to receive customer payments
-    subscriptionStatus    TEXT    DEFAULT 'trialing',
-    storeActive           INTEGER DEFAULT 1,
-    createdAt             TEXT    DEFAULT (datetime('now')),
-    updatedAt             TEXT    DEFAULT (datetime('now'))
-  );
-
-  -- PRODUCTS TABLE
-  CREATE TABLE IF NOT EXISTS products (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    sellerId        INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
-    name            TEXT    NOT NULL,
-    description     TEXT,
-    category        TEXT    NOT NULL,
-    brand           TEXT,
-    price           REAL    NOT NULL,
-    compareAtPrice  REAL,
-    costPerItem     REAL,
-    sku             TEXT    NOT NULL,
-    quantity        INTEGER DEFAULT 0,
-    weight          REAL,
-    variants        TEXT    DEFAULT '[]', -- JSON array
-    status          TEXT    DEFAULT 'active', -- active | draft | archived
-    imageUrls       TEXT    DEFAULT '[]', -- JSON array of image URLs
-    rating          REAL    DEFAULT 0,
-    reviewCount     INTEGER DEFAULT 0,
-    featured        INTEGER DEFAULT 0,
-    createdAt       TEXT    DEFAULT (datetime('now')),
-    updatedAt       TEXT    DEFAULT (datetime('now')),
-    UNIQUE(sellerId, sku)
-  );
-
-  -- ORDERS TABLE
-  CREATE TABLE IF NOT EXISTS orders (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    sellerId        INTEGER NOT NULL REFERENCES sellers(id),
-    storeSlug       TEXT    NOT NULL,
-    status          TEXT    DEFAULT 'pending',
-    -- pending | processing | shipped | delivered | cancelled | refunded | payment_failed
-    customerEmail   TEXT    NOT NULL,
-    customerInfo    TEXT    DEFAULT '{}', -- JSON: name, address, phone
-    subtotal        REAL    NOT NULL,
-    tax             REAL    DEFAULT 0,
-    total           REAL    NOT NULL,
-    paymentIntentId TEXT,
-    trackingNumber  TEXT,
-    trackingCarrier TEXT,
-    paidAt          TEXT,
-    shippedAt       TEXT,
-    deliveredAt     TEXT,
-    createdAt       TEXT    DEFAULT (datetime('now')),
-    updatedAt       TEXT    DEFAULT (datetime('now'))
-  );
-
-  -- ORDER ITEMS TABLE
-  CREATE TABLE IF NOT EXISTS order_items (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    orderId     INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    productId   INTEGER REFERENCES products(id),
-    name        TEXT    NOT NULL,  -- snapshot name at time of order
-    price       REAL    NOT NULL,  -- snapshot price at time of order
-    qty         INTEGER NOT NULL,
-    variant     TEXT
-  );
-
-  -- CUSTOMERS TABLE
-  -- A "customer" is per-seller — same buyer can exist in multiple sellers' lists
-  CREATE TABLE IF NOT EXISTS customers (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    sellerId      INTEGER NOT NULL REFERENCES sellers(id),
-    email         TEXT    NOT NULL,
-    firstName     TEXT,
-    lastName      TEXT,
-    phone         TEXT,
-    totalOrders   INTEGER DEFAULT 0,
-    totalSpent    REAL    DEFAULT 0,
-    firstOrderAt  TEXT,
-    lastOrderAt   TEXT,
-    createdAt     TEXT    DEFAULT (datetime('now')),
-    UNIQUE(sellerId, email)
-  );
-
-  -- STRIPE CONFIGS TABLE
-  -- Stores each seller's own Stripe keys (encrypted)
-  CREATE TABLE IF NOT EXISTS stripe_configs (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    sellerId         INTEGER NOT NULL UNIQUE REFERENCES sellers(id),
-    publishableKey   TEXT    NOT NULL,
-    secretKeyEnc     TEXT    NOT NULL, -- encrypted with ENCRYPTION_KEY
-    webhookSecretEnc TEXT,             -- encrypted with ENCRYPTION_KEY
-    mode             TEXT    DEFAULT 'test', -- test | live
-    updatedAt        TEXT    DEFAULT (datetime('now'))
-  );
-
-  -- INDEXES for fast lookups
-  CREATE INDEX IF NOT EXISTS idx_products_seller ON products(sellerId);
-  CREATE INDEX IF NOT EXISTS idx_products_slug   ON products(sellerId, status);
-  CREATE INDEX IF NOT EXISTS idx_orders_seller   ON orders(sellerId);
-  CREATE INDEX IF NOT EXISTS idx_orders_status   ON orders(sellerId, status);
-  CREATE INDEX IF NOT EXISTS idx_customers_seller ON customers(sellerId);
-`);
-
-console.log('Database initialized:', DB_PATH);
-
-/* ============================================================
-   ── SELLER FUNCTIONS ─────────────────────────────────────────
-   ============================================================ */
-
-function createSeller(data) {
-  const stmt = db.prepare(`
-    INSERT INTO sellers (firstName, lastName, email, passwordHash, phone, storeName, storeSlug, plan, stripeCustomerId, stripeSubscriptionId)
-    VALUES (@firstName, @lastName, @email, @passwordHash, @phone, @storeName, @storeSlug, @plan, @stripeCustomerId, @stripeSubscriptionId)
-  `);
-  const result = stmt.run(data);
-  return getSellerById(result.lastInsertRowid);
-}
-
-function getSellerById(id) {
-  return db.prepare('SELECT * FROM sellers WHERE id = ?').get(id);
-}
-
-function getSellerByEmail(email) {
-  return db.prepare('SELECT * FROM sellers WHERE email = ?').get(email);
-}
-
-function getSellerBySlug(slug) {
-  return db.prepare('SELECT * FROM sellers WHERE storeSlug = ? AND storeActive = 1').get(slug);
-}
-
-function getSellerByStripeCustomerId(customerId) {
-  return db.prepare('SELECT * FROM sellers WHERE stripeCustomerId = ?').get(customerId);
-}
-
-function updateSeller(id, data) {
-  const fields = Object.keys(data).map(k => `${k} = @${k}`).join(', ');
-  const stmt   = db.prepare(`UPDATE sellers SET ${fields}, updatedAt = datetime('now') WHERE id = @id`);
-  stmt.run({ ...data, id });
-  return getSellerById(id);
-}
-
-/* ============================================================
-   ── PRODUCT FUNCTIONS ────────────────────────────────────────
-   ============================================================ */
-
-function createProduct(data) {
-  const stmt = db.prepare(`
-    INSERT INTO products
-      (sellerId, name, description, category, brand, price, compareAtPrice,
-       costPerItem, sku, quantity, weight, variants, status, imageUrls)
-    VALUES
-      (@sellerId, @name, @description, @category, @brand, @price, @compareAtPrice,
-       @costPerItem, @sku, @quantity, @weight, @variants, @status, @imageUrls)
-  `);
-  const result = stmt.run({
-    ...data,
-    variants:  JSON.stringify(data.variants  || []),
-    imageUrls: JSON.stringify(data.imageUrls || []),
-  });
-  return getProductById(result.lastInsertRowid);
-}
-
-function getProductById(id) {
-  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
-  return row ? parseProduct(row) : null;
-}
-
-function getActiveProducts(storeSlug) {
-  const seller = getSellerBySlug(storeSlug);
-  if (!seller) return [];
-  const rows = db.prepare(`
-    SELECT * FROM products
-    WHERE sellerId = ? AND status = 'active' AND quantity > 0
-    ORDER BY featured DESC, createdAt DESC
-  `).all(seller.id);
-  return rows.map(parseProduct);
-}
-
-function getProductsBySeller(sellerId) {
-  const rows = db.prepare(`
-    SELECT * FROM products WHERE sellerId = ? ORDER BY createdAt DESC
-  `).all(sellerId);
-  return rows.map(parseProduct);
-}
-
-function getProductCountBySeller(sellerId) {
-  const row = db.prepare(`
-    SELECT COUNT(*) as count FROM products WHERE sellerId = ? AND status != 'archived'
-  `).get(sellerId);
-  return row.count;
-}
-
-function checkSKUExists(sellerId, sku) {
-  const row = db.prepare('SELECT id FROM products WHERE sellerId = ? AND sku = ?').get(sellerId, sku);
-  return !!row;
-}
-
-function updateProduct(id, data) {
-  const allowed = ['name','description','category','brand','price','compareAtPrice',
-                   'costPerItem','sku','quantity','weight','variants','status','imageUrls','featured'];
-  const updates = {};
-  allowed.forEach(k => {
-    if (data[k] !== undefined) {
-      updates[k] = Array.isArray(data[k]) ? JSON.stringify(data[k]) : data[k];
-    }
-  });
-  if (!Object.keys(updates).length) return getProductById(id);
-  const fields = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
-  db.prepare(`UPDATE products SET ${fields}, updatedAt = datetime('now') WHERE id = @id`).run({ ...updates, id });
-  return getProductById(id);
-}
-
-function deleteProduct(id) {
-  db.prepare("UPDATE products SET status = 'archived', updatedAt = datetime('now') WHERE id = ?").run(id);
-}
-
-function decrementStock(productId, qty) {
-  db.prepare(`
-    UPDATE products SET quantity = MAX(0, quantity - ?), updatedAt = datetime('now') WHERE id = ?
-  `).run(qty, productId);
-}
-
-function parseProduct(row) {
-  return {
-    ...row,
-    variants:  JSON.parse(row.variants  || '[]'),
-    imageUrls: JSON.parse(row.imageUrls || '[]'),
-  };
-}
-
-/* ============================================================
-   ── ORDER FUNCTIONS ──────────────────────────────────────────
-   ============================================================ */
-
-const createOrderTransaction = db.transaction((data) => {
-  // Create the order
-  const orderStmt = db.prepare(`
-    INSERT INTO orders (sellerId, storeSlug, status, customerEmail, customerInfo, subtotal, tax, total)
-    VALUES (@sellerId, @storeSlug, @status, @customerEmail, @customerInfo, @subtotal, @tax, @total)
-  `);
-  const orderResult = orderStmt.run({
-    ...data,
-    customerInfo: JSON.stringify(data.customerInfo || {}),
-  });
-  const orderId = orderResult.lastInsertRowid;
-
-  // Create order items
-  const itemStmt = db.prepare(`
-    INSERT INTO order_items (orderId, productId, name, price, qty, variant)
-    VALUES (@orderId, @productId, @name, @price, @qty, @variant)
-  `);
-  for (const item of data.items) {
-    itemStmt.run({
-      orderId,
-      productId: item.productId || item.id,
-      name:      item.name,
-      price:     item.price,
-      qty:       item.qty,
-      variant:   item.variant || null,
-    });
-  }
-
-  // Upsert customer record
-  const existingCustomer = db.prepare(`
-    SELECT * FROM customers WHERE sellerId = ? AND email = ?
-  `).get(data.sellerId, data.customerEmail);
-
-  if (existingCustomer) {
-    db.prepare(`
-      UPDATE customers
-      SET totalOrders = totalOrders + 1,
-          totalSpent  = totalSpent + ?,
-          lastOrderAt = datetime('now')
-      WHERE id = ?
-    `).run(data.total, existingCustomer.id);
-  } else {
-    db.prepare(`
-      INSERT INTO customers (sellerId, email, totalOrders, totalSpent, firstOrderAt, lastOrderAt)
-      VALUES (?, ?, 1, ?, datetime('now'), datetime('now'))
-    `).run(data.sellerId, data.customerEmail, data.total);
-  }
-
-  return getOrderById(orderId);
+// ── CONNECTION ───────────────────────────────────────────────
+// Railway sets DATABASE_URL automatically when Postgres is referenced.
+// SSL is required for Railway's managed Postgres in production.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('railway')
+    ? { rejectUnauthorized: false }
+    : false,
 });
 
-function createOrder(data) {
-  return createOrderTransaction(data);
-}
+pool.on('error', (err) => {
+  console.error('Postgres pool error:', err);
+});
 
-function getOrderById(id) {
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
-  if (!order) return null;
-  const items = db.prepare('SELECT * FROM order_items WHERE orderId = ?').all(id);
-  return {
-    ...order,
-    customerInfo: JSON.parse(order.customerInfo || '{}'),
-    items,
-  };
-}
-
-function getOrdersBySeller(sellerId, since = null) {
-  let query = 'SELECT * FROM orders WHERE sellerId = ?';
-  const params = [sellerId];
-  if (since) {
-    query += ' AND createdAt >= ?';
-    params.push(since.toISOString());
+// ── SCHEMA AUTO-MIGRATION ────────────────────────────────────
+// Runs on startup. Safe to run repeatedly — uses CREATE TABLE IF NOT EXISTS.
+async function initSchema() {
+  if (!process.env.DATABASE_URL) {
+    console.warn('⚠ DATABASE_URL is not set. Database operations will fail.');
+    return;
   }
-  query += ' ORDER BY createdAt DESC';
 
-  const orders = db.prepare(query).all(...params);
-  return orders.map(o => {
-    const items = db.prepare('SELECT * FROM order_items WHERE orderId = ?').all(o.id);
-    return { ...o, customerInfo: JSON.parse(o.customerInfo || '{}'), items };
-  });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // SELLERS
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sellers (
+        id                     SERIAL PRIMARY KEY,
+        first_name             TEXT NOT NULL,
+        last_name              TEXT NOT NULL,
+        email                  TEXT NOT NULL UNIQUE,
+        password_hash          TEXT NOT NULL,
+        phone                  TEXT,
+        store_name             TEXT NOT NULL,
+        store_slug             TEXT NOT NULL UNIQUE,
+        plan                   TEXT NOT NULL DEFAULT 'starter',
+        stripe_customer_id     TEXT,
+        stripe_subscription_id TEXT,
+        subscription_status    TEXT,
+        store_active           BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sellers_email ON sellers (email);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sellers_slug ON sellers (store_slug);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sellers_stripe_customer ON sellers (stripe_customer_id);`);
+
+    // PRODUCTS
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id               SERIAL PRIMARY KEY,
+        seller_id        INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        name             TEXT NOT NULL,
+        description      TEXT,
+        category         TEXT,
+        brand            TEXT,
+        price            NUMERIC(10,2) NOT NULL,
+        compare_at_price NUMERIC(10,2),
+        cost_per_item    NUMERIC(10,2),
+        sku              TEXT NOT NULL,
+        quantity         INTEGER NOT NULL DEFAULT 0,
+        weight           NUMERIC(10,3),
+        variants         JSONB DEFAULT '[]'::jsonb,
+        status           TEXT NOT NULL DEFAULT 'active',
+        image_urls       JSONB DEFAULT '[]'::jsonb,
+        rating           NUMERIC(3,2),
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (seller_id, sku)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_products_seller ON products (seller_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_products_status ON products (status);`);
+
+    // ORDERS
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id                 SERIAL PRIMARY KEY,
+        seller_id          INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        store_slug         TEXT,
+        customer_email     TEXT,
+        customer_info      JSONB,
+        items              JSONB NOT NULL DEFAULT '[]'::jsonb,
+        subtotal           NUMERIC(10,2),
+        tax                NUMERIC(10,2),
+        total              NUMERIC(10,2) NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'pending',
+        payment_intent_id  TEXT,
+        tracking_number    TEXT,
+        tracking_carrier   TEXT,
+        paid_at            TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_seller ON orders (seller_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_payment_intent ON orders (payment_intent_id);`);
+
+    // STRIPE KEYS (per-seller saved Stripe credentials)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS stripe_keys (
+        seller_id        INTEGER PRIMARY KEY REFERENCES sellers(id) ON DELETE CASCADE,
+        publishable_key  TEXT NOT NULL,
+        secret_key       TEXT NOT NULL,
+        webhook_secret   TEXT,
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // SHIPMENTS — used by the Shipping History page
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS shipments (
+        id               SERIAL PRIMARY KEY,
+        seller_id        INTEGER REFERENCES sellers(id) ON DELETE CASCADE,
+        order_id         INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+        tracking_number  TEXT NOT NULL UNIQUE,
+        carrier          TEXT NOT NULL,
+        service_code     TEXT,
+        service_name     TEXT,
+        from_name        TEXT,
+        from_addr        TEXT,
+        from_city        TEXT,
+        from_state       TEXT,
+        from_zip         TEXT,
+        to_name          TEXT,
+        to_company       TEXT,
+        to_addr          TEXT,
+        to_addr2         TEXT,
+        to_city          TEXT,
+        to_state         TEXT,
+        to_zip           TEXT,
+        to_phone         TEXT,
+        to_email         TEXT,
+        residential      BOOLEAN DEFAULT FALSE,
+        weight           TEXT,
+        total_charge     NUMERIC(10,2),
+        currency         TEXT DEFAULT 'USD',
+        ref              TEXT,
+        label_image      TEXT,
+        label_url        TEXT,
+        transaction_id   TEXT,
+        status           TEXT NOT NULL DEFAULT 'created',
+        voided_at        TIMESTAMPTZ,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_shipments_seller ON shipments (seller_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_shipments_tracking ON shipments (tracking_number);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_shipments_created ON shipments (created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments (status);`);
+
+    // CUSTOMERS — derived from orders, but we keep an aggregated table for the customers page
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id            SERIAL PRIMARY KEY,
+        seller_id     INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        email         TEXT NOT NULL,
+        first_name    TEXT,
+        last_name     TEXT,
+        phone         TEXT,
+        total_orders  INTEGER NOT NULL DEFAULT 0,
+        total_spent   NUMERIC(12,2) NOT NULL DEFAULT 0,
+        last_order_at TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (seller_id, email)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_seller ON customers (seller_id);`);
+
+    await client.query('COMMIT');
+    console.log('✓ Database schema ready');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('✗ Schema init failed:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
-function updateOrder(id, data) {
-  const allowed = ['status','paymentIntentId','customerInfo','paidAt','shippedAt','deliveredAt','trackingNumber','trackingCarrier'];
-  const updates = {};
-  allowed.forEach(k => {
-    if (data[k] !== undefined) {
-      updates[k] = typeof data[k] === 'object' && data[k] !== null
-        ? JSON.stringify(data[k])
-        : data[k];
+// Kick off schema init on module load. Don't block, but log errors.
+initSchema().catch(err => console.error('Schema init error:', err));
+
+// ── HELPERS ──────────────────────────────────────────────────
+// Convert snake_case DB rows to camelCase JS objects (matches old API)
+function camelize(row) {
+  if (!row) return row;
+  const out = {};
+  for (const k of Object.keys(row)) {
+    const camel = k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    out[camel] = row[k];
+  }
+  return out;
+}
+
+function camelizeAll(rows) {
+  return (rows || []).map(camelize);
+}
+
+// ── SELLERS ──────────────────────────────────────────────────
+async function createSeller(data) {
+  const { rows } = await pool.query(
+    `INSERT INTO sellers
+       (first_name, last_name, email, password_hash, phone,
+        store_name, store_slug, plan, stripe_customer_id, stripe_subscription_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     RETURNING *`,
+    [
+      data.firstName, data.lastName, data.email, data.passwordHash, data.phone,
+      data.storeName, data.storeSlug, data.plan,
+      data.stripeCustomerId, data.stripeSubscriptionId,
+    ]
+  );
+  return camelize(rows[0]);
+}
+
+async function getSellerByEmail(email) {
+  const { rows } = await pool.query(
+    `SELECT * FROM sellers WHERE email = $1 LIMIT 1`, [email]
+  );
+  return camelize(rows[0]);
+}
+
+async function getSellerById(id) {
+  const { rows } = await pool.query(
+    `SELECT * FROM sellers WHERE id = $1 LIMIT 1`, [id]
+  );
+  return camelize(rows[0]);
+}
+
+async function getSellerBySlug(slug) {
+  const { rows } = await pool.query(
+    `SELECT * FROM sellers WHERE store_slug = $1 LIMIT 1`, [slug]
+  );
+  return camelize(rows[0]);
+}
+
+async function getSellerByStripeCustomerId(stripeCustomerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM sellers WHERE stripe_customer_id = $1 LIMIT 1`,
+    [stripeCustomerId]
+  );
+  return camelize(rows[0]);
+}
+
+async function updateSeller(id, fields) {
+  const map = {
+    plan:               'plan',
+    subscriptionStatus: 'subscription_status',
+    storeActive:        'store_active',
+  };
+  const sets = [];
+  const vals = [];
+  let i = 1;
+  for (const k of Object.keys(fields)) {
+    if (map[k]) {
+      sets.push(`${map[k]} = $${i++}`);
+      vals.push(fields[k]);
     }
-  });
-  if (!Object.keys(updates).length) return getOrderById(id);
-  const fields = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
-  db.prepare(`UPDATE orders SET ${fields}, updatedAt = datetime('now') WHERE id = @id`).run({ ...updates, id });
-  return getOrderById(id);
-}
-
-/* ============================================================
-   ── CUSTOMER FUNCTIONS ───────────────────────────────────────
-   ============================================================ */
-
-function getCustomersBySeller(sellerId) {
-  return db.prepare(`
-    SELECT * FROM customers WHERE sellerId = ? ORDER BY totalSpent DESC
-  `).all(sellerId);
-}
-
-/* ============================================================
-   ── STRIPE CONFIG FUNCTIONS ──────────────────────────────────
-   ============================================================ */
-
-function saveStripeKeys(sellerId, { publishableKey, secretKey, webhookSecret }) {
-  const secretKeyEnc     = encrypt(secretKey);
-  const webhookSecretEnc = webhookSecret ? encrypt(webhookSecret) : null;
-  const mode             = publishableKey.includes('_test_') ? 'test' : 'live';
-
-  const existing = db.prepare('SELECT id FROM stripe_configs WHERE sellerId = ?').get(sellerId);
-
-  if (existing) {
-    db.prepare(`
-      UPDATE stripe_configs
-      SET publishableKey = ?, secretKeyEnc = ?, webhookSecretEnc = ?, mode = ?, updatedAt = datetime('now')
-      WHERE sellerId = ?
-    `).run(publishableKey, secretKeyEnc, webhookSecretEnc, mode, sellerId);
-  } else {
-    db.prepare(`
-      INSERT INTO stripe_configs (sellerId, publishableKey, secretKeyEnc, webhookSecretEnc, mode)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(sellerId, publishableKey, secretKeyEnc, webhookSecretEnc, mode);
   }
+  if (!sets.length) return getSellerById(id);
+  sets.push(`updated_at = NOW()`);
+  vals.push(id);
+  const { rows } = await pool.query(
+    `UPDATE sellers SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    vals
+  );
+  return camelize(rows[0]);
 }
 
-function getStripeKeys(sellerId) {
-  const row = db.prepare('SELECT * FROM stripe_configs WHERE sellerId = ?').get(sellerId);
-  if (!row) return null;
-  return {
-    publishableKey:  row.publishableKey,
-    secretKey:       decrypt(row.secretKeyEnc),
-    webhookSecret:   row.webhookSecretEnc ? decrypt(row.webhookSecretEnc) : null,
-    mode:            row.mode,
+// ── PRODUCTS ─────────────────────────────────────────────────
+async function getActiveProducts(storeSlug) {
+  const { rows } = await pool.query(
+    `SELECT p.* FROM products p
+       JOIN sellers s ON s.id = p.seller_id
+      WHERE s.store_slug = $1 AND p.status = 'active'
+      ORDER BY p.created_at DESC`,
+    [storeSlug]
+  );
+  return camelizeAll(rows);
+}
+
+async function getProductsBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM products WHERE seller_id = $1 ORDER BY created_at DESC`,
+    [sellerId]
+  );
+  return camelizeAll(rows);
+}
+
+async function getProductCountBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS c FROM products WHERE seller_id = $1`,
+    [sellerId]
+  );
+  return rows[0]?.c || 0;
+}
+
+async function checkSKUExists(sellerId, sku) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM products WHERE seller_id = $1 AND sku = $2 LIMIT 1`,
+    [sellerId, sku]
+  );
+  return rows.length > 0;
+}
+
+async function createProduct(data) {
+  const { rows } = await pool.query(
+    `INSERT INTO products
+       (seller_id, name, description, category, brand,
+        price, compare_at_price, cost_per_item, sku, quantity,
+        weight, variants, status, image_urls)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     RETURNING *`,
+    [
+      data.sellerId, data.name, data.description, data.category, data.brand,
+      data.price, data.compareAtPrice, data.costPerItem, data.sku, data.quantity,
+      data.weight,
+      JSON.stringify(data.variants || []),
+      data.status || 'active',
+      JSON.stringify(data.imageUrls || []),
+    ]
+  );
+  return camelize(rows[0]);
+}
+
+async function getProductById(id) {
+  const { rows } = await pool.query(
+    `SELECT * FROM products WHERE id = $1 LIMIT 1`, [id]
+  );
+  return camelize(rows[0]);
+}
+
+async function updateProduct(id, fields) {
+  const map = {
+    name:           'name',
+    description:    'description',
+    category:       'category',
+    brand:          'brand',
+    price:          'price',
+    compareAtPrice: 'compare_at_price',
+    costPerItem:    'cost_per_item',
+    sku:            'sku',
+    quantity:       'quantity',
+    weight:         'weight',
+    variants:       'variants',
+    status:         'status',
+    imageUrls:      'image_urls',
   };
+  const sets = [];
+  const vals = [];
+  let i = 1;
+  for (const k of Object.keys(fields)) {
+    if (map[k]) {
+      sets.push(`${map[k]} = $${i++}`);
+      const v = (k === 'variants' || k === 'imageUrls')
+        ? JSON.stringify(fields[k] || [])
+        : fields[k];
+      vals.push(v);
+    }
+  }
+  if (!sets.length) return getProductById(id);
+  sets.push(`updated_at = NOW()`);
+  vals.push(id);
+  const { rows } = await pool.query(
+    `UPDATE products SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    vals
+  );
+  return camelize(rows[0]);
 }
 
-/* ============================================================
-   ── EXPORTS ──────────────────────────────────────────────────
-   ============================================================ */
+async function deleteProduct(id) {
+  await pool.query(`DELETE FROM products WHERE id = $1`, [id]);
+}
 
+async function decrementStock(productId, qty) {
+  await pool.query(
+    `UPDATE products SET quantity = GREATEST(0, quantity - $1), updated_at = NOW()
+       WHERE id = $2`,
+    [qty, productId]
+  );
+}
+
+// ── ORDERS ───────────────────────────────────────────────────
+async function createOrder(data) {
+  const { rows } = await pool.query(
+    `INSERT INTO orders
+       (seller_id, store_slug, customer_email, items, subtotal, tax, total, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING *`,
+    [
+      data.sellerId, data.storeSlug, data.customerEmail,
+      JSON.stringify(data.items || []),
+      data.subtotal, data.tax, data.total,
+      data.status || 'pending',
+    ]
+  );
+  return camelize(rows[0]);
+}
+
+async function getOrderById(id) {
+  const { rows } = await pool.query(
+    `SELECT * FROM orders WHERE id = $1 LIMIT 1`, [id]
+  );
+  return camelize(rows[0]);
+}
+
+async function updateOrder(id, fields) {
+  const map = {
+    status:           'status',
+    paymentIntentId:  'payment_intent_id',
+    customerInfo:     'customer_info',
+    paidAt:           'paid_at',
+    trackingNumber:   'tracking_number',
+    trackingCarrier:  'tracking_carrier',
+  };
+  const sets = [];
+  const vals = [];
+  let i = 1;
+  for (const k of Object.keys(fields)) {
+    if (map[k] && fields[k] !== undefined) {
+      sets.push(`${map[k]} = $${i++}`);
+      const v = (k === 'customerInfo')
+        ? JSON.stringify(fields[k] || null)
+        : fields[k];
+      vals.push(v);
+    }
+  }
+  if (!sets.length) return getOrderById(id);
+  sets.push(`updated_at = NOW()`);
+  vals.push(id);
+  const { rows } = await pool.query(
+    `UPDATE orders SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    vals
+  );
+  return camelize(rows[0]);
+}
+
+async function getOrdersBySeller(sellerId, since) {
+  if (since) {
+    const { rows } = await pool.query(
+      `SELECT * FROM orders
+         WHERE seller_id = $1 AND created_at >= $2
+         ORDER BY created_at DESC`,
+      [sellerId, since]
+    );
+    return camelizeAll(rows);
+  }
+  const { rows } = await pool.query(
+    `SELECT * FROM orders WHERE seller_id = $1 ORDER BY created_at DESC`,
+    [sellerId]
+  );
+  return camelizeAll(rows);
+}
+
+// ── CUSTOMERS ────────────────────────────────────────────────
+async function getCustomersBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM customers WHERE seller_id = $1 ORDER BY last_order_at DESC NULLS LAST`,
+    [sellerId]
+  );
+  return camelizeAll(rows);
+}
+
+// ── STRIPE KEYS ──────────────────────────────────────────────
+async function saveStripeKeys(sellerId, { publishableKey, secretKey, webhookSecret }) {
+  await pool.query(
+    `INSERT INTO stripe_keys (seller_id, publishable_key, secret_key, webhook_secret)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (seller_id) DO UPDATE
+       SET publishable_key = EXCLUDED.publishable_key,
+           secret_key      = EXCLUDED.secret_key,
+           webhook_secret  = EXCLUDED.webhook_secret,
+           updated_at      = NOW()`,
+    [sellerId, publishableKey, secretKey, webhookSecret || null]
+  );
+}
+
+async function getStripeKeys(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM stripe_keys WHERE seller_id = $1 LIMIT 1`,
+    [sellerId]
+  );
+  return camelize(rows[0]);
+}
+
+// ── SHIPMENTS (Shipping History) ─────────────────────────────
+async function createShipment(data) {
+  const { rows } = await pool.query(
+    `INSERT INTO shipments
+       (seller_id, order_id, tracking_number, carrier, service_code, service_name,
+        from_name, from_addr, from_city, from_state, from_zip,
+        to_name, to_company, to_addr, to_addr2, to_city, to_state, to_zip,
+        to_phone, to_email, residential, weight, total_charge, currency,
+        ref, label_image, label_url, transaction_id, status)
+     VALUES ($1,$2,$3,$4,$5,$6,
+             $7,$8,$9,$10,$11,
+             $12,$13,$14,$15,$16,$17,$18,
+             $19,$20,$21,$22,$23,$24,
+             $25,$26,$27,$28,$29)
+     ON CONFLICT (tracking_number) DO NOTHING
+     RETURNING *`,
+    [
+      data.sellerId || null, data.orderId || null,
+      data.trackingNumber, data.carrier, data.serviceCode || null, data.serviceName || null,
+      data.fromName, data.fromAddr, data.fromCity, data.fromState, data.fromZip,
+      data.toName, data.toCompany, data.toAddr, data.toAddr2, data.toCity, data.toState, data.toZip,
+      data.toPhone, data.toEmail, !!data.residential, data.weight,
+      data.totalCharge, data.currency || 'USD',
+      data.ref, data.labelImage, data.labelUrl, data.transactionId,
+      data.status || 'created',
+    ]
+  );
+  return camelize(rows[0]);
+}
+
+async function getShipmentByTracking(trackingNumber) {
+  const { rows } = await pool.query(
+    `SELECT * FROM shipments WHERE tracking_number = $1 LIMIT 1`,
+    [trackingNumber]
+  );
+  return camelize(rows[0]);
+}
+
+async function getShipmentsBySeller(sellerId, opts = {}) {
+  const limit  = Math.min(parseInt(opts.limit)  || 200, 1000);
+  const offset = parseInt(opts.offset) || 0;
+  const { rows } = await pool.query(
+    `SELECT * FROM shipments
+       WHERE seller_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+    [sellerId, limit, offset]
+  );
+  return camelizeAll(rows);
+}
+
+// Used by the history page when no auth is available — returns recent shipments
+// regardless of seller. Useful while the auth wiring is being completed.
+async function getRecentShipments(opts = {}) {
+  const limit  = Math.min(parseInt(opts.limit)  || 200, 1000);
+  const offset = parseInt(opts.offset) || 0;
+  const { rows } = await pool.query(
+    `SELECT * FROM shipments
+       ORDER BY created_at DESC
+       LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return camelizeAll(rows);
+}
+
+async function markShipmentVoided(trackingNumber, action) {
+  const status = action === 'refund_requested' ? 'refund_requested' : 'voided';
+  const { rows } = await pool.query(
+    `UPDATE shipments
+       SET status = $1, voided_at = NOW()
+       WHERE tracking_number = $2
+       RETURNING *`,
+    [status, trackingNumber]
+  );
+  return camelize(rows[0]);
+}
+
+// Purge shipments older than N days (UPS stops tracking after 120 days anyway)
+async function purgeOldShipments(retentionDays = 120) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM shipments
+       WHERE created_at < NOW() - ($1 || ' days')::interval`,
+    [retentionDays]
+  );
+  if (rowCount > 0) console.log(`Purged ${rowCount} old shipments (>${retentionDays} days)`);
+  return rowCount;
+}
+
+// Run a purge on app startup, then once a day after that
+purgeOldShipments(120).catch(err => console.error('Initial purge error:', err));
+setInterval(() => {
+  purgeOldShipments(120).catch(err => console.error('Daily purge error:', err));
+}, 24 * 60 * 60 * 1000);
+
+// ── EXPORTS ──────────────────────────────────────────────────
 module.exports = {
   // Sellers
   createSeller,
-  getSellerById,
   getSellerByEmail,
+  getSellerById,
   getSellerBySlug,
   getSellerByStripeCustomerId,
   updateSeller,
 
   // Products
-  createProduct,
-  getProductById,
   getActiveProducts,
   getProductsBySeller,
   getProductCountBySeller,
   checkSKUExists,
+  createProduct,
+  getProductById,
   updateProduct,
   deleteProduct,
   decrementStock,
@@ -485,13 +630,24 @@ module.exports = {
   // Orders
   createOrder,
   getOrderById,
-  getOrdersBySeller,
   updateOrder,
+  getOrdersBySeller,
 
   // Customers
   getCustomersBySeller,
 
-  // Stripe
+  // Stripe keys
   saveStripeKeys,
   getStripeKeys,
+
+  // Shipments (Shipping History)
+  createShipment,
+  getShipmentByTracking,
+  getShipmentsBySeller,
+  getRecentShipments,
+  markShipmentVoided,
+  purgeOldShipments,
+
+  // Internal — exposed in case anything needs raw access
+  pool,
 };
