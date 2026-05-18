@@ -3,821 +3,340 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ShopSell — Start Selling</title>
+<title>Sign up — ShopSell</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --brand:#0f0f1a;--accent:#e63946;--gold:#c9a84c;
-  --light:#f7f7f2;--light2:#efefea;--card:#fff;
-  --text:#0f0f1a;--muted:#6b7280;--border:#e5e5e0;
-  --green:#2d6a4f;--green-bg:#d8f3dc;--green-border:#b7dda0;
-  --stripe:#635bff;--stripe-light:#ede9ff;
-  --amber:#92400e;--amber-bg:#fef3c7;
-  --radius:14px;--shadow:0 4px 24px rgba(0,0,0,0.07);
-  --shadow-lg:0 12px 48px rgba(0,0,0,0.12);
+  --bg:#0a0a0f; --bg2:#13131a; --bg3:#1c1c27;
+  --card:#16161e; --border:#24242f; --border2:#2f2f3d;
+  --text:#e8e8f0; --text2:#b8b8c8; --muted:#60607a;
+  --accent:#e63946; --accent-hover:#d32a37;
+  --green:#00c896; --red:#e63946;
+  --ups-gold:#ffb500;
+  --radius:14px;
 }
-html{scroll-behavior:smooth}
-body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);min-height:100vh}
-
-/* HEADER */
-.header{background:var(--brand);padding:0 2rem;height:60px;display:flex;align-items:center;justify-content:space-between}
-.logo{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:#fff;text-decoration:none}
-.logo em{color:var(--accent);font-style:normal}
-.header-link{font-size:13px;color:rgba(255,255,255,0.6);text-decoration:none;cursor:pointer}
-.header-link:hover{color:#fff}
-.header-link span{color:var(--accent)}
-
-/* PAGES */
-.page{display:none}
-.page.active{display:block;animation:fadeIn 0.3s ease}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-
-/* PRICING PAGE */
-.pricing-hero{background:var(--brand);color:#fff;padding:4rem 2rem;text-align:center;position:relative;overflow:hidden}
-.pricing-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 60%,rgba(230,57,70,0.12),transparent 60%)}
-.pricing-eyebrow{font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
-.pricing-hero h1{font-family:'Playfair Display',serif;font-size:2.4rem;font-weight:700;margin-bottom:12px;line-height:1.2}
-.pricing-hero h1 em{font-style:italic;color:#ff6b6b}
-.pricing-hero p{font-size:15px;color:rgba(255,255,255,0.65);max-width:480px;margin:0 auto 1.5rem;line-height:1.7}
-.godaddy-pill{display:inline-block;background:rgba(230,57,70,0.2);border:1px solid rgba(230,57,70,0.4);color:#fca5a5;font-size:12px;padding:5px 16px;border-radius:20px}
-
-.plans-wrapper{max-width:960px;margin:0 auto;padding:3rem 2rem}
-
-.savings-bar{background:var(--green-bg);border:1px solid var(--green-border);border-radius:12px;padding:14px 20px;margin-bottom:2.5rem;display:flex;align-items:center;justify-content:space-around;flex-wrap:wrap;gap:12px}
-.savings-item{text-align:center}
-.savings-val{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700}
-.savings-label{font-size:11px;color:var(--muted);margin-top:2px}
-.savings-divider{width:1px;height:40px;background:var(--green-border)}
-
-.plans-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin-bottom:2rem}
-.plan-card{background:var(--card);border-radius:16px;border:1.5px solid var(--border);padding:1.75rem;cursor:pointer;transition:all 0.2s;position:relative}
-.plan-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:var(--shadow-lg)}
-.plan-card.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(230,57,70,0.12)}
-.plan-card.featured{border-color:var(--stripe)}
-.plan-card.featured:hover{border-color:var(--accent)}
-.popular-tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--stripe);color:#fff;font-size:11px;font-weight:700;padding:3px 14px;border-radius:20px;white-space:nowrap;letter-spacing:0.3px}
-.plan-name{font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:600;margin-bottom:4px}
-.plan-price-row{margin:14px 0 6px}
-.plan-price{font-family:'Playfair Display',serif;font-size:2.2rem;font-weight:700;color:var(--accent)}
-.plan-period{font-size:13px;color:var(--muted)}
-.plan-desc{font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5}
-.plan-features{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:1.25rem}
-.plan-feat{display:flex;align-items:flex-start;gap:8px;font-size:13px}
-.feat-check{width:16px;height:16px;flex-shrink:0;margin-top:1px}
-.feat-x{color:var(--muted)}
-.plan-btn{width:100%;padding:11px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:transparent;color:var(--text);transition:all 0.2s}
-.plan-card.selected .plan-btn,.plan-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
-.plan-card.featured .plan-btn{background:var(--stripe);color:#fff;border-color:var(--stripe)}
-.plan-card.featured.selected .plan-btn,.plan-card.featured .plan-btn:hover{background:var(--accent);border-color:var(--accent)}
-
-.trial-note{text-align:center;font-size:13px;color:var(--muted);padding:1rem 0}
-.trial-note strong{color:var(--text)}
-
-/* STEP INDICATOR */
-.step-bar{background:var(--brand);padding:1.25rem 2rem}
-.step-bar-inner{max-width:600px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:0}
-.step-item{display:flex;flex-direction:column;align-items:center;gap:5px}
-.step-dot{width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);background:transparent;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:rgba(255,255,255,0.4);transition:all 0.3s}
-.step-dot.active{border-color:var(--accent);background:var(--accent);color:#fff}
-.step-dot.done{border-color:var(--green);background:var(--green);color:#fff}
-.step-label{font-size:11px;color:rgba(255,255,255,0.4);white-space:nowrap;transition:color 0.3s}
-.step-dot.active+.step-label,.step-dot.done+.step-label{color:rgba(255,255,255,0.8)}
-.step-line{flex:1;height:2px;background:rgba(255,255,255,0.15);margin:0 6px;margin-bottom:18px;transition:background 0.3s}
-.step-line.done{background:var(--green)}
-
-/* FORM PAGES */
-.form-wrapper{max-width:660px;margin:0 auto;padding:2rem}
-
-.plan-summary-bar{background:var(--brand);border-radius:12px;padding:14px 20px;margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;color:#fff}
-.psb-name{font-size:13px;font-weight:500}
-.psb-sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px}
-.psb-price{font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:#fca5a5}
-.psb-change{font-size:12px;color:rgba(255,255,255,0.45);cursor:pointer;text-decoration:underline;margin-top:2px}
-.psb-change:hover{color:#fff}
-
-.form-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.5rem;margin-bottom:1.25rem}
-.form-sec-hd{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--muted);margin-bottom:1.25rem;padding-bottom:10px;border-bottom:1px solid var(--border)}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:12px;font-weight:500;margin-bottom:5px;color:var(--text)}
-.field label .req{color:var(--accent)}
-.field input,.field select,.field textarea{width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);background:#fff;outline:none;transition:border-color 0.2s}
-.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
-.field .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4}
-.field .field-error{font-size:11px;color:var(--accent);margin-top:4px;display:none}
-.field.error input,.field.error select{border-color:var(--accent)}
-.field.error .field-error{display:block}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.url-field-wrap{display:flex;align-items:center;border:1.5px solid var(--border);border-radius:9px;overflow:hidden;transition:border-color 0.2s}
-.url-field-wrap:focus-within{border-color:var(--accent)}
-.url-field-wrap input{border:none;flex:1;padding:10px 13px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;background:transparent}
-.url-suffix{padding:10px 13px;background:#fafaf7;font-size:12px;color:var(--muted);border-left:1px solid var(--border);white-space:nowrap;flex-shrink:0}
-
-/* CARD INPUT */
-.card-input-wrap{border:1.5px solid var(--border);border-radius:9px;overflow:hidden;transition:border-color 0.2s;margin-bottom:4px}
-.card-input-wrap:focus-within{border-color:var(--stripe)}
-.card-num-row{display:flex;align-items:center;padding:10px 13px;border-bottom:1px solid var(--border)}
-.card-num-row input{flex:1;border:none;font-family:monospace;font-size:13px;outline:none;letter-spacing:1px;background:transparent}
-.card-icons{display:flex;gap:4px}
-.ci{width:30px;height:18px;border-radius:3px;border:1px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700}
-.card-btm{display:grid;grid-template-columns:1fr 1fr 1fr 1fr}
-.card-btm input{padding:10px 13px;border:none;border-right:1px solid var(--border);font-family:'Outfit',sans-serif;font-size:13px;outline:none;background:transparent}
-.card-btm input:last-child{border-right:none}
-
-/* TRIAL ALERT */
-.trial-alert{background:var(--amber-bg);border:1px solid #f5c475;border-radius:10px;padding:12px 16px;margin-bottom:1.25rem;font-size:12px;color:var(--amber);line-height:1.6;display:flex;gap:10px;align-items:flex-start}
-
-/* ORDER SUMMARY */
-.order-summary{background:var(--light);border-radius:10px;padding:14px;margin-bottom:1.25rem}
-.os-row{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--muted)}
-.os-row.total{font-size:15px;font-weight:600;color:var(--text);border-top:1px solid var(--border);margin-top:6px;padding-top:10px}
-.os-free{color:var(--green);font-weight:600}
-
-/* AGREE */
-.agree-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;font-size:12px;color:var(--muted);line-height:1.6}
-.agree-row input[type=checkbox]{width:16px;height:16px;margin-top:2px;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
-.agree-row a{color:var(--accent);text-decoration:none}
-
-/* BUTTONS */
-.btn-row{display:flex;gap:10px;align-items:center}
-.btn{border:none;padding:12px 24px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s}
-.btn.primary{background:var(--accent);color:#fff}
-.btn.primary:hover{background:#c1121f}
-.btn.primary:disabled{opacity:0.5;cursor:not-allowed}
-.btn.secondary{background:var(--card);color:var(--text);border:1.5px solid var(--border)}
-.btn.secondary:hover{border-color:var(--text)}
-.btn.full{width:100%;justify-content:center;display:flex;align-items:center;gap:8px}
-.btn.lg{padding:15px 28px;font-size:15px}
-.secure-note{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-size:11px;color:var(--muted)}
-
-/* REVIEW PAGE */
-.review-row{display:flex;justify-content:space-between;font-size:13px;padding:10px 0;border-bottom:1px solid var(--border)}
-.review-row:last-child{border-bottom:none}
-.review-label{color:var(--muted)}
-.review-val{font-weight:500;text-align:right}
-.terms-box{background:var(--light);border-radius:10px;padding:14px 16px;font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:1.25rem;border:1px solid var(--border)}
-.terms-box strong{color:var(--text)}
-
-/* SUCCESS PAGE */
-.success-wrapper{max-width:560px;margin:0 auto;padding:4rem 2rem;text-align:center}
-.success-icon{width:84px;height:84px;background:var(--green-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem}
-.success-title{font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;margin-bottom:10px}
-.success-sub{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:2rem}
-.acct-summary{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1.5rem;text-align:left}
-.next-steps{display:flex;flex-direction:column;gap:10px;margin-bottom:2rem;text-align:left}
-.next-step{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;background:var(--card);border:1px solid var(--border);border-radius:11px}
-.ns-num{width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
-.ns-text{font-size:13px;line-height:1.5}
-.btn-goto{background:var(--brand);color:#fff;border:none;padding:14px 32px;border-radius:11px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.2s}
-.btn-goto:hover{background:var(--accent)}
-
-/* LOADING SPINNER */
-.spinner{display:none;width:20px;height:20px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* ALERT */
-.alert{border-radius:10px;padding:12px 16px;margin-bottom:1rem;font-size:13px;display:none}
-.alert.error{background:#fee2e2;border:1px solid #fecaca;color:#991b1b;display:flex;gap:10px;align-items:flex-start}
-.alert.success{background:var(--green-bg);border:1px solid var(--green-border);color:var(--green);display:flex;gap:10px;align-items:flex-start}
-
-/* RESPONSIVE */
-@media(max-width:768px){
-  .plans-grid{grid-template-columns:1fr}
-  .savings-divider{display:none}
-  .two-col{grid-template-columns:1fr}
-  .card-btm{grid-template-columns:1fr 1fr}
-  .card-btm input:nth-child(2){border-right:none}
-  .card-btm input:nth-child(3){border-top:1px solid var(--border)}
-  .card-btm input:nth-child(4){border-top:1px solid var(--border);border-right:none}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Outfit',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:2rem;
+  background-image:radial-gradient(circle at 20% 30%, rgba(230,57,70,0.06), transparent 40%),
+                   radial-gradient(circle at 80% 70%, rgba(255,181,0,0.04), transparent 40%);
+}
+.brand-wrap{
+  position:absolute;
+  top:2rem;
+  left:2rem;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-family:'Syne',sans-serif;
+  font-size:18px;
+  font-weight:700;
+  letter-spacing:0.5px;
+}
+.brand-mark{
+  width:32px;height:32px;
+  background:linear-gradient(135deg, var(--accent), var(--ups-gold));
+  border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:14px;
+}
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:2.5rem;
+  max-width:480px;
+  width:100%;
+  box-shadow:0 20px 60px rgba(0,0,0,0.4);
+}
+h1{
+  font-family:'Syne',sans-serif;
+  font-size:24px;
+  font-weight:700;
+  margin-bottom:6px;
+}
+.subtitle{
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:1.5rem;
+}
+.row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.field{
+  margin-bottom:0.85rem;
+}
+.field label{
+  display:block;
+  font-size:11px;
+  font-weight:600;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+  margin-bottom:5px;
+}
+.field input, .field select{
+  width:100%;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:7px;
+  padding:9px 12px;
+  font-family:'Outfit',sans-serif;
+  font-size:13px;
+  color:var(--text);
+  outline:none;
+  transition:border-color 0.15s;
+}
+.field input:focus, .field select:focus{
+  border-color:var(--accent);
+}
+.field .hint{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:4px;
+}
+.plan-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  margin-bottom:1rem;
+}
+.plan-opt{
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px;
+  cursor:pointer;
+  text-align:center;
+  transition:all 0.15s;
+}
+.plan-opt:hover{border-color:var(--border2)}
+.plan-opt.selected{
+  border-color:var(--accent);
+  background:rgba(230,57,70,0.06);
+}
+.plan-opt .name{
+  font-weight:600;
+  font-size:13px;
+  margin-bottom:2px;
+}
+.plan-opt .price{
+  font-size:11px;
+  color:var(--muted);
+}
+button.submit{
+  width:100%;
+  background:var(--accent);
+  color:#fff;
+  border:none;
+  border-radius:8px;
+  padding:11px;
+  font-family:'Outfit',sans-serif;
+  font-size:14px;
+  font-weight:600;
+  cursor:pointer;
+  margin-top:0.5rem;
+  transition:background 0.15s;
+}
+button.submit:hover:not(:disabled){background:var(--accent-hover)}
+button.submit:disabled{opacity:0.5;cursor:not-allowed}
+.foot{
+  text-align:center;
+  margin-top:1.25rem;
+  font-size:12px;
+  color:var(--muted);
+}
+.foot a{color:var(--accent);text-decoration:none}
+.foot a:hover{text-decoration:underline}
+.error{
+  background:rgba(230,57,70,0.1);
+  border:1px solid rgba(230,57,70,0.3);
+  color:#ff7a8a;
+  padding:10px 12px;
+  border-radius:7px;
+  font-size:12px;
+  margin-bottom:1rem;
+  display:none;
+}
+.error.show{display:block}
+.trial-note{
+  background:rgba(0,200,150,0.08);
+  border:1px solid rgba(0,200,150,0.25);
+  color:#5eddb4;
+  padding:8px 10px;
+  border-radius:6px;
+  font-size:11px;
+  margin-bottom:1rem;
+  text-align:center;
 }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <a class="logo" href="/">Shop<em>.</em>Sell</a>
-  <a class="header-link" href="/login">Already have an account? <span>Sign in →</span></a>
+<div class="brand-wrap">
+  <div class="brand-mark">S</div>
+  <span>ShopSell</span>
 </div>
 
-<!-- PRICING PAGE -->
-<div class="page active" id="page-plans">
-  <div class="pricing-hero">
-    <div class="pricing-eyebrow">Start selling today</div>
-    <h1>Your store, your brand,<br><em>your rules.</em></h1>
-    <p>Everything you need to sell online — payments, products, orders, and more. Cancel anytime.</p>
-    <div class="godaddy-pill">💰 Sellers switching from GoDaddy save $250+/month</div>
-  </div>
+<div class="card">
+  <h1>Create your seller account</h1>
+  <div class="subtitle">Start your 14-day free trial. No credit card required to start.</div>
 
-  <div class="plans-wrapper">
-    <div class="savings-bar">
-      <div class="savings-item">
-        <div class="savings-val" style="color:#dc2626">$400<span style="font-size:14px">/mo</span></div>
-        <div class="savings-label">GoDaddy eCommerce</div>
+  <div class="trial-note">✨ Includes shipping suite, product catalog, real-time orders</div>
+
+  <div class="error" id="errorBox"></div>
+
+  <form id="signupForm" onsubmit="return handleSignup(event)">
+    <div class="row">
+      <div class="field">
+        <label>First name</label>
+        <input type="text" id="firstName" required autocomplete="given-name">
       </div>
-      <div class="savings-divider"></div>
-      <div class="savings-item"><div class="savings-val" style="color:var(--muted)">vs.</div></div>
-      <div class="savings-divider"></div>
-      <div class="savings-item">
-        <div class="savings-val" style="color:var(--stripe)">$79–$149<span style="font-size:14px">/mo</span></div>
-        <div class="savings-label">ShopSell plans</div>
-      </div>
-      <div class="savings-divider"></div>
-      <div class="savings-item">
-        <div class="savings-val" style="color:var(--green)">Save $251+</div>
-        <div class="savings-label" style="color:var(--green)">every single month</div>
+      <div class="field">
+        <label>Last name</label>
+        <input type="text" id="lastName" required autocomplete="family-name">
       </div>
     </div>
 
-    <div class="plans-grid">
-      <!-- STARTER -->
-      <div class="plan-card" id="plan-starter" onclick="selectPlan('starter',79,'Starter')">
-        <div class="plan-name">Starter</div>
-        <div class="plan-price-row">
-          <span class="plan-price">$79</span>
-          <span class="plan-period">/month</span>
-        </div>
-        <div class="plan-desc">Perfect for new sellers getting their first store online.</div>
-        <ul class="plan-features">
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Up to 50 products</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Free shipping shown to buyers</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Stripe payment setup</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Product upload form</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Order management</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Email support</li>
-          <li class="plan-feat feat-x"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg><span style="color:var(--muted)">Instagram Shop sync</span></li>
-          <li class="plan-feat feat-x"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg><span style="color:var(--muted)">Analytics dashboard</span></li>
-        </ul>
-        <button class="plan-btn">Choose Starter</button>
-      </div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="email" required autocomplete="email">
+    </div>
 
-      <!-- GROWTH -->
-      <div class="plan-card featured" id="plan-growth" onclick="selectPlan('growth',119,'Growth')">
-        <div class="popular-tag">Most popular</div>
-        <div class="plan-name">Growth</div>
-        <div class="plan-price-row">
-          <span class="plan-price">$119</span>
-          <span class="plan-period">/month</span>
-        </div>
-        <div class="plan-desc">For sellers ready to scale and automate their business.</div>
-        <ul class="plan-features">
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Up to 500 products</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Free shipping shown to buyers</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Stripe payment setup</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Product upload + bulk import</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Instagram Shop sync</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Analytics dashboard</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Abandoned cart recovery</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Priority email + chat support</li>
-        </ul>
-        <button class="plan-btn">Choose Growth</button>
-      </div>
+    <div class="field">
+      <label>Phone</label>
+      <input type="tel" id="phone" autocomplete="tel" placeholder="+1 555 123 4567">
+    </div>
 
-      <!-- PRO -->
-      <div class="plan-card" id="plan-pro" onclick="selectPlan('pro',149,'Pro')">
-        <div class="plan-name">Pro</div>
-        <div class="plan-price-row">
-          <span class="plan-price">$149</span>
-          <span class="plan-period">/month</span>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="password" required autocomplete="new-password" minlength="8">
+      <div class="hint">At least 8 characters</div>
+    </div>
+
+    <div class="field">
+      <label>Store name</label>
+      <input type="text" id="storeName" required placeholder="e.g. Maple Coffee Co.">
+    </div>
+
+    <div class="field">
+      <label>Store URL slug</label>
+      <input type="text" id="storeSlug" required placeholder="maple-coffee" pattern="[a-z0-9-]+">
+      <div class="hint">Lowercase letters, numbers, and dashes only. Your store will be at /store/<span id="slugPreview">maple-coffee</span></div>
+    </div>
+
+    <div class="field">
+      <label>Pick a plan</label>
+      <div class="plan-grid">
+        <div class="plan-opt selected" data-plan="starter" onclick="selectPlan(this)">
+          <div class="name">Starter</div>
+          <div class="price">$19/mo</div>
         </div>
-        <div class="plan-desc">High-volume sellers who need full control and white-glove setup.</div>
-        <ul class="plan-features">
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Unlimited products</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Everything in Growth</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Custom domain setup</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Dedicated onboarding call</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Shipping module included</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Phone + priority support</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Advanced analytics</li>
-          <li class="plan-feat"><svg class="feat-check" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SLA uptime guarantee</li>
-        </ul>
-        <button class="plan-btn">Choose Pro</button>
+        <div class="plan-opt" data-plan="growth" onclick="selectPlan(this)">
+          <div class="name">Growth</div>
+          <div class="price">$49/mo</div>
+        </div>
+        <div class="plan-opt" data-plan="pro" onclick="selectPlan(this)">
+          <div class="name">Pro</div>
+          <div class="price">$99/mo</div>
+        </div>
       </div>
     </div>
 
-    <div class="trial-note">All plans include a <strong>14-day free trial</strong> · No setup fees · Cancel anytime · Billing begins after trial</div>
-  </div>
-</div>
+    <button type="submit" class="submit" id="submitBtn">Create my store →</button>
+  </form>
 
-<!-- SIGNUP FORM PAGES -->
-<div class="page" id="page-signup">
-  <div class="step-bar">
-    <div class="step-bar-inner">
-      <div class="step-item">
-        <div class="step-dot active" id="sd1">1</div>
-        <div class="step-label">Account</div>
-      </div>
-      <div class="step-line" id="sl1"></div>
-      <div class="step-item">
-        <div class="step-dot" id="sd2">2</div>
-        <div class="step-label">Store info</div>
-      </div>
-      <div class="step-line" id="sl2"></div>
-      <div class="step-item">
-        <div class="step-dot" id="sd3">3</div>
-        <div class="step-label">Billing</div>
-      </div>
-      <div class="step-line" id="sl3"></div>
-      <div class="step-item">
-        <div class="step-dot" id="sd4">4</div>
-        <div class="step-label">Confirm</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="form-wrapper">
-
-    <!-- STEP 1: ACCOUNT -->
-    <div id="step1">
-      <div class="plan-summary-bar">
-        <div>
-          <div class="psb-name" id="psb1-name">Growth plan</div>
-          <div class="psb-sub">14-day free trial · then billed monthly</div>
-        </div>
-        <div style="text-align:right">
-          <div class="psb-price" id="psb1-price">$119/mo</div>
-          <div class="psb-change" onclick="goPlans()">Change plan</div>
-        </div>
-      </div>
-
-      <div class="alert error" id="step1Error">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span id="step1ErrorMsg">Please fill in all required fields.</span>
-      </div>
-
-      <div class="form-card">
-        <div class="form-sec-hd">Create your account</div>
-        <div class="two-col">
-          <div class="field" id="f-fname">
-            <label>First name <span class="req">*</span></label>
-            <input type="text" id="fname" placeholder="Jane" oninput="clearError('f-fname')">
-            <div class="field-error">Required</div>
-          </div>
-          <div class="field" id="f-lname">
-            <label>Last name <span class="req">*</span></label>
-            <input type="text" id="lname" placeholder="Smith" oninput="clearError('f-lname')">
-            <div class="field-error">Required</div>
-          </div>
-        </div>
-        <div class="field" id="f-email">
-          <label>Email address <span class="req">*</span></label>
-          <input type="email" id="email" placeholder="jane@yourbusiness.com" oninput="clearError('f-email')">
-          <div class="field-error">Enter a valid email address</div>
-        </div>
-        <div class="two-col">
-          <div class="field" id="f-pw">
-            <label>Password <span class="req">*</span></label>
-            <input type="password" id="pw" placeholder="Min. 8 characters" oninput="clearError('f-pw')">
-            <div class="field-error">Password must be at least 8 characters</div>
-          </div>
-          <div class="field" id="f-pw2">
-            <label>Confirm password <span class="req">*</span></label>
-            <input type="password" id="pw2" placeholder="Re-enter password" oninput="clearError('f-pw2')">
-            <div class="field-error">Passwords do not match</div>
-          </div>
-        </div>
-        <div class="field">
-          <label>Phone number</label>
-          <input type="tel" id="phone" placeholder="+1 (555) 000-0000">
-          <div class="hint">Used for account recovery only — never shared</div>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:flex-end">
-        <button class="btn primary" onclick="validateStep1()">Continue to store info →</button>
-      </div>
-    </div>
-
-    <!-- STEP 2: STORE INFO -->
-    <div id="step2" style="display:none">
-      <div class="plan-summary-bar">
-        <div>
-          <div class="psb-name" id="psb2-name">Growth plan</div>
-          <div class="psb-sub">14-day free trial · then billed monthly</div>
-        </div>
-        <div style="text-align:right">
-          <div class="psb-price" id="psb2-price">$119/mo</div>
-          <div class="psb-change" onclick="goPlans()">Change plan</div>
-        </div>
-      </div>
-
-      <div class="alert error" id="step2Error">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span id="step2ErrorMsg">Please fill in all required fields.</span>
-      </div>
-
-      <div class="form-card">
-        <div class="form-sec-hd">Your store details</div>
-        <div class="field" id="f-storeName">
-          <label>Store / business name <span class="req">*</span></label>
-          <input type="text" id="storeName" placeholder="e.g. Jane's Boutique" oninput="autoSlug();clearError('f-storeName')">
-          <div class="field-error">Required</div>
-        </div>
-        <div class="field" id="f-storeSlug">
-          <label>Your store URL <span class="req">*</span></label>
-          <div class="url-field-wrap">
-            <input type="text" id="storeSlug" placeholder="janesboutique" oninput="slugify(this);clearError('f-storeSlug')">
-            <div class="url-suffix">.shopsell.com</div>
-          </div>
-          <div class="hint" id="slugPreview">Your customers will shop at janesboutique.shopsell.com</div>
-          <div class="field-error">Required — use only letters, numbers, and hyphens</div>
-        </div>
-        <div class="two-col">
-          <div class="field">
-            <label>Business type</label>
-            <select id="bizType">
-              <option>Sole proprietor / Individual</option>
-              <option>LLC</option>
-              <option>Corporation</option>
-              <option>Partnership</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Primary category</label>
-            <select id="category">
-              <option>Clothing & Apparel</option>
-              <option>Accessories</option>
-              <option>Home & Living</option>
-              <option>Beauty & Wellness</option>
-              <option>Art & Prints</option>
-              <option>Food & Drink</option>
-              <option>Digital Products</option>
-              <option>Other</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label>How did you hear about us?</label>
-          <select id="referral">
-            <option>Google search</option>
-            <option>Instagram</option>
-            <option>Friend / referral</option>
-            <option>Facebook</option>
-            <option>Podcast</option>
-            <option>Other</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Tell us about your store (optional)</label>
-          <textarea id="storeDesc" placeholder="What do you sell? What makes your store unique?" rows="3" style="resize:vertical"></textarea>
-        </div>
-      </div>
-
-      <div class="btn-row" style="justify-content:space-between">
-        <button class="btn secondary" onclick="goStep(1)">← Back</button>
-        <button class="btn primary" onclick="validateStep2()">Continue to billing →</button>
-      </div>
-    </div>
-
-    <!-- STEP 3: BILLING -->
-    <div id="step3" style="display:none">
-      <div class="plan-summary-bar">
-        <div>
-          <div class="psb-name" id="psb3-name">Growth plan</div>
-          <div class="psb-sub">14-day free trial · then billed monthly</div>
-        </div>
-        <div style="text-align:right">
-          <div class="psb-price" id="psb3-price">$119/mo</div>
-          <div class="psb-change" onclick="goPlans()">Change plan</div>
-        </div>
-      </div>
-
-      <div class="trial-alert">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <div><strong>Your 14-day free trial starts today.</strong> Your card will NOT be charged until your trial ends. You can cancel at any time before then at no cost.</div>
-      </div>
-
-      <div class="form-card">
-        <div class="form-sec-hd">
-          <span>Monthly subscription billing</span>
-          <span style="float:right;font-size:11px;color:var(--stripe);font-weight:500;text-transform:none;letter-spacing:0">🔒 Secured by Stripe</span>
-        </div>
-        <div class="field">
-          <label>Name on card <span class="req">*</span></label>
-          <input type="text" id="cardName" placeholder="Jane Smith">
-        </div>
-        <div class="field">
-          <label>Card number <span class="req">*</span></label>
-          <div class="card-input-wrap">
-            <div class="card-num-row">
-              <input type="text" id="cardNum" placeholder="1234  5678  9012  3456" maxlength="19" oninput="fmtCard(this)">
-              <div class="card-icons">
-                <div class="ci" style="color:#1a1f71">VISA</div>
-                <div class="ci" style="color:#eb001b">MC</div>
-                <div class="ci" style="color:#2e77bc">AMEX</div>
-              </div>
-            </div>
-            <div class="card-btm">
-              <input type="text" placeholder="MM / YY" maxlength="7" oninput="fmtExp(this)">
-              <input type="text" placeholder="CVV" maxlength="4">
-              <input type="text" placeholder="ZIP" maxlength="5">
-            </div>
-          </div>
-          <div class="hint">Your card is stored securely by Stripe and used only for your monthly ShopSell subscription.</div>
-        </div>
-        <div class="field">
-          <label>Billing address</label>
-          <input type="text" placeholder="Street address" style="margin-bottom:8px">
-          <div style="display:grid;grid-template-columns:1fr 80px 80px;gap:8px">
-            <input type="text" placeholder="City" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;outline:none">
-            <select style="padding:10px 8px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;outline:none;background:#fff"><option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option></select>
-            <input type="text" placeholder="ZIP" maxlength="5" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;outline:none">
-          </div>
-        </div>
-      </div>
-
-      <div class="form-card">
-        <div class="form-sec-hd">Order summary</div>
-        <div class="order-summary">
-          <div class="os-row"><span>Plan</span><span id="os-plan">Growth</span></div>
-          <div class="os-row"><span>Trial period</span><span class="os-free">14 days free</span></div>
-          <div class="os-row"><span>First charge date</span><span id="os-date">—</span></div>
-          <div class="os-row total"><span>Due today</span><span class="os-free">$0.00 (free trial)</span></div>
-          <div class="os-row"><span>Then monthly</span><span id="os-monthly" style="font-weight:500">$119.00</span></div>
-        </div>
-      </div>
-
-      <div class="btn-row" style="justify-content:space-between">
-        <button class="btn secondary" onclick="goStep(2)">← Back</button>
-        <button class="btn primary" onclick="goStep(4)">Review & confirm →</button>
-      </div>
-    </div>
-
-    <!-- STEP 4: REVIEW & CONFIRM -->
-    <div id="step4" style="display:none">
-      <div class="plan-summary-bar">
-        <div>
-          <div class="psb-name" id="psb4-name">Growth plan</div>
-          <div class="psb-sub">14-day free trial · then billed monthly</div>
-        </div>
-        <div style="text-align:right">
-          <div class="psb-price" id="psb4-price">$119/mo</div>
-          <div class="psb-change" onclick="goPlans()">Change plan</div>
-        </div>
-      </div>
-
-      <div class="alert error" id="signupError">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span id="signupErrorMsg">Something went wrong. Please try again.</span>
-      </div>
-
-      <div class="form-card">
-        <div class="form-sec-hd">Review your details</div>
-        <div class="review-row"><span class="review-label">Name</span><span class="review-val" id="rev-name">—</span></div>
-        <div class="review-row"><span class="review-label">Email</span><span class="review-val" id="rev-email">—</span></div>
-        <div class="review-row"><span class="review-label">Store name</span><span class="review-val" id="rev-store">—</span></div>
-        <div class="review-row"><span class="review-label">Store URL</span><span class="review-val" id="rev-url" style="color:var(--stripe)">—</span></div>
-        <div class="review-row"><span class="review-label">Plan</span><span class="review-val" id="rev-plan">—</span></div>
-        <div class="review-row"><span class="review-label">Card</span><span class="review-val" id="rev-card" style="font-family:monospace">—</span></div>
-        <div class="review-row"><span class="review-label">Due today</span><span class="review-val" style="color:var(--green);font-weight:600">$0.00 — free trial</span></div>
-      </div>
-
-      <div class="terms-box">
-        After your <strong>14-day free trial</strong>, your card will be automatically charged <strong id="terms-price">$119.00</strong> on the same date each month. You may cancel at any time from your account dashboard before renewal. No refunds are issued for partial months.
-      </div>
-
-      <div class="agree-row">
-        <input type="checkbox" id="agreeTerms">
-        <label for="agreeTerms">I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>. I authorize ShopSell to charge my card <strong id="agree-price">$119.00/month</strong> after my free trial ends.</label>
-      </div>
-      <div class="agree-row">
-        <input type="checkbox" id="agreeMarketing">
-        <label for="agreeMarketing">Send me tips and updates about growing my store (optional)</label>
-      </div>
-
-      <button class="btn primary full lg" id="signupBtn" onclick="submitSignup()">
-        <span id="signupBtnText">Start my free trial — $0 today</span>
-        <div class="spinner" id="signupSpinner"></div>
-      </button>
-      <div class="secure-note" style="margin-top:10px">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-        Billing secured by Stripe · SSL encrypted · Cancel anytime
-      </div>
-      <div style="text-align:center;margin-top:10px">
-        <span style="font-size:12px;color:var(--muted);cursor:pointer" onclick="goStep(3)">← Edit billing info</span>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- SUCCESS PAGE -->
-<div class="page" id="page-success">
-  <div class="success-wrapper">
-    <div class="success-icon">
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-    </div>
-    <div class="success-title">Welcome to ShopSell! 🎉</div>
-    <div class="success-sub">Your account is live and your 14-day free trial has started. No charge today — we'll remind you before billing begins.</div>
-
-    <div class="acct-summary">
-      <div class="review-row"><span class="review-label">Store</span><span class="review-val" id="conf-store">—</span></div>
-      <div class="review-row"><span class="review-label">URL</span><span class="review-val" id="conf-url" style="color:var(--stripe)">—</span></div>
-      <div class="review-row"><span class="review-label">Plan</span><span class="review-val" id="conf-plan">—</span></div>
-      <div class="review-row"><span class="review-label">Trial ends</span><span class="review-val" id="conf-trial">—</span></div>
-      <div class="review-row" style="border-bottom:none"><span class="review-label">First charge</span><span class="review-val" id="conf-charge">—</span></div>
-    </div>
-
-    <div class="next-steps">
-      <div class="next-step">
-        <div class="ns-num">1</div>
-        <div class="ns-text"><strong>Set up your Stripe account</strong> in the dashboard to start accepting payments from your customers.</div>
-      </div>
-      <div class="next-step">
-        <div class="ns-num">2</div>
-        <div class="ns-text"><strong>Upload your first products</strong> — add images, descriptions, prices, and SKUs using the product upload form.</div>
-      </div>
-      <div class="next-step">
-        <div class="ns-num">3</div>
-        <div class="ns-text"><strong>Share your store URL</strong> with customers and start making sales!</div>
-      </div>
-    </div>
-
-    <button class="btn-goto" onclick="window.location.href='/dashboard'">Go to my dashboard →</button>
+  <div class="foot">
+    Already have an account? <a href="/login">Log in</a>
   </div>
 </div>
 
 <script>
-// ── STATE ──────────────────────────────────────────────────────
-let selectedPlan = { id:'growth', price:119, name:'Growth' };
+let selectedPlan = 'starter';
 
-// ── PLAN SELECTION ────────────────────────────────────────────
-function selectPlan(id, price, name){
-  selectedPlan = {id, price, name};
-  document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('selected'));
-  document.getElementById('plan-'+id).classList.add('selected');
-  updatePlanSummaries();
-  showPage('signup');
-  goStep(1);
+function selectPlan(el){
+  document.querySelectorAll('.plan-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedPlan = el.dataset.plan;
 }
 
-function updatePlanSummaries(){
-  const label = selectedPlan.name+' plan';
-  const price = '$'+selectedPlan.price+'/mo';
-  [1,2,3,4].forEach(i=>{
-    const n=document.getElementById('psb'+i+'-name');
-    const p=document.getElementById('psb'+i+'-price');
-    if(n) n.textContent=label;
-    if(p) p.textContent=price;
-  });
-  const trialEnd = new Date();
-  trialEnd.setDate(trialEnd.getDate()+14);
-  const dateStr = trialEnd.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-  const osDate = document.getElementById('os-date');
-  const osMonthly = document.getElementById('os-monthly');
-  const osPlan = document.getElementById('os-plan');
-  const termsPrice = document.getElementById('terms-price');
-  const agreePrice = document.getElementById('agree-price');
-  if(osDate) osDate.textContent = dateStr;
-  if(osMonthly) osMonthly.textContent = '$'+selectedPlan.price.toFixed(2);
-  if(osPlan) osPlan.textContent = selectedPlan.name;
-  if(termsPrice) termsPrice.textContent = '$'+selectedPlan.price.toFixed(2);
-  if(agreePrice) agreePrice.textContent = '$'+selectedPlan.price.toFixed(2)+'/month';
-}
+// Auto-generate slug from store name (gentle suggestion only)
+const storeNameInput = document.getElementById('storeName');
+const storeSlugInput = document.getElementById('storeSlug');
+const slugPreview    = document.getElementById('slugPreview');
 
-function goPlans(){showPage('plans')}
-
-// ── STEP NAVIGATION ───────────────────────────────────────────
-function goStep(n){
-  [1,2,3,4].forEach(i=>{
-    const s=document.getElementById('step'+i);
-    if(s) s.style.display = i===n ? 'block' : 'none';
-    const dot=document.getElementById('sd'+i);
-    if(dot){
-      dot.classList.remove('active','done');
-      if(i===n) dot.classList.add('active');
-      else if(i<n) dot.classList.add('done');
-    }
-    const line=document.getElementById('sl'+i);
-    if(line) line.classList.toggle('done', i<n);
-  });
-  if(n===4) populateReview();
-  window.scrollTo({top:0,behavior:'smooth'});
-}
-
-// ── VALIDATION ────────────────────────────────────────────────
-function clearError(fieldId){
-  const f=document.getElementById(fieldId);
-  if(f) f.classList.remove('error');
-}
-
-function setError(fieldId, msg){
-  const f=document.getElementById(fieldId);
-  if(!f) return;
-  f.classList.add('error');
-  const errEl=f.querySelector('.field-error');
-  if(errEl&&msg) errEl.textContent=msg;
-}
-
-function showStepError(stepNum, msg){
-  const el=document.getElementById('step'+stepNum+'Error');
-  const msgEl=document.getElementById('step'+stepNum+'ErrorMsg');
-  if(el){ el.style.display='flex'; if(msgEl) msgEl.textContent=msg; el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-}
-
-function hideStepError(stepNum){
-  const el=document.getElementById('step'+stepNum+'Error');
-  if(el) el.style.display='none';
-}
-
-function validateStep1(){
-  hideStepError(1);
-  let valid=true;
-  const fname=document.getElementById('fname').value.trim();
-  const lname=document.getElementById('lname').value.trim();
-  const email=document.getElementById('email').value.trim();
-  const pw=document.getElementById('pw').value;
-  const pw2=document.getElementById('pw2').value;
-  if(!fname){setError('f-fname');valid=false}
-  if(!lname){setError('f-lname');valid=false}
-  if(!email||!email.includes('@')){setError('f-email','Enter a valid email address');valid=false}
-  if(pw.length<8){setError('f-pw','Password must be at least 8 characters');valid=false}
-  if(pw!==pw2){setError('f-pw2','Passwords do not match');valid=false}
-  if(!valid){showStepError(1,'Please fix the errors above.');return}
-  goStep(2);
-}
-
-function validateStep2(){
-  hideStepError(2);
-  let valid=true;
-  const storeName=document.getElementById('storeName').value.trim();
-  const storeSlug=document.getElementById('storeSlug').value.trim();
-  if(!storeName){setError('f-storeName');valid=false}
-  if(!storeSlug||!/^[a-z0-9-]+$/.test(storeSlug)){setError('f-storeSlug','Use only lowercase letters, numbers, and hyphens');valid=false}
-  if(!valid){showStepError(2,'Please fix the errors above.');return}
-  goStep(3);
-}
-
-// ── AUTO SLUG ─────────────────────────────────────────────────
-function autoSlug(){
-  const name=document.getElementById('storeName').value;
-  const slugEl=document.getElementById('storeSlug');
-  if(!slugEl.dataset.manual){
-    const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    slugEl.value=slug;
-    updateSlugPreview(slug);
+storeNameInput.addEventListener('input', () => {
+  // Only auto-fill slug if user hasn't manually edited it yet
+  if(!storeSlugInput.dataset.touched){
+    const slug = storeNameInput.value.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40);
+    storeSlugInput.value = slug;
+    slugPreview.textContent = slug || 'your-store';
   }
+});
+storeSlugInput.addEventListener('input', () => {
+  storeSlugInput.dataset.touched = '1';
+  // Sanitize as they type
+  storeSlugInput.value = storeSlugInput.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  slugPreview.textContent = storeSlugInput.value || 'your-store';
+});
+
+function showError(msg){
+  const box = document.getElementById('errorBox');
+  box.textContent = msg;
+  box.classList.add('show');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function slugify(el){
-  const val=el.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
-  el.value=val;
-  el.dataset.manual='true';
-  updateSlugPreview(val);
+function clearError(){
+  document.getElementById('errorBox').classList.remove('show');
 }
 
-function updateSlugPreview(slug){
-  const el=document.getElementById('slugPreview');
-  if(el) el.textContent=slug?`Your customers will shop at ${slug}.shopsell.com`:'Your store URL will appear here';
-}
+async function handleSignup(e){
+  e.preventDefault();
+  clearError();
 
-// ── REVIEW ────────────────────────────────────────────────────
-function populateReview(){
-  const fname=document.getElementById('fname').value||'—';
-  const lname=document.getElementById('lname').value||'—';
-  const email=document.getElementById('email').value||'—';
-  const store=document.getElementById('storeName').value||'—';
-  const slug=document.getElementById('storeSlug').value||'yourstore';
-  const cardNum=document.getElementById('cardNum').value;
-  const last4=cardNum.replace(/\s/g,'').slice(-4)||'****';
-
-  document.getElementById('rev-name').textContent=fname+' '+lname;
-  document.getElementById('rev-email').textContent=email;
-  document.getElementById('rev-store').textContent=store;
-  document.getElementById('rev-url').textContent=slug+'.shopsell.com';
-  document.getElementById('rev-plan').textContent=selectedPlan.name+' · $'+selectedPlan.price+'/mo';
-  document.getElementById('rev-card').textContent='•••• •••• •••• '+last4;
-}
-
-// ── SUBMIT ────────────────────────────────────────────────────
-async function submitSignup(){
-  if(!document.getElementById('agreeTerms').checked){
-    const errEl=document.getElementById('signupError');
-    document.getElementById('signupErrorMsg').textContent='Please agree to the Terms of Service to continue.';
-    errEl.style.display='flex';
-    return;
-  }
-
-  const btn=document.getElementById('signupBtn');
-  const btnText=document.getElementById('signupBtnText');
-  const spinner=document.getElementById('signupSpinner');
-  btn.disabled=true;
-  btnText.textContent='Creating your account...';
-  spinner.style.display='block';
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
 
   const payload = {
-    firstName: document.getElementById('fname').value.trim(),
-    lastName:  document.getElementById('lname').value.trim(),
-    email:     document.getElementById('email').value.trim(),
-    password:  document.getElementById('pw').value,
+    firstName: document.getElementById('firstName').value.trim(),
+    lastName:  document.getElementById('lastName').value.trim(),
+    email:     document.getElementById('email').value.trim().toLowerCase(),
+    password:  document.getElementById('password').value,
     phone:     document.getElementById('phone').value.trim(),
     storeName: document.getElementById('storeName').value.trim(),
-    storeSlug: document.getElementById('storeSlug').value.trim(),
-    plan:      selectedPlan.id,
+    storeSlug: document.getElementById('storeSlug').value.trim().toLowerCase(),
+    plan:      selectedPlan,
   };
 
+  // Basic validation
+  if(payload.password.length < 8){
+    showError('Password must be at least 8 characters.');
+    btn.disabled = false; btn.textContent = 'Create my store →';
+    return false;
+  }
+  if(!/^[a-z0-9-]+$/.test(payload.storeSlug)){
+    showError('Store slug can only contain lowercase letters, numbers, and dashes.');
+    btn.disabled = false; btn.textContent = 'Create my store →';
+    return false;
+  }
+
   try {
-    // API CALL: POST /api/auth/signup
     const res = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -829,52 +348,30 @@ async function submitSignup(){
       throw new Error(data.error || 'Signup failed. Please try again.');
     }
 
-    // Save token for dashboard use
+    // Persist token + seller info; redirect to dashboard
     localStorage.setItem('ss_token', data.token);
-    localStorage.setItem('ss_seller', JSON.stringify(data.seller));
-
-    // Show success page
-    const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate()+14);
-    const dateStr = trialEnd.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-    document.getElementById('conf-store').textContent = payload.storeName;
-    document.getElementById('conf-url').textContent = payload.storeSlug+'.shopsell.com';
-    document.getElementById('conf-plan').textContent = selectedPlan.name+' · $'+selectedPlan.price+'/mo';
-    document.getElementById('conf-trial').textContent = dateStr;
-    document.getElementById('conf-charge').textContent = dateStr+' (then monthly)';
-    showPage('success');
+    if(data.seller){
+      localStorage.setItem('ss_seller', JSON.stringify(data.seller));
+    }
+    window.location.href = '/dashboard';
 
   } catch(err){
-    btn.disabled=false;
-    btnText.textContent='Start my free trial — $0 today';
-    spinner.style.display='none';
-    const errEl=document.getElementById('signupError');
-    document.getElementById('signupErrorMsg').textContent=err.message;
-    errEl.style.display='flex';
-    errEl.scrollIntoView({behavior:'smooth',block:'nearest'});
+    showError(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Create my store →';
   }
+  return false;
 }
 
-// ── PAGE SYSTEM ───────────────────────────────────────────────
-function showPage(name){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.getElementById('page-'+name).classList.add('active');
-  window.scrollTo({top:0,behavior:'smooth'});
+// If user already logged in, redirect them to dashboard
+if(localStorage.getItem('ss_token')){
+  // Verify the token actually works before redirecting
+  fetch('/api/auth/me', {
+    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('ss_token') }
+  }).then(r => {
+    if(r.ok) window.location.href = '/dashboard';
+  }).catch(() => {/* ignore */});
 }
-
-// ── CARD FORMATTING ───────────────────────────────────────────
-function fmtCard(el){
-  let v=el.value.replace(/\D/g,'').slice(0,16);
-  el.value=v.replace(/(.{4})/g,'$1  ').trim();
-}
-function fmtExp(el){
-  let v=el.value.replace(/\D/g,'');
-  if(v.length>=3) v=v.slice(0,2)+' / '+v.slice(2,4);
-  el.value=v;
-}
-
-// ── INIT ──────────────────────────────────────────────────────
-updatePlanSummaries();
 </script>
 </body>
 </html>

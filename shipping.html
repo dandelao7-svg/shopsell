@@ -454,6 +454,17 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         Print labels
       </button>
+
+      <!-- USER PILL & LOGOUT -->
+      <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:4px 4px 4px 10px;margin-left:8px">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.2">
+          <span id="topbarUserName" style="font-size:12px;font-weight:500;color:var(--text)">—</span>
+          <span id="topbarUserEmail" style="font-size:10px;color:var(--muted)"></span>
+        </div>
+        <button onclick="logout()" title="Log out" style="background:none;border:none;color:var(--muted);width:26px;height:26px;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center" onmouseover="this.style.color='var(--accent)';this.style.background='rgba(230,57,70,0.08)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -1675,6 +1686,51 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
    OMS-ready: marketplace channel system built in.
    When OMS module is added, populate channel data here.
    ============================================================ */
+
+// ── AUTH GUARD ────────────────────────────────────────────────
+// Protects this page. If the user has no valid token, redirect
+// to the login page with a `next` param so they come back here.
+(function authGuard(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.replace(`/login?next=${next}`);
+    return;
+  }
+  // Validate token with the server. If invalid, clear it and redirect.
+  fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(async r => {
+      if(!r.ok){
+        localStorage.removeItem('ss_token');
+        localStorage.removeItem('ss_seller');
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.replace(`/login?next=${next}`);
+        return;
+      }
+      // Token is good — store the seller info for the topbar
+      const seller = await r.json();
+      try { localStorage.setItem('ss_seller', JSON.stringify(seller)); } catch(e){}
+      // Update topbar after page loads
+      document.addEventListener('DOMContentLoaded', () => updateUserDisplay(seller));
+      if(document.readyState !== 'loading') updateUserDisplay(seller);
+    })
+    .catch(() => {/* network blip — let other API calls handle it */});
+})();
+
+// Display seller name/email in topbar and add logout handler
+function updateUserDisplay(seller){
+  if(!seller) return;
+  const nameEl = document.getElementById('topbarUserName');
+  const emailEl = document.getElementById('topbarUserEmail');
+  if(nameEl)  nameEl.textContent  = `${seller.firstName || ''} ${seller.lastName || ''}`.trim() || seller.email;
+  if(emailEl) emailEl.textContent = seller.email || '';
+}
+
+function logout(){
+  localStorage.removeItem('ss_token');
+  localStorage.removeItem('ss_seller');
+  window.location.href = '/login';
+}
 
 // ── SAMPLE ORDERS ─────────────────────────────────────────────
 // API CALL: Replace with fetch('/api/shipping/orders') from server

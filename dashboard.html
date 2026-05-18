@@ -352,17 +352,17 @@ tr:hover td{background:#fafaf7}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
       Add-on modules
     </a>
-    <a class="nav-item" onclick="window.location.href='/shipping'" id="nav-shipping" style="background:rgba(255,181,0,0.08);border:1px solid rgba(255,181,0,0.15);margin-bottom:2px">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9a84c" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-      <span style="color:#c9a84c;font-weight:600">Shipping Suite</span>
-      <span style="margin-left:auto;background:rgba(255,181,0,0.2);color:#c9a84c;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px">UPS LIVE</span>
+    <a class="nav-item locked" title="Upgrade to access Shipping module">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      Shipping
+      <span class="lock-icon">🔒</span>
     </a>
-    <a class="nav-item locked" title="OMS module — coming soon">
+    <a class="nav-item locked" title="Upgrade to access OMS">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
       OMS
       <span class="lock-icon">🔒</span>
     </a>
-    <a class="nav-item locked" title="WMS module — coming soon">
+    <a class="nav-item locked" title="Upgrade to access WMS">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       WMS
       <span class="lock-icon">🔒</span>
@@ -386,7 +386,7 @@ tr:hover td{background:#fafaf7}
         <div class="seller-name" id="sellerName">Jane Smith</div>
         <div class="seller-email" id="sellerEmail">jane@yourbusiness.com</div>
       </div>
-      <button class="sidebar-signout" title="Sign out" onclick="toast('Signed out')">
+      <button class="sidebar-signout" title="Sign out" onclick="logout()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
     </div>
@@ -1094,6 +1094,49 @@ tr:hover td{background:#fafaf7}
    HOW TO CONNECT TO YOUR BACKEND:
    Replace each // API CALL comment with a real fetch() call.
    ============================================================ */
+
+// ── AUTH GUARD ────────────────────────────────────────────────
+// If no token, redirect to /login. If token invalid, clear and redirect.
+// Once validated, populate sellerName / sellerEmail in the sidebar.
+(function authGuard(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.replace(`/login?next=${next}`);
+    return;
+  }
+  fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(async r => {
+      if(!r.ok){
+        localStorage.removeItem('ss_token');
+        localStorage.removeItem('ss_seller');
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.replace(`/login?next=${next}`);
+        return;
+      }
+      const seller = await r.json();
+      try { localStorage.setItem('ss_seller', JSON.stringify(seller)); } catch(e){}
+
+      const update = () => {
+        const fullName = `${seller.firstName || ''} ${seller.lastName || ''}`.trim() || seller.email;
+        const nameEl  = document.getElementById('sellerName');
+        const emailEl = document.getElementById('sellerEmail');
+        if(nameEl)  nameEl.textContent  = fullName;
+        if(emailEl) emailEl.textContent = seller.email;
+      };
+      if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', update);
+      } else {
+        update();
+      }
+    });
+})();
+
+function logout(){
+  localStorage.removeItem('ss_token');
+  localStorage.removeItem('ss_seller');
+  window.location.href = '/login';
+}
 
 // ── SAMPLE DATA ──
 // API CALL: Replace with fetch('/api/orders') from server.js
