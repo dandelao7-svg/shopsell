@@ -65,7 +65,7 @@ class UPS {
     return data.access_token;
   }
 
-  async createShipment({ shipper, recipient, package: pkg, serviceCode, labelFormat, reference, billing }) {
+  async createShipment({ shipper, recipient, package: pkg, serviceCode, labelFormat, reference, barcodeReference, billing }) {
     const token = await this.getAccessToken();
 
     const isResidential = recipient.residential === true;
@@ -139,8 +139,20 @@ class UPS {
               UnitOfMeasurement: { Code: 'LBS', Description: 'Pounds' },
               Weight:            String(pkg.weight || 1),
             },
-            ...(reference ? {
-              ReferenceNumber: [{ Code: '02', Value: String(reference).slice(0, 35) }],
+            ...((reference || barcodeReference) ? {
+              ReferenceNumber: [
+                ...(reference ? [{ Code: '02', Value: String(reference).slice(0, 35) }] : []),
+                ...(barcodeReference ? [{
+                  Code: '02',
+                  // UPS bar-code rules: alphanumeric only, <=14 chars. Strip
+                  // hyphens / spaces / punctuation so callers can pass any
+                  // human-friendly value (e.g. "SS-8") and it still encodes.
+                  Value: String(barcodeReference).replace(/[^A-Za-z0-9]/g, '').slice(0, 14),
+                  // Empty-string presence flag tells UPS to render this ref as a
+                  // Code 128 barcode on the label (domestic US only, 1 per shipment).
+                  BarCodeIndicator: '',
+                }] : []),
+              ],
             } : {}),
           },
         },

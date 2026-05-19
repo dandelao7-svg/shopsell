@@ -72,6 +72,10 @@ async function initSchema() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_sellers_slug ON sellers (store_slug);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_sellers_stripe_customer ON sellers (stripe_customer_id);`);
 
+    // Forward-compat: where buyers ship returns to. Stored as a JSONB blob
+    // so we can extend (e.g. residential flag, instructions) without migrating.
+    await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS return_address JSONB;`);
+
     // PRODUCTS
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
@@ -91,6 +95,9 @@ async function initSchema() {
         status           TEXT NOT NULL DEFAULT 'active',
         image_urls       JSONB DEFAULT '[]'::jsonb,
         rating           NUMERIC(3,2),
+        returnable          BOOLEAN NOT NULL DEFAULT TRUE,
+        return_window_days  INTEGER NOT NULL DEFAULT 30,
+        restocking_fee_pct  NUMERIC(5,2) NOT NULL DEFAULT 0,
         created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (seller_id, sku)
@@ -98,6 +105,12 @@ async function initSchema() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_products_seller ON products (seller_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_products_status ON products (status);`);
+
+    // Forward-compat: existing databases won't have the return-rule columns
+    // until we ALTER them in.
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS returnable          BOOLEAN NOT NULL DEFAULT TRUE;`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS return_window_days  INTEGER NOT NULL DEFAULT 30;`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS restocking_fee_pct  NUMERIC(5,2) NOT NULL DEFAULT 0;`);
 
     // ORDERS
     await client.query(`
@@ -176,6 +189,28 @@ async function initSchema() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_shipments_tracking ON shipments (tracking_number);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_shipments_created ON shipments (created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments (status);`);
+
+    // RETURNS — buyer-initiated return requests
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS returns (
+        id               SERIAL PRIMARY KEY,
+        order_id         INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        seller_id        INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        customer_email   TEXT NOT NULL,
+        items            JSONB NOT NULL DEFAULT '[]'::jsonb,
+        reason           TEXT,
+        status           TEXT NOT NULL DEFAULT 'label_issued',
+        carrier          TEXT,
+        tracking_number  TEXT,
+        label_image      TEXT,
+        label_url        TEXT,
+        transaction_id   TEXT,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_returns_order ON returns (order_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_returns_seller ON returns (seller_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_returns_created ON returns (created_at DESC);`);
 
     // CUSTOMERS — derived from orders, but we keep an aggregated table for the customers page
     await client.query(`
@@ -341,8 +376,9 @@ async function createProduct(data) {
     `INSERT INTO products
        (seller_id, name, description, category, brand,
         price, compare_at_price, cost_per_item, sku, quantity,
-        weight, variants, status, image_urls)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        weight, variants, status, image_urls,
+        returnable, return_window_days, restocking_fee_pct)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       data.sellerId, data.name, data.description, data.category, data.brand,
@@ -351,6 +387,9 @@ async function createProduct(data) {
       JSON.stringify(data.variants || []),
       data.status || 'active',
       JSON.stringify(data.imageUrls || []),
+      data.returnable !== undefined ? !!data.returnable : true,
+      Number.isFinite(parseInt(data.returnWindowDays)) ? parseInt(data.returnWindowDays) : 30,
+      Number.isFinite(parseFloat(data.restockingFeePct)) ? parseFloat(data.restockingFeePct) : 0,
     ]
   );
   return camelize(rows[0]);
@@ -365,19 +404,22 @@ async function getProductById(id) {
 
 async function updateProduct(id, fields) {
   const map = {
-    name:           'name',
-    description:    'description',
-    category:       'category',
-    brand:          'brand',
-    price:          'price',
-    compareAtPrice: 'compare_at_price',
-    costPerItem:    'cost_per_item',
-    sku:            'sku',
-    quantity:       'quantity',
-    weight:         'weight',
-    variants:       'variants',
-    status:         'status',
-    imageUrls:      'image_urls',
+    name:             'name',
+    description:      'description',
+    category:         'category',
+    brand:            'brand',
+    price:            'price',
+    compareAtPrice:   'compare_at_price',
+    costPerItem:      'cost_per_item',
+    sku:              'sku',
+    quantity:         'quantity',
+    weight:           'weight',
+    variants:         'variants',
+    status:           'status',
+    imageUrls:        'image_urls',
+    returnable:       'returnable',
+    returnWindowDays: 'return_window_days',
+    restockingFeePct: 'restocking_fee_pct',
   };
   const sets = [];
   const vals = [];
@@ -442,6 +484,7 @@ async function updateOrder(id, fields) {
     status:           'status',
     paymentIntentId:  'payment_intent_id',
     customerInfo:     'customer_info',
+    customerEmail:    'customer_email',
     paidAt:           'paid_at',
     trackingNumber:   'tracking_number',
     trackingCarrier:  'tracking_carrier',
@@ -593,6 +636,52 @@ async function markShipmentVoided(trackingNumber, action) {
   return camelize(rows[0]);
 }
 
+// ── RETURNS ──────────────────────────────────────────────────
+async function getSellerReturnAddress(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT return_address FROM sellers WHERE id = $1 LIMIT 1`,
+    [sellerId]
+  );
+  return rows[0]?.return_address || null;
+}
+
+async function setSellerReturnAddress(sellerId, address) {
+  await pool.query(
+    `UPDATE sellers SET return_address = $1, updated_at = NOW() WHERE id = $2`,
+    [address ? JSON.stringify(address) : null, sellerId]
+  );
+}
+
+async function createReturn(data) {
+  const { rows } = await pool.query(
+    `INSERT INTO returns
+       (order_id, seller_id, customer_email, items, reason, status,
+        carrier, tracking_number, label_image, label_url, transaction_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     RETURNING *`,
+    [
+      data.orderId, data.sellerId, data.customerEmail,
+      JSON.stringify(data.items || []),
+      data.reason || null,
+      data.status || 'label_issued',
+      data.carrier || null,
+      data.trackingNumber || null,
+      data.labelImage || null,
+      data.labelUrl || null,
+      data.transactionId || null,
+    ]
+  );
+  return camelize(rows[0]);
+}
+
+async function getReturnsByOrder(orderId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM returns WHERE order_id = $1 ORDER BY created_at DESC`,
+    [orderId]
+  );
+  return camelizeAll(rows);
+}
+
 // Purge shipments older than N days (UPS stops tracking after 120 days anyway)
 async function purgeOldShipments(retentionDays = 120) {
   const { rowCount } = await pool.query(
@@ -654,6 +743,12 @@ module.exports = {
   getRecentShipments,
   markShipmentVoided,
   purgeOldShipments,
+
+  // Returns
+  getSellerReturnAddress,
+  setSellerReturnAddress,
+  createReturn,
+  getReturnsByOrder,
 
   // Internal — exposed in case anything needs raw access
   pool,

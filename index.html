@@ -6,6 +6,7 @@
 <title>ShopSell — Your Store</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://js.stripe.com/v3/"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -412,44 +413,25 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
           <div class="field"><label>Last name</label><input type="text" id="co-lname" placeholder="Smith"></div>
         </div>
         <div class="field"><label>Email</label><input type="email" id="co-email" placeholder="jane@example.com"></div>
-        <div class="field"><label>Phone</label><input type="tel" placeholder="+1 (555) 000-0000"></div>
+        <div class="field"><label>Phone</label><input type="tel" id="co-phone" placeholder="+1 (555) 000-0000"></div>
       </div>
       <div class="co-card">
         <div class="co-sec-hd">Shipping address</div>
-        <div class="field"><label>Street address</label><input type="text" placeholder="123 Main Street"></div>
-        <div class="field"><label>Apt / Suite (optional)</label><input type="text" placeholder="Apt 4B"></div>
+        <div class="field"><label>Street address</label><input type="text" id="co-addr1" placeholder="123 Main Street"></div>
+        <div class="field"><label>Apt / Suite (optional)</label><input type="text" id="co-addr2" placeholder="Apt 4B"></div>
         <div class="three-col">
-          <div class="field"><label>City</label><input type="text" placeholder="Los Angeles"></div>
-          <div class="field"><label>State</label><select><option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option></select></div>
-          <div class="field"><label>ZIP</label><input type="text" placeholder="90001" maxlength="5"></div>
+          <div class="field"><label>City</label><input type="text" id="co-city" placeholder="Los Angeles"></div>
+          <div class="field"><label>State</label><select id="co-state"><option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option></select></div>
+          <div class="field"><label>ZIP</label><input type="text" id="co-zip" placeholder="90001" maxlength="5"></div>
         </div>
-        <div class="field"><label>Country</label><select><option>United States</option><option>Canada</option><option>United Kingdom</option><option>Australia</option></select></div>
+        <div class="field"><label>Country</label><select id="co-country"><option>United States</option><option>Canada</option><option>United Kingdom</option><option>Australia</option></select></div>
       </div>
       <div class="co-card">
         <div class="co-sec-hd">Payment <span style="float:right;font-size:11px;color:#635bff;font-weight:500;text-transform:none;letter-spacing:0">🔒 Secured by Stripe</span></div>
-        <div class="pay-methods">
-          <div class="pay-method active" onclick="selectPay(this)">Credit card</div>
-          <div class="pay-method" onclick="selectPay(this)">PayPal</div>
-          <div class="pay-method" onclick="selectPay(this)">Apple Pay</div>
-          <div class="pay-method" onclick="selectPay(this)">Google Pay</div>
-        </div>
-        <div class="card-wrap">
-          <div class="card-num-row">
-            <input type="text" placeholder="1234  5678  9012  3456" maxlength="19" oninput="fmtCard(this)">
-            <div class="card-icons">
-              <div class="ci" style="color:#1a1f71">VISA</div>
-              <div class="ci" style="color:#eb001b">MC</div>
-              <div class="ci" style="color:#2e77bc">AMEX</div>
-            </div>
-          </div>
-          <div class="card-btm">
-            <input type="text" placeholder="Name on card">
-            <input type="text" placeholder="MM / YY" maxlength="7" oninput="fmtExp(this)">
-            <input type="text" placeholder="CVV" maxlength="4">
-          </div>
-        </div>
+        <div id="stripePaymentMount" style="min-height:60px;padding:12px 0"></div>
+        <div id="stripePayMsg" style="color:var(--accent);font-size:13px;margin-top:8px;display:none"></div>
       </div>
-      <button class="place-btn" onclick="placeOrder()">Place order — <span id="coTotalBtn">$0.00</span></button>
+      <button class="place-btn" id="placeOrderBtn" onclick="placeOrder()">Place order — <span id="coTotalBtn">$0.00</span></button>
       <div class="secure-note">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
         Your payment info is encrypted and never stored
@@ -664,25 +646,51 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 <div class="toast" id="toastEl"></div>
 
 <script>
-// ── PRODUCTS ──────────────────────────────────────────────────
-const PRODUCTS = [
-  {id:1,name:'Linen Tote Bag',cat:'accessories',price:34.99,emoji:'👜',badge:'new',rating:4.8,reviews:124,desc:'Handmade from 100% natural linen. Spacious, durable, and machine washable. The perfect everyday carry.',variants:['Natural','Sage','Terracotta'],variantLabel:'Color'},
-  {id:2,name:'Classic White Tee',cat:'clothing',price:28.00,emoji:'👕',badge:null,rating:4.6,reviews:89,desc:'Premium 100% organic cotton. Pre-shrunk, relaxed fit. Pairs with everything in your wardrobe.',variants:['XS','S','M','L','XL','XXL'],variantLabel:'Size'},
-  {id:3,name:'Ceramic Mug Set',cat:'home',price:45.00,emoji:'☕',badge:'sale',origPrice:58,rating:4.9,reviews:203,desc:'Set of 2 handthrown ceramic mugs. Microwave and dishwasher safe. Each one uniquely beautiful.',variants:['White/Cream','Charcoal/Slate'],variantLabel:'Color'},
-  {id:4,name:'Glow Face Serum',cat:'beauty',price:52.00,emoji:'✨',badge:null,rating:4.7,reviews:156,desc:'Vitamin C + hyaluronic acid formula. Brightens, hydrates, and smooths skin. All skin types.',variants:['30ml','50ml'],variantLabel:'Size'},
-  {id:5,name:'Leather Wallet',cat:'accessories',price:65.00,emoji:'👛',badge:null,rating:4.5,reviews:67,desc:'Full-grain leather. 8 card slots, 2 cash pockets, RFID blocking. Ages beautifully.',variants:['Black','Tan','Dark Brown'],variantLabel:'Color'},
-  {id:6,name:'Floral Sundress',cat:'clothing',price:72.00,emoji:'👗',badge:'new',rating:4.8,reviews:41,desc:'100% cotton voile. Adjustable straps, smocked bodice, tiered skirt. Hand wash cold.',variants:['XS','S','M','L','XL'],variantLabel:'Size'},
-  {id:7,name:'Scented Candle',cat:'home',price:22.00,emoji:'🕯️',badge:'hot',origPrice:30,rating:4.9,reviews:318,desc:'45-hour burn time. Cotton wick. Fragrances: Cedarwood, Lavender, Citrus Bloom.',variants:['Cedarwood','Lavender','Citrus Bloom'],variantLabel:'Scent'},
-  {id:8,name:'Lip Tint Trio',cat:'beauty',price:38.00,emoji:'💄',badge:null,rating:4.6,reviews:95,desc:'Long-wear tinted lip balm. SPF 15. Shades: Berry, Coral, Nude. Deeply hydrating.',variants:['Berry','Coral','Nude','Set of 3'],variantLabel:'Shade'},
-  {id:9,name:'Silk Scrunchie Set',cat:'accessories',price:18.00,emoji:'🪡',badge:null,rating:4.7,reviews:212,desc:'100% mulberry silk. Set of 4 scrunchies. Gentle on hair, reduces breakage and frizz.',variants:['Blush Set','Neutral Set','Bold Set'],variantLabel:'Color set'},
-  {id:10,name:'Linen Joggers',cat:'clothing',price:58.00,emoji:'👖',badge:null,rating:4.5,reviews:73,desc:'Breathable linen blend. Elastic waist, tapered leg, side pockets. Machine washable.',variants:['XS','S','M','L','XL'],variantLabel:'Size'},
-  {id:11,name:'Bamboo Cutting Board',cat:'home',price:34.00,emoji:'🪵',badge:'new',rating:4.8,reviews:55,desc:'Sustainable bamboo. Juice groove, non-slip feet. 12" × 18". Hand wash recommended.',variants:['Small','Medium','Large'],variantLabel:'Size'},
-  {id:12,name:'Rose Water Mist',cat:'beauty',price:26.00,emoji:'🌹',badge:null,rating:4.6,reviews:144,desc:'100% pure Bulgarian rose water. Hydrates, tones, and refreshes skin. Use morning and night.',variants:['100ml','200ml'],variantLabel:'Size'},
-];
+// ── PRODUCTS (loaded from /api/products at init) ──────────────
+let PRODUCTS = [];
+
+// ── STOREFRONT CONFIG ─────────────────────────────────────────
+// Slug comes from ?store=<slug> in the URL — required.
+const STORE_SLUG = new URLSearchParams(window.location.search).get('store') || '';
+let STORE_CONFIG = { publishableKey: '', storeName: '', storeSlug: STORE_SLUG };
 
 // ── STATE ──────────────────────────────────────────────────────
 let cart={}, homeCat='all', homeSort='default', shopCat='all', shopSort='default';
 let currentModal=null, mq=1, mobileNavOpen=false, newOrders=[];
+
+// ── STRIPE STATE (set up lazily when entering checkout) ───────
+let stripe=null, stripeElements=null, stripePaymentElement=null;
+let currentPaymentIntent=null;  // { clientSecret, orderId, total }
+
+// ── CATEGORY EMOJI FALLBACK ───────────────────────────────────
+// Used when a product has no image_urls. Keys are lowercase category names.
+const CATEGORY_EMOJI = {
+  clothing:'👕', accessories:'👜', home:'🏠', beauty:'✨',
+  electronics:'📱', books:'📚', food:'🍪', toys:'🧸', other:'📦',
+};
+
+// Map a DB product row (snake/camel from the API) into the legacy render shape
+// the rest of this file uses. Keeps the rendering code unchanged.
+function normalizeProduct(p) {
+  const category = (p.category || 'other').toLowerCase();
+  const compareAt = p.compareAtPrice ? parseFloat(p.compareAtPrice) : null;
+  const price = parseFloat(p.price);
+  return {
+    id:           p.id,
+    name:         p.name,
+    cat:          category,
+    price:        price,
+    emoji:        CATEGORY_EMOJI[category] || CATEGORY_EMOJI.other,
+    badge:        compareAt && compareAt > price ? 'sale' : null,
+    origPrice:    compareAt && compareAt > price ? compareAt : null,
+    rating:       p.rating ? parseFloat(p.rating) : 5,
+    reviews:      0,
+    desc:         p.description || '',
+    variants:     Array.isArray(p.variants) ? p.variants : [],
+    variantLabel: 'Option',
+    quantity:     p.quantity,
+  };
+}
 
 // ── HELPERS ───────────────────────────────────────────────────
 const stars=r=>'★'.repeat(Math.floor(r))+'☆'.repeat(5-Math.floor(r));
@@ -877,29 +885,175 @@ function updateCheckoutUI(){
   }
 }
 
-function goCheckout(){
+async function goCheckout(){
   if(!cartCount()){toast('Your cart is empty!');return}
   closeCart();
   updateCheckoutUI();
   showPage('checkout');
+  await setupStripeCheckout();
 }
 
-function selectPay(el){document.querySelectorAll('.pay-method').forEach(m=>m.classList.remove('active'));el.classList.add('active')}
-function fmtCard(el){let v=el.value.replace(/\D/g,'').slice(0,16);el.value=v.replace(/(.{4})/g,'$1  ').trim()}
-function fmtExp(el){let v=el.value.replace(/\D/g,'');if(v.length>=3)v=v.slice(0,2)+' / '+v.slice(2,4);el.value=v}
 function applyCoupon(){const c=document.getElementById('couponInput').value.trim().toUpperCase();if(c==='SAVE10')toast('🎉 10% off applied!');else if(c)toast('Invalid coupon code')}
 
-function placeOrder(){
+// Set Place Order button label + disabled state in one place.
+function setPlaceBtn({label, total, disabled}){
+  const btn=document.getElementById('placeOrderBtn');
+  if(!btn) return;
+  if(disabled !== undefined) btn.disabled = !!disabled;
+  btn.innerHTML = `${label} — <span id="coTotalBtn">${total}</span>`;
+}
+
+function showStripeMsg(msg, isError=true){
+  const el=document.getElementById('stripePayMsg');
+  if(!el) return;
+  el.style.color = isError ? 'var(--accent)' : 'var(--green)';
+  el.textContent = msg || '';
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// Create the payment intent + mount Stripe Elements. Called when entering checkout.
+async function setupStripeCheckout(){
+  const mountEl=document.getElementById('stripePaymentMount');
+  if(!mountEl) return;
+  mountEl.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading secure payment…</div>';
+  setPlaceBtn({label:'Loading…', total:fmt(cartTotal()*1.08), disabled:true});
+  showStripeMsg('', false);
+
+  if(!STORE_CONFIG.publishableKey){
+    mountEl.innerHTML = '<div style="color:var(--accent);font-size:13px">Payment is not configured for this store. The seller needs to add their Stripe publishable key.</div>';
+    setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()*1.08), disabled:true});
+    return;
+  }
+
+  // Build cartItems shape expected by /api/checkout/create-payment-intent
+  const cartItems = Object.values(cart).map(i => ({ productId: i.id, qty: i.qty, variant: i.variant }));
+  // Buyer often hasn't typed their email yet when the PaymentElement mounts.
+  // Pass whatever's there (may be empty); the real email is captured on confirm.
+  const email = document.getElementById('co-email').value.trim();
+
+  try {
+    const res = await fetch('/api/checkout/create-payment-intent', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ cartItems, storeSlug: STORE_SLUG, customerEmail: email })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Failed to start checkout.');
+
+    currentPaymentIntent = data;
+
+    // Use the legacy CardElement (not PaymentElement). CardElement is a plain
+    // card-number / expiry / CVC form with no Link integration — PaymentElement
+    // always offers Link as a card-autofill convenience, even when only 'card'
+    // is allowed at the PaymentIntent level. When we later want Apple Pay /
+    // Google Pay / Link, we can swap this back, but the storefront will need a
+    // saved-card UX to handle the Link sign-in challenge.
+    stripe = Stripe(STORE_CONFIG.publishableKey);
+    stripeElements = stripe.elements();
+    stripePaymentElement = stripeElements.create('card', {
+      style: { base: { fontSize: '15px', fontFamily: 'Outfit, sans-serif' } },
+    });
+    mountEl.innerHTML = '';
+    stripePaymentElement.mount('#stripePaymentMount');
+
+    setPlaceBtn({label:'Place order', total:'$'+data.total, disabled:false});
+  } catch(err){
+    mountEl.innerHTML = `<div style="color:var(--accent);font-size:13px">${err.message}</div>`;
+    setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()*1.08), disabled:true});
+  }
+}
+
+async function placeOrder(){
   if(!cartCount()){toast('Your cart is empty!');return}
-  const total=cartTotal();
-  const orderNum=Math.floor(Math.random()*90000)+10000;
-  document.getElementById('orderNum').textContent=orderNum;
-  const itemNames=Object.keys(cart).map(key=>PRODUCTS.find(x=>x.id===cart[key].id).name).join(', ');
-  newOrders.unshift({id:orderNum,date:'Today',items:itemNames,total:fmt(total*1.08),status:'processing'});
-  renderOrders();
-  cart={};
-  updateCartUI();
-  showPage('success');
+  if(!stripe || !stripeElements || !currentPaymentIntent){
+    showStripeMsg('Payment is still loading. Please wait a moment.');
+    return;
+  }
+
+  const btn=document.getElementById('placeOrderBtn');
+  btn.disabled = true;
+  btn.innerHTML = 'Processing…';
+  showStripeMsg('', false);
+
+  try {
+    const billingName = (document.getElementById('co-fname').value.trim() + ' ' +
+                        document.getElementById('co-lname').value.trim()).trim();
+    const billingEmail = document.getElementById('co-email').value.trim();
+
+    // 1. Confirm the card with Stripe. CardElement uses confirmCardPayment
+    //    (not confirmPayment) and takes the clientSecret directly.
+    const { error, paymentIntent } = await stripe.confirmCardPayment(
+      currentPaymentIntent.clientSecret,
+      {
+        payment_method: {
+          card: stripePaymentElement,
+          billing_details: {
+            name:  billingName || undefined,
+            email: billingEmail || undefined,
+          },
+        },
+      }
+    );
+
+    if(error){
+      showStripeMsg(error.message || 'Payment failed. Please check your card details.');
+      setPlaceBtn({label:'Place order', total:'$'+currentPaymentIntent.total, disabled:false});
+      return;
+    }
+
+    // 2. Tell our backend the payment succeeded so it can mark the order paid.
+    //    Include the shipping address so return labels can use it as the
+    //    shipper (buyer ships back to seller).
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    const country = v('co-country');
+    const countryCode = country === 'United States' ? 'US'
+                     : country === 'Canada' ? 'CA'
+                     : country === 'United Kingdom' ? 'GB'
+                     : country === 'Australia' ? 'AU' : 'US';
+    const customerInfo = {
+      firstName: v('co-fname'),
+      lastName:  v('co-lname'),
+      email:     v('co-email'),
+      phone:     v('co-phone'),
+      address1:  v('co-addr1'),
+      address2:  v('co-addr2'),
+      city:      v('co-city'),
+      state:     v('co-state'),
+      zip:       v('co-zip'),
+      country:   countryCode,
+    };
+
+    const res = await fetch('/api/checkout/confirm', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        orderId:         currentPaymentIntent.orderId,
+        paymentIntentId: paymentIntent.id,
+        customerInfo,
+      }),
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Order confirmation failed.');
+
+    // 3. Show success screen
+    document.getElementById('orderNum').textContent = currentPaymentIntent.orderId;
+    const itemNames = Object.keys(cart).map(key => PRODUCTS.find(x=>x.id===cart[key].id)?.name).filter(Boolean).join(', ');
+    newOrders.unshift({
+      id: currentPaymentIntent.orderId,
+      date: 'Today',
+      items: itemNames,
+      total: '$'+currentPaymentIntent.total,
+      status: 'processing',
+    });
+    renderOrders();
+    cart={};
+    currentPaymentIntent=null;
+    updateCartUI();
+    showPage('success');
+  } catch(err) {
+    showStripeMsg(err.message || 'Something went wrong. Please try again.');
+    setPlaceBtn({label:'Place order', total:'$'+(currentPaymentIntent?.total||cartTotal().toFixed(2)), disabled:false});
+  }
 }
 
 // ── ACCOUNT ───────────────────────────────────────────────────
@@ -952,8 +1106,49 @@ function toast(msg){
 }
 
 // ── INIT ──────────────────────────────────────────────────────
-renderGrid('homeGrid','homeCount','all','default');
-renderGrid('shopGrid','shopCount','all','default');
+async function loadStorefront(){
+  const homeGrid = document.getElementById('homeGrid');
+  const shopGrid = document.getElementById('shopGrid');
+  homeGrid.innerHTML = '<div style="color:var(--muted);grid-column:1/-1;text-align:center;padding:2rem">Loading products…</div>';
+  shopGrid.innerHTML = homeGrid.innerHTML;
+
+  if(!STORE_SLUG){
+    const msg = '<div style="color:var(--muted);grid-column:1/-1;text-align:center;padding:2rem">No store specified. Add <code>?store=YOUR-SLUG</code> to the URL.</div>';
+    homeGrid.innerHTML = msg; shopGrid.innerHTML = msg;
+    return;
+  }
+
+  try {
+    const [cfgRes, prodRes] = await Promise.all([
+      fetch('/api/checkout/config?storeSlug=' + encodeURIComponent(STORE_SLUG)),
+      fetch('/api/products?storeSlug=' + encodeURIComponent(STORE_SLUG)),
+    ]);
+    if(cfgRes.ok){
+      STORE_CONFIG = await cfgRes.json();
+      if(STORE_CONFIG.storeName) document.title = STORE_CONFIG.storeName + ' — ShopSell';
+    }
+    if(!prodRes.ok){
+      const e = await prodRes.json().catch(()=>({error:'Failed to load products.'}));
+      throw new Error(e.error || 'Failed to load products.');
+    }
+    const rows = await prodRes.json();
+    PRODUCTS = rows.map(normalizeProduct);
+
+    if(!PRODUCTS.length){
+      const empty = '<div style="color:var(--muted);grid-column:1/-1;text-align:center;padding:2rem">No products yet — add some from the seller dashboard.</div>';
+      homeGrid.innerHTML = empty; shopGrid.innerHTML = empty;
+      return;
+    }
+
+    renderGrid('homeGrid','homeCount',homeCat,homeSort);
+    renderGrid('shopGrid','shopCount',shopCat,shopSort);
+  } catch(err){
+    const msg = `<div style="color:var(--accent);grid-column:1/-1;text-align:center;padding:2rem">${err.message}</div>`;
+    homeGrid.innerHTML = msg; shopGrid.innerHTML = msg;
+  }
+}
+
+loadStorefront();
 updateCartUI();
 </script>
 </body>

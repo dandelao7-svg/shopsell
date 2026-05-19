@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Returns — ShopSell</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#0f0f1a;--accent:#e63946;--gold:#c9a84c;
+  --light:#f7f7f2;--light2:#efefea;--card:#fff;
+  --text:#0f0f1a;--muted:#6b7280;--border:#e5e5e0;
+  --green:#2d6a4f;--green-bg:#d8f3dc;
+  --red:#c1121f;--red-bg:#fde2e4;
+  --radius:14px;--shadow:0 4px 24px rgba(0,0,0,0.07);
+}
+body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);min-height:100vh}
+
+.site-header{background:var(--card);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:var(--brand);text-decoration:none}
+.logo em{color:var(--accent);font-style:normal}
+.back-link{font-size:13px;color:var(--muted);text-decoration:none}
+.back-link:hover{color:var(--text)}
+
+main{max-width:640px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+
+.title{font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;margin-bottom:6px}
+.subtitle{color:var(--muted);font-size:14px;margin-bottom:2rem}
+
+.steps{display:flex;gap:8px;margin-bottom:2rem}
+.step{flex:1;height:4px;border-radius:2px;background:var(--border)}
+.step.active{background:var(--accent)}
+.step.done{background:var(--green)}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;box-shadow:var(--shadow);margin-bottom:1rem}
+.card h2{font-family:'Playfair Display',serif;font-size:1.25rem;font-weight:600;margin-bottom:1rem}
+
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px}
+.field input, .field textarea, .field select{
+  width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;
+  font-family:'Outfit',sans-serif;font-size:14px;color:var(--text);background:#fff;outline:none;
+  transition:border-color 0.15s;
+}
+.field input:focus, .field textarea:focus, .field select:focus{border-color:var(--accent)}
+.field .hint{font-size:11px;color:var(--muted);margin-top:4px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 22px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--red)}
+.btn.secondary{background:var(--light2);color:var(--text)}
+.btn.secondary:hover{background:#e5e5dd}
+.btn.full{width:100%}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+
+.alert{padding:12px 14px;border-radius:10px;font-size:13px;display:flex;gap:10px;align-items:flex-start;margin-bottom:1rem}
+.alert.error{background:var(--red-bg);color:var(--red)}
+.alert.success{background:var(--green-bg);color:var(--green)}
+.alert.info{background:#e0f2fe;color:#075985}
+
+.item-row{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--border)}
+.item-row:last-child{border-bottom:none}
+.item-checkbox{width:18px;height:18px;margin-top:2px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+.item-checkbox:disabled{cursor:not-allowed}
+.item-info{flex:1;min-width:0}
+.item-name{font-weight:500;font-size:14px;margin-bottom:2px}
+.item-meta{font-size:12px;color:var(--muted)}
+.item-bad{font-size:12px;color:var(--red);margin-top:4px}
+.item-good{font-size:12px;color:var(--green);margin-top:4px}
+.item-qty{width:64px;flex-shrink:0}
+.item-qty input{width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-family:'Outfit',sans-serif;font-size:13px;text-align:center}
+.item-qty input:disabled{background:var(--light);color:var(--muted)}
+
+.summary-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}
+.summary-row strong{font-weight:600}
+
+.tracking-box{background:var(--brand);color:#fff;padding:1.25rem;border-radius:12px;text-align:center;margin:1rem 0}
+.tracking-label{font-size:11px;letter-spacing:2px;color:rgba(255,255,255,0.6);text-transform:uppercase;margin-bottom:6px}
+.tracking-num{font-family:'Outfit',sans-serif;font-size:1.4rem;font-weight:600;letter-spacing:2px;word-break:break-all}
+
+.hide{display:none !important}
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="logo">shop<em>sell</em></a>
+  <a href="/" class="back-link">← Back to store</a>
+</header>
+
+<main>
+  <div class="title">Start a return</div>
+  <div class="subtitle">Look up your order and print a prepaid return label.</div>
+
+  <div class="steps">
+    <div class="step active" id="step1"></div>
+    <div class="step" id="step2"></div>
+    <div class="step" id="step3"></div>
+  </div>
+
+  <!-- ────────────────────────────────────────
+       STEP 1 — Lookup
+       ──────────────────────────────────────── -->
+  <section id="section-lookup" class="card">
+    <h2>Find your order</h2>
+    <div id="lookup-error"></div>
+    <div class="field">
+      <label for="orderNumber">Order number</label>
+      <input type="text" id="orderNumber" placeholder="SS-12345" autocomplete="off">
+      <div class="hint">It's on your confirmation email — looks like "SS-12345".</div>
+    </div>
+    <div class="field">
+      <label for="email">Email used at checkout</label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <button class="btn primary full" onclick="lookupOrder()" id="lookup-btn">Look up order</button>
+  </section>
+
+  <!-- ────────────────────────────────────────
+       STEP 2 — Pick items
+       ──────────────────────────────────────── -->
+  <section id="section-items" class="card hide">
+    <h2 id="items-heading">Select items to return</h2>
+    <div id="items-error"></div>
+    <div id="items-list"></div>
+
+    <div class="field" style="margin-top:1.25rem">
+      <label for="reason">Reason for return (optional)</label>
+      <textarea id="reason" rows="3" placeholder="Wrong size, damaged, changed my mind…" maxlength="500"></textarea>
+    </div>
+
+    <button class="btn primary full" onclick="createReturn()" id="create-btn">Generate return label</button>
+    <button class="btn secondary full" style="margin-top:8px" onclick="backToLookup()">Start over</button>
+  </section>
+
+  <!-- ────────────────────────────────────────
+       STEP 3 — Label
+       ──────────────────────────────────────── -->
+  <section id="section-label" class="card hide">
+    <div class="alert success">
+      <span>✓</span>
+      <div><strong>Your return label is ready.</strong> We've also emailed it to you. Save or print the label, then drop the package off at the carrier.</div>
+    </div>
+
+    <div class="tracking-box">
+      <div class="tracking-label">Tracking number</div>
+      <div class="tracking-num" id="result-tracking">—</div>
+    </div>
+
+    <div class="summary-row"><span>Order</span><strong id="result-order">—</strong></div>
+    <div class="summary-row"><span>Carrier</span><strong id="result-carrier">—</strong></div>
+
+    <button class="btn primary full" style="margin-top:1.25rem" onclick="openLabel()" id="open-label-btn">Open / print label</button>
+    <button class="btn secondary full" style="margin-top:8px" onclick="backToLookup()">Start another return</button>
+
+    <div class="alert info" style="margin-top:1rem">
+      <span>ℹ</span>
+      <div>Tape the label securely to the outside of the package. Cover or remove any old shipping labels.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+let lookupResult = null; // { orderId, orderNumber, items, returnsEnabled }
+let labelResult  = null; // { carrier, trackingNumber, labelImage, labelUrl, labelFormat }
+
+function setStep(n){
+  document.getElementById('step1').className = 'step ' + (n > 1 ? 'done' : 'active');
+  document.getElementById('step2').className = 'step ' + (n > 2 ? 'done' : n === 2 ? 'active' : '');
+  document.getElementById('step3').className = 'step ' + (n === 3 ? 'active' : '');
+
+  document.getElementById('section-lookup').classList.toggle('hide', n !== 1);
+  document.getElementById('section-items').classList.toggle('hide',  n !== 2);
+  document.getElementById('section-label').classList.toggle('hide',  n !== 3);
+}
+
+function showError(slotId, msg){
+  const slot = document.getElementById(slotId);
+  if(!msg){ slot.innerHTML = ''; return; }
+  slot.innerHTML = `<div class="alert error"><span>!</span><div>${escapeHtml(msg)}</div></div>`;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── STEP 1 ────────────────────────────────────────────
+async function lookupOrder(){
+  showError('lookup-error', null);
+  const orderNumber = document.getElementById('orderNumber').value.trim();
+  const email       = document.getElementById('email').value.trim();
+
+  if(!orderNumber || !email){
+    showError('lookup-error', 'Please enter both order number and email.');
+    return;
+  }
+
+  const btn = document.getElementById('lookup-btn');
+  btn.disabled = true; btn.textContent = 'Looking up…';
+
+  try {
+    const url = `/api/returns/eligible?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(email)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if(!res.ok){
+      showError('lookup-error', data.error || 'Could not find that order.');
+      return;
+    }
+
+    if(!data.returnsEnabled){
+      showError('lookup-error', `${data.storeName || 'This store'} hasn't enabled returns yet. Please contact them directly.`);
+      return;
+    }
+
+    lookupResult = data;
+    renderItems(data);
+    setStep(2);
+  } catch(err){
+    showError('lookup-error', 'Network error — please try again.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Look up order';
+  }
+}
+
+// ── STEP 2 ────────────────────────────────────────────
+function renderItems(data){
+  document.getElementById('items-heading').textContent =
+    `Order ${data.orderNumber} — select items to return`;
+
+  const list = document.getElementById('items-list');
+  const anyEligible = data.items.some(it => it.eligible);
+
+  document.getElementById('create-btn').disabled = !anyEligible;
+
+  // Render every item — even ineligible ones — so the buyer can see WHY
+  // (final sale, window closed, already returned). Eligible items get a
+  // working checkbox; ineligible ones are disabled with the reason shown.
+  const banner = anyEligible
+    ? ''
+    : `<div class="alert info"><span>ℹ</span><div>No items in this order are currently eligible for return.</div></div>`;
+
+  list.innerHTML = banner + data.items.map((it, idx) => {
+    const disabled = !it.eligible;
+    const deadline = it.deadline ? new Date(it.deadline).toLocaleDateString('en-US') : '';
+    const statusLine = it.eligible
+      ? `<div class="item-good">✓ Returnable until ${deadline}${it.restockingFeePct > 0 ? ` · ${it.restockingFeePct}% restocking fee` : ''}</div>`
+      : `<div class="item-bad">✗ ${escapeHtml(it.reason || 'Not eligible')}</div>`;
+
+    return `
+      <div class="item-row">
+        <input type="checkbox" class="item-checkbox" data-idx="${idx}" ${disabled ? 'disabled' : ''} onchange="toggleQtyInput(${idx})">
+        <div class="item-info">
+          <div class="item-name">${escapeHtml(it.name)}</div>
+          <div class="item-meta">${it.sku ? `SKU ${escapeHtml(it.sku)} · ` : ''}Purchased: ${it.purchasedQty}${it.returnedQty > 0 ? ` · Already returned: ${it.returnedQty}` : ''}</div>
+          ${statusLine}
+        </div>
+        <div class="item-qty">
+          <input type="number" id="qty-${idx}" min="1" max="${it.remainingQty || 1}" value="1" disabled>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleQtyInput(idx){
+  const cb  = document.querySelector(`.item-checkbox[data-idx="${idx}"]`);
+  const qty = document.getElementById(`qty-${idx}`);
+  qty.disabled = !cb.checked;
+}
+
+async function createReturn(){
+  showError('items-error', null);
+
+  const selected = [];
+  document.querySelectorAll('.item-checkbox').forEach(cb => {
+    if(!cb.checked) return;
+    const idx = parseInt(cb.dataset.idx);
+    const item = lookupResult.items[idx];
+    const qty  = parseInt(document.getElementById(`qty-${idx}`).value) || 0;
+    if(qty > 0) selected.push({ productId: item.productId, qty });
+  });
+
+  if(!selected.length){
+    showError('items-error', 'Select at least one item to return.');
+    return;
+  }
+
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true; btn.textContent = 'Generating label…';
+
+  try {
+    const res = await fetch('/api/returns', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: document.getElementById('orderNumber').value.trim(),
+        email:       document.getElementById('email').value.trim(),
+        items:       selected,
+        reason:      document.getElementById('reason').value.trim(),
+      }),
+    });
+    const data = await res.json();
+    if(!res.ok){
+      showError('items-error', data.error || 'Failed to generate return label.');
+      return;
+    }
+
+    labelResult = data;
+    document.getElementById('result-tracking').textContent = data.trackingNumber || '—';
+    document.getElementById('result-order').textContent    = data.orderNumber;
+    document.getElementById('result-carrier').textContent  = (data.carrier || '').toUpperCase();
+
+    setStep(3);
+  } catch(err){
+    showError('items-error', 'Network error — please try again.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Generate return label';
+  }
+}
+
+// ── STEP 3 ────────────────────────────────────────────
+function openLabel(){
+  if(!labelResult) return;
+
+  // Hosted URL (FedEx / USPS via Shippo) — hand off to the carrier's viewer.
+  if(labelResult.labelUrl){
+    window.open(labelResult.labelUrl, '_blank');
+    return;
+  }
+
+  if(!labelResult.labelImage){
+    alert('No label data available.');
+    return;
+  }
+
+  // UPS returns the label as a base64 GIF in landscape (6in wide × 4in tall),
+  // sized for thermal label printers. Mirror the seller shipping module: drop
+  // the image into a 4×6 portrait box on a Letter page and rotate it 90° via
+  // CSS so it prints upright at exact physical size on standard 8.5×11 paper.
+  // This avoids the browser PDF viewer's inconsistent "fit to page" scaling.
+  const fmt  = (labelResult.labelFormat || 'GIF').toLowerCase();
+  const mime = fmt === 'png' ? 'image/png'
+             : fmt === 'pdf' ? 'application/pdf'
+             :                  'image/gif';
+  const imgSrc = `data:${mime};base64,${labelResult.labelImage}`;
+  const tn     = escapeHtml(labelResult.trackingNumber || '');
+
+  const html = `<!DOCTYPE html><html><head><title>Return label ${tn}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      html,body{background:#f4f4f0;font-family:Arial,sans-serif}
+      .page{width:8.5in;min-height:11in;margin:0 auto;padding:0.5in 0;display:flex;justify-content:center;background:#fff}
+      .label-box{width:4in;height:6in;position:relative;overflow:hidden}
+      .label-box img{width:6in;height:4in;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(90deg);image-rendering:crisp-edges}
+      .actions{text-align:center;padding:16px;background:#f4f4f0}
+      .btn{display:inline-block;margin:0 4px;padding:10px 20px;background:#0f0f1a;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;text-decoration:none;font-family:Arial,sans-serif}
+      .btn.dl{background:#2563eb}
+      @page{size:letter portrait;margin:0}
+      @media print{
+        html,body{background:#fff;margin:0;padding:0}
+        .page{padding:0.5in 0;width:8.5in;min-height:11in}
+        .actions{display:none}
+      }
+    </style></head><body>
+    <div class="page"><div class="label-box"><img src="${imgSrc}" alt="Return label"></div></div>
+    <div class="actions">
+      <button class="btn" onclick="window.print()">Print this label</button>
+      <a class="btn dl" href="${imgSrc}" download="return-${tn || 'label'}.${fmt}">Download</a>
+    </div>
+    </body></html>`;
+
+  const win = window.open('', '_blank');
+  if(win){ win.document.open(); win.document.write(html); win.document.close(); }
+}
+
+function backToLookup(){
+  lookupResult = null;
+  labelResult  = null;
+  document.getElementById('orderNumber').value = '';
+  document.getElementById('email').value = '';
+  document.getElementById('reason').value = '';
+  setStep(1);
+}
+</script>
+
+</body>
+</html>

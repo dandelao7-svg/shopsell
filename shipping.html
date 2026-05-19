@@ -718,7 +718,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
               Create + Print Label
             </button>
 
-            <button onclick="toast('Packing slip printing...','info')" style="width:100%;background:none;border:1px solid var(--border);color:var(--text2);padding:8px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;margin-top:6px">
+            <button onclick="printPackingSlip()" style="width:100%;background:none;border:1px solid var(--border);color:var(--text2);padding:8px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;margin-top:6px">
               Print packing slip
             </button>
 
@@ -2049,6 +2049,36 @@ async function createAndPrintFromSidebar(){
   printQSLabel();
   toast(`✓ Label created for #${order.id}`,'success');
 }
+
+// ── PRINT PACKING SLIP ───────────────────────────────────────
+async function printPackingSlip(){
+  if(!selectedOrderId){ toast('Select an order first','error'); return; }
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in to print packing slips','error'); return; }
+
+  try {
+    toast('Generating packing slip...','info');
+    const res = await fetch(`/api/seller/orders/${selectedOrderId}/packing-slip.pdf`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if(!res.ok){
+      let msg = 'Failed to generate packing slip';
+      try { msg = (await res.json()).error || msg; } catch(e){}
+      toast(msg, 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const win  = window.open(url, '_blank');
+    // Revoke after the new tab has had a chance to load the blob
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if(!win) toast('Allow pop-ups to view the packing slip','info');
+  } catch(err){
+    console.error('Packing slip error:', err);
+    toast('Failed to load packing slip','error');
+  }
+}
+
 let currentFilter = 'all';
 let currentSearch = '';
 

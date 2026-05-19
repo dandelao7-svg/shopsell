@@ -21,6 +21,9 @@
 
 'use strict';
 
+// Load local .env file (no-op on Railway, where env vars come from the platform)
+require('dotenv').config();
+
 // ── DEPENDENCIES ──────────────────────────────────────────────
 const express      = require('express');
 const cors         = require('cors');
@@ -30,8 +33,10 @@ const bcrypt       = require('bcryptjs');
 const jwt          = require('jsonwebtoken');
 const stripe       = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const path         = require('path');
+const PDFDocument  = require('pdfkit');
 const db           = require('./database');
 const carriers     = require('./carriers');
+const emailService = require('./email');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -111,6 +116,11 @@ app.get('/dashboard', (req, res) => {
 // Serve the shipping suite
 app.get('/shipping', (req, res) => {
   res.sendFile(path.join(__dirname, 'shipping.html'));
+});
+
+// Serve the buyer-facing returns portal
+app.get('/returns', (req, res) => {
+  res.sendFile(path.join(__dirname, 'returns.html'));
 });
 
 // ── AUTH MIDDLEWARE ───────────────────────────────────────────
@@ -354,6 +364,7 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       price, compareAtPrice, costPerItem,
       sku, quantity, weight, variants,
       status, imageUrls,
+      returnable, returnWindowDays, restockingFeePct,
     } = req.body;
 
     if (!name || !category || !price || !sku) {
@@ -388,9 +399,12 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       sku,
       quantity:       parseInt(quantity) || 0,
       weight:         weight ? parseFloat(weight) : null,
-      variants:       variants   || [],
-      status:         status     || 'active',
-      imageUrls:      imageUrls  || [],
+      variants:         variants   || [],
+      status:           status     || 'active',
+      imageUrls:        imageUrls  || [],
+      returnable:       returnable,
+      returnWindowDays: returnWindowDays,
+      restockingFeePct: restockingFeePct,
     });
 
     res.status(201).json({ message: 'Product created!', product });
@@ -430,10 +444,30 @@ app.delete('/api/seller/products/:id', requireAuth, async (req, res) => {
 
 /* ============================================================
    ── PAYMENT ROUTES (BUYER CHECKOUT) ─────────────────────────
+   GET  /api/checkout/config        — public Stripe pk + store name
    POST /api/checkout/create-payment-intent
    POST /api/checkout/confirm
    GET  /api/orders/:id
    ============================================================ */
+
+app.get('/api/checkout/config', async (req, res) => {
+  try {
+    const { storeSlug } = req.query;
+    if (!storeSlug) return res.status(400).json({ error: 'storeSlug is required.' });
+
+    const seller = await db.getSellerBySlug(storeSlug);
+    if (!seller) return res.status(404).json({ error: 'Store not found.' });
+
+    res.json({
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+      storeName:      seller.storeName,
+      storeSlug:      seller.storeSlug,
+    });
+  } catch (err) {
+    console.error('Checkout config error:', err);
+    res.status(500).json({ error: 'Failed to load checkout config.' });
+  }
+});
 
 app.post('/api/checkout/create-payment-intent', async (req, res) => {
   try {
@@ -474,17 +508,28 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       status:        'pending',
     });
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount:   total,
-      currency: 'usd',
-      automatic_payment_methods: { enabled: true },
-      receipt_email: customerEmail,
+    // receipt_email must be a valid address or omitted entirely — Stripe
+    // 400s on empty strings. The buyer often hasn't typed it yet when the
+    // PaymentElement mounts, so the email is captured on /confirm.
+    //
+    // Card-only for now: Link/wallets will get re-enabled once the storefront
+    // properly supports the saved-card flow. Without this, Stripe Link
+    // hijacks checkout with an SMS-code challenge for any returning shopper.
+    const piPayload = {
+      amount:               total,
+      currency:             'usd',
+      payment_method_types: ['card'],
       metadata: {
         orderId:   order.id,
         storeSlug,
         sellerId:  seller.id,
       },
-    });
+    };
+    if (customerEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+      piPayload.receipt_email = customerEmail;
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(piPayload);
 
     res.json({
       clientSecret: paymentIntent.client_secret,
@@ -507,10 +552,16 @@ app.post('/api/checkout/confirm', async (req, res) => {
       return res.status(400).json({ error: 'Payment not completed.' });
     }
 
+    // The payment intent was created before the buyer typed their email,
+    // so the order's customer_email is stale. Persist the real email here
+    // so /returns lookups (which match by email) work.
+    const realEmail = (customerInfo && customerInfo.email) ? String(customerInfo.email).trim() : null;
+
     const order = await db.updateOrder(orderId, {
       status:         'processing',
       paymentIntentId,
       customerInfo,
+      customerEmail:  realEmail || undefined,
       paidAt:         new Date(),
     });
 
@@ -532,7 +583,9 @@ app.post('/api/checkout/confirm', async (req, res) => {
 
 app.get('/api/orders/:id', async (req, res) => {
   try {
-    const order = await db.getOrderById(req.params.id);
+    const orderId = normalizeOrderId(req.params.id);
+    if (orderId === null) return res.status(404).json({ error: 'Order not found.' });
+    const order = await db.getOrderById(orderId);
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     res.json({
       id:                order.id,
@@ -562,9 +615,11 @@ app.get('/api/seller/orders', requireAuth, async (req, res) => {
       orders = orders.filter(o => o.status === status);
     }
     if (search) {
-      const q = search.toLowerCase();
+      const q = String(search).toLowerCase();
+      // Scanned barcodes ("SS8") and human refs ("SS-8", "#8") both resolve via normalizeOrderId.
+      const scannedId = normalizeOrderId(search);
       orders = orders.filter(o =>
-        o.id.toString().includes(q) ||
+        (scannedId !== null && o.id === scannedId) ||
         o.customerInfo?.email?.toLowerCase().includes(q) ||
         o.customerInfo?.firstName?.toLowerCase().includes(q)
       );
@@ -581,7 +636,9 @@ app.get('/api/seller/orders', requireAuth, async (req, res) => {
 
 app.patch('/api/seller/orders/:id', requireAuth, async (req, res) => {
   try {
-    const order = await db.getOrderById(req.params.id);
+    const orderId = normalizeOrderId(req.params.id);
+    if (orderId === null) return res.status(404).json({ error: 'Order not found.' });
+    const order = await db.getOrderById(orderId);
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     if (order.sellerId !== req.seller.sellerId) {
       return res.status(403).json({ error: 'You do not own this order.' });
@@ -593,10 +650,126 @@ app.patch('/api/seller/orders/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid status.' });
     }
 
-    const updated = await db.updateOrder(req.params.id, { status, trackingNumber, trackingCarrier });
+    const updated = await db.updateOrder(orderId, { status, trackingNumber, trackingCarrier });
     res.json({ message: 'Order updated!', order: updated });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update order.' });
+  }
+});
+
+// PACKING SLIP PDF — 8.5x11 printable slip for the warehouse
+app.get('/api/seller/orders/:id/packing-slip.pdf', requireAuth, async (req, res) => {
+  try {
+    const orderId = normalizeOrderId(req.params.id);
+    if (orderId === null) return res.status(404).json({ error: 'Order not found.' });
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+    if (order.sellerId !== req.seller.sellerId) {
+      return res.status(403).json({ error: 'You do not own this order.' });
+    }
+
+    const seller = await db.getSellerById(order.sellerId);
+
+    // Look up SKUs for each line item. Items in the DB only carry name+price;
+    // SKU lives on the product. Misses (deleted products) just render blank.
+    const items = Array.isArray(order.items) ? order.items : [];
+    const products = await Promise.all(
+      items.map(it => it.productId ? db.getProductById(it.productId).catch(() => null) : null)
+    );
+    const skuByIdx = products.map(p => p?.sku || '');
+
+    const ship = order.customerInfo || {};
+    const fullName = [ship.firstName, ship.lastName].filter(Boolean).join(' ')
+      || ship.name
+      || order.customerEmail
+      || '';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="packing-slip-SS-${order.id}.pdf"`
+    );
+
+    const doc = new PDFDocument({ size: 'LETTER', margin: 54 }); // 0.75" margins
+    doc.pipe(res);
+
+    // ── Header ─────────────────────────────────────────────────
+    doc.font('Helvetica-Bold').fontSize(20).text(seller?.storeName || 'ShopSell', { continued: false });
+    doc.moveUp();
+    doc.font('Helvetica-Bold').fontSize(16).text('PACKING SLIP', { align: 'right' });
+    doc.font('Helvetica').fontSize(10).fillColor('#555');
+    doc.text(`Order #SS-${order.id}`, { align: 'right' });
+    const paid = order.paidAt ? new Date(order.paidAt) : new Date(order.createdAt);
+    doc.text(`Date: ${paid.toLocaleDateString('en-US')}`, { align: 'right' });
+    doc.fillColor('#000');
+
+    doc.moveDown(2);
+
+    // ── Ship-to block ──────────────────────────────────────────
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#888').text('SHIP TO');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(12).fillColor('#000');
+    if (fullName) doc.text(fullName);
+    if (ship.company) doc.text(ship.company);
+    if (ship.address1 || ship.address) doc.text(ship.address1 || ship.address);
+    if (ship.address2) doc.text(ship.address2);
+    const cityLine = [ship.city, ship.state].filter(Boolean).join(', ');
+    const cityZip  = [cityLine, ship.zip || ship.postalCode].filter(Boolean).join(' ');
+    if (cityZip) doc.text(cityZip);
+    if (ship.country && ship.country !== 'US') doc.text(ship.country);
+    if (order.customerEmail) {
+      doc.fontSize(10).fillColor('#555').text(order.customerEmail);
+      doc.fillColor('#000');
+    }
+
+    doc.moveDown(2);
+
+    // ── Items table ────────────────────────────────────────────
+    const tableTop = doc.y;
+    const col = { item: 54, sku: 360, qty: 500 };
+
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#888');
+    doc.text('ITEM',     col.item, tableTop);
+    doc.text('SKU',      col.sku,  tableTop);
+    doc.text('QTY',      col.qty,  tableTop, { width: 50, align: 'right' });
+    doc.fillColor('#000');
+
+    doc.moveTo(54, tableTop + 14).lineTo(558, tableTop + 14).strokeColor('#ccc').stroke();
+
+    let y = tableTop + 22;
+    doc.font('Helvetica').fontSize(11);
+    items.forEach((it, idx) => {
+      const name = it.name || `Product #${it.productId || ''}`;
+      const sku  = skuByIdx[idx] || '—';
+      const qty  = String(it.qty || it.quantity || 1);
+
+      const nameHeight = doc.heightOfString(name, { width: 290 });
+      doc.text(name, col.item, y, { width: 290 });
+      doc.text(sku,  col.sku,  y);
+      doc.text(qty,  col.qty,  y, { width: 50, align: 'right' });
+
+      y += Math.max(nameHeight, 16) + 6;
+    });
+
+    doc.moveTo(54, y).lineTo(558, y).strokeColor('#ccc').stroke();
+
+    // ── Totals (item count only — packing slips traditionally omit prices) ─
+    const totalQty = items.reduce((s, it) => s + (parseInt(it.qty || it.quantity) || 0), 0);
+    doc.moveDown(1);
+    doc.font('Helvetica-Bold').fontSize(11)
+       .text(`Total items: ${totalQty}`, 54, y + 12, { width: 504, align: 'right' });
+
+    // ── Footer ─────────────────────────────────────────────────
+    doc.font('Helvetica').fontSize(10).fillColor('#888')
+       .text('Thank you for your order!', 54, 720, { width: 504, align: 'center' });
+
+    doc.end();
+
+  } catch (err) {
+    console.error('Packing slip error:', err);
+    // If we already started streaming, we can't change headers — just end.
+    if (res.headersSent) return res.end();
+    res.status(500).json({ error: 'Failed to generate packing slip.' });
   }
 });
 
@@ -750,6 +923,43 @@ app.post('/api/seller/subscription/cancel', requireAuth, async (req, res) => {
     res.json({ message: 'Subscription will be cancelled at the end of your billing period.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to cancel subscription.' });
+  }
+});
+
+/* ============================================================
+   ── SELLER RETURN ADDRESS ────────────────────────────────────
+   GET /api/seller/return-address
+   PUT /api/seller/return-address
+   ============================================================ */
+
+app.get('/api/seller/return-address', requireAuth, async (req, res) => {
+  try {
+    const addr = await db.getSellerReturnAddress(req.seller.sellerId);
+    res.json({ address: addr });
+  } catch (err) {
+    console.error('Get return address error:', err);
+    res.status(500).json({ error: 'Failed to load return address.' });
+  }
+});
+
+app.put('/api/seller/return-address', requireAuth, async (req, res) => {
+  try {
+    const { name, address1, address2, city, state, zip, country, phone, residential } = req.body || {};
+    if (!name || !address1 || !city || !state || !zip) {
+      return res.status(400).json({ error: 'name, address1, city, state, and zip are required.' });
+    }
+    const addr = {
+      name, address1, address2: address2 || '',
+      city, state, zip,
+      country: country || 'US',
+      phone: phone || '',
+      residential: !!residential,
+    };
+    await db.setSellerReturnAddress(req.seller.sellerId, addr);
+    res.json({ message: 'Return address saved.', address: addr });
+  } catch (err) {
+    console.error('Save return address error:', err);
+    res.status(500).json({ error: 'Failed to save return address.' });
   }
 });
 
@@ -1374,6 +1584,271 @@ app.get('/api/shipping/history', async (req, res) => {
   } catch (err) {
     console.error('Get shipping history error:', err);
     res.status(500).json({ error: 'Failed to load shipping history: ' + err.message });
+  }
+});
+
+/* ============================================================
+   ── BUYER-FACING RETURNS ─────────────────────────────────────
+   GET  /api/returns/eligible — check what items can be returned
+   POST /api/returns          — create a return + generate label
+   ============================================================ */
+
+// Shared helper: load order + verify identity (by customer email).
+// Returns { order, seller, error, status } shape so callers can short-circuit.
+// Accepts "SS-123", "ss123", "#123", "123", or a scanned barcode like "SS8".
+// Returns a positive integer order id, or null if nothing usable.
+function normalizeOrderId(input) {
+  if (input == null) return null;
+  const digits = String(input).replace(/[^0-9]/g, '');
+  if (!digits) return null;
+  const n = parseInt(digits, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function loadOrderForBuyer(orderNumber, email) {
+  if (!orderNumber || !email) {
+    return { error: 'Order number and email are required.', status: 400 };
+  }
+  const orderId = normalizeOrderId(orderNumber);
+  if (orderId === null) {
+    return { error: 'Invalid order number.', status: 400 };
+  }
+  const order = await db.getOrderById(orderId);
+  if (!order) return { error: 'Order not found.', status: 404 };
+
+  const onFile = (order.customerEmail || order.customerInfo?.email || '').toLowerCase().trim();
+  if (!onFile || onFile !== String(email).toLowerCase().trim()) {
+    return { error: 'Order not found.', status: 404 }; // don't leak which side mismatched
+  }
+  const seller = await db.getSellerById(order.sellerId);
+  return { order, seller };
+}
+
+// Sum quantities already returned for each productId across prior returns rows
+async function alreadyReturnedByProduct(orderId) {
+  const prior = await db.getReturnsByOrder(orderId);
+  const tally = {};
+  for (const r of prior) {
+    for (const it of (r.items || [])) {
+      const pid = String(it.productId);
+      tally[pid] = (tally[pid] || 0) + (parseInt(it.qty) || 0);
+    }
+  }
+  return tally;
+}
+
+// Build per-item eligibility based on product rules + paid date + prior returns
+async function computeEligibility(order) {
+  const tally = await alreadyReturnedByProduct(order.id);
+  const paid = order.paidAt ? new Date(order.paidAt) : new Date(order.createdAt);
+  const today = new Date();
+
+  const out = await Promise.all((order.items || []).map(async (it) => {
+    const product = it.productId ? await db.getProductById(it.productId).catch(() => null) : null;
+    const purchasedQty = parseInt(it.qty || it.quantity) || 0;
+    const returnedQty  = tally[String(it.productId)] || 0;
+    const remainingQty = Math.max(0, purchasedQty - returnedQty);
+
+    // Defaults match the schema defaults so legacy products are treated as returnable
+    const returnable  = product ? !!product.returnable : true;
+    const windowDays  = product ? (parseInt(product.returnWindowDays) || 30) : 30;
+    const deadline    = new Date(paid.getTime() + windowDays * 86400000);
+    const withinWindow = today <= deadline;
+
+    let reason = null;
+    let eligible = true;
+    if (!returnable)            { eligible = false; reason = 'Final sale — not returnable.'; }
+    else if (!withinWindow)     { eligible = false; reason = `Return window closed (${windowDays} days).`; }
+    else if (remainingQty <= 0) { eligible = false; reason = 'Already returned.'; }
+
+    return {
+      productId:        it.productId,
+      name:             it.name || (product ? product.name : `Product #${it.productId || ''}`),
+      sku:              product?.sku || '',
+      price:            it.price,
+      purchasedQty,
+      returnedQty,
+      remainingQty,
+      eligible,
+      reason,
+      returnable,
+      windowDays,
+      deadline:         deadline.toISOString(),
+      restockingFeePct: product ? parseFloat(product.restockingFeePct) || 0 : 0,
+    };
+  }));
+
+  return out;
+}
+
+app.get('/api/returns/eligible', async (req, res) => {
+  try {
+    const { orderNumber, email } = req.query;
+    const lookup = await loadOrderForBuyer(orderNumber, email);
+    if (lookup.error) return res.status(lookup.status).json({ error: lookup.error });
+
+    const { order, seller } = lookup;
+    const items = await computeEligibility(order);
+
+    res.json({
+      orderId:     order.id,
+      orderNumber: `SS-${order.id}`,
+      paidAt:      order.paidAt,
+      storeName:   seller?.storeName || 'ShopSell',
+      returnsEnabled: !!(await db.getSellerReturnAddress(order.sellerId)),
+      items,
+    });
+  } catch (err) {
+    console.error('Returns eligibility error:', err);
+    res.status(500).json({ error: 'Failed to load return eligibility.' });
+  }
+});
+
+app.post('/api/returns', async (req, res) => {
+  try {
+    const { orderNumber, email, items: requestedItems, reason } = req.body || {};
+    if (!Array.isArray(requestedItems) || requestedItems.length === 0) {
+      return res.status(400).json({ error: 'Select at least one item to return.' });
+    }
+
+    const lookup = await loadOrderForBuyer(orderNumber, email);
+    if (lookup.error) return res.status(lookup.status).json({ error: lookup.error });
+
+    const { order, seller } = lookup;
+
+    const returnAddress = await db.getSellerReturnAddress(order.sellerId);
+    if (!returnAddress) {
+      return res.status(400).json({
+        error: 'This seller has not configured a return address yet. Please contact them directly.',
+      });
+    }
+
+    // Re-validate eligibility server-side — never trust the client.
+    const eligibility = await computeEligibility(order);
+    const eligibleByPid = {};
+    eligibility.forEach(e => { eligibleByPid[String(e.productId)] = e; });
+
+    const validated = [];
+    for (const it of requestedItems) {
+      const elig = eligibleByPid[String(it.productId)];
+      if (!elig)            return res.status(400).json({ error: `Item not in order: ${it.productId}` });
+      if (!elig.eligible)   return res.status(400).json({ error: `Item not eligible: ${elig.name} — ${elig.reason}` });
+      const qty = parseInt(it.qty) || 0;
+      if (qty <= 0)         return res.status(400).json({ error: `Invalid quantity for ${elig.name}` });
+      if (qty > elig.remainingQty) {
+        return res.status(400).json({ error: `Quantity for ${elig.name} exceeds remaining returnable (${elig.remainingQty}).` });
+      }
+      validated.push({ productId: it.productId, name: elig.name, qty, price: elig.price });
+    }
+
+    // Look up the outbound shipment so we can mirror carrier + package dims.
+    // If none exists, fall back to UPS + a standard small box.
+    const outbound = await db.pool.query(
+      `SELECT carrier, weight FROM shipments
+         WHERE order_id = $1 AND status NOT IN ('voided', 'refund_requested')
+         ORDER BY created_at DESC LIMIT 1`,
+      [order.id]
+    ).then(r => r.rows[0]).catch(() => null);
+
+    const carrier = (outbound?.carrier) || 'ups';
+    const pkg = {
+      weight: parseFloat(outbound?.weight) || 2,
+      length: 12, width: 9, height: 4,
+    };
+
+    // The return label flows from the buyer (recipient on outbound) BACK to the seller.
+    // So on the label: shipper = buyer's outbound ship-to address, recipient = seller's return address.
+    const ship = order.customerInfo || {};
+    const buyer = {
+      name:     [ship.firstName, ship.lastName].filter(Boolean).join(' ') || ship.name || order.customerEmail || 'Customer',
+      company:  ship.company || '',
+      address1: ship.address1 || ship.address || '',
+      address2: ship.address2 || '',
+      city:     ship.city  || '',
+      state:    ship.state || '',
+      zip:      ship.zip   || ship.postalCode || '',
+      country:  ship.country || 'US',
+      phone:    ship.phone || '',
+      email:    order.customerEmail || ship.email || '',
+      residential: ship.residential !== false,
+    };
+
+    const label = await carriers.createReturnLabel(carrier, {
+      shipper:     buyer,           // package travels FROM the buyer
+      recipient:   returnAddress,   // TO the seller's return address
+      package:     pkg,
+      // Reference 1: human-readable order tag for visual reconciliation.
+      // Reference 2: short order ID rendered as a Code 128 barcode by UPS
+      // so receiving staff can scan instead of keying the order number.
+      reference:        `Order SS-${order.id}`,
+      barcodeReference: `SS-${order.id}`,
+      // Match the outbound shipping module: ask UPS for a GIF and let the
+      // frontend wrap it in an HTML page that prints at 1:1 via a hidden
+      // iframe. The browser PDF viewer path was unreliable across drivers.
+      labelFormat: 'GIF',
+    });
+
+    const returnRow = await db.createReturn({
+      orderId:        order.id,
+      sellerId:       order.sellerId,
+      customerEmail:  order.customerEmail,
+      items:          validated,
+      reason:         (reason || '').slice(0, 500),
+      status:         'label_issued',
+      carrier:        label.carrier,
+      trackingNumber: label.trackingNumber,
+      labelImage:     label.labelImage,
+      labelUrl:       label.labelUrl,
+      transactionId:  label.transactionId || null,
+    });
+
+    console.log(`Return label issued for order ${order.id}: ${carrier.toUpperCase()} ${label.trackingNumber}`);
+
+    // Fire emails to buyer + seller. Failures are logged but never block
+    // the response — the label is real and the buyer already has it on screen.
+    const buyerName = [ship.firstName, ship.lastName].filter(Boolean).join(' ') || ship.name || '';
+    emailService.sendReturnLabelToBuyer({
+      toEmail:        order.customerEmail,
+      orderNumber:    `SS-${order.id}`,
+      storeName:      seller?.storeName || 'ShopSell',
+      carrier:        label.carrier,
+      trackingNumber: label.trackingNumber,
+      items:          validated,
+      labelImage:     label.labelImage,
+      labelUrl:       label.labelUrl,
+      labelFormat:    label.labelFormat,
+      returnAddress,
+    }).catch(err => console.error('Buyer email failed:', err.message));
+
+    if (seller?.email) {
+      emailService.sendReturnNotificationToSeller({
+        toEmail:        seller.email,
+        orderNumber:    `SS-${order.id}`,
+        buyerEmail:     order.customerEmail,
+        buyerName,
+        carrier:        label.carrier,
+        trackingNumber: label.trackingNumber,
+        items:          validated,
+        reason:         reason || '',
+        storeName:      seller.storeName || 'ShopSell',
+      }).catch(err => console.error('Seller email failed:', err.message));
+    }
+
+    res.json({
+      success:        true,
+      returnId:       returnRow.id,
+      orderNumber:    `SS-${order.id}`,
+      storeName:      seller?.storeName || 'ShopSell',
+      carrier:        label.carrier,
+      trackingNumber: label.trackingNumber,
+      labelImage:     label.labelImage,
+      labelUrl:       label.labelUrl,
+      labelFormat:    label.labelFormat || 'PDF',
+    });
+
+  } catch (err) {
+    console.error('Create return error:', err);
+    res.status(500).json({ error: 'Failed to create return: ' + err.message });
   }
 });
 
