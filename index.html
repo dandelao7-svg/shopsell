@@ -952,16 +952,20 @@ async function setupStripeCheckout(){
 
     currentPaymentIntent = data;
 
-    // Use the legacy CardElement (not PaymentElement). CardElement is a plain
-    // card-number / expiry / CVC form with no Link integration — PaymentElement
-    // always offers Link as a card-autofill convenience, even when only 'card'
-    // is allowed at the PaymentIntent level. When we later want Apple Pay /
-    // Google Pay / Link, we can swap this back, but the storefront will need a
-    // saved-card UX to handle the Link sign-in challenge.
+    // Modern PaymentElement: shows card + whatever wallets the seller has
+    // enabled in Stripe Dashboard (Apple Pay, Google Pay, Link). The element
+    // dynamically reflects the buyer's environment (e.g. Apple Pay button
+    // only appears on Safari/iOS with a saved card).
     stripe = Stripe(STORE_CONFIG.publishableKey);
-    stripeElements = stripe.elements();
-    stripePaymentElement = stripeElements.create('card', {
-      style: { base: { fontSize: '15px', fontFamily: 'Outfit, sans-serif' } },
+    stripeElements = stripe.elements({
+      clientSecret: data.clientSecret,
+      appearance: { theme: 'stripe', variables: { fontFamily: 'Outfit, sans-serif', fontSizeBase: '15px' } },
+    });
+    stripePaymentElement = stripeElements.create('payment', {
+      layout: 'tabs',
+      // Bury Link below card so returning shoppers aren't prompted with the
+      // SMS-code challenge as the first option.
+      paymentMethodOrder: ['card', 'apple_pay', 'google_pay', 'link'],
     });
     mountEl.innerHTML = '';
     stripePaymentElement.mount('#stripePaymentMount');
@@ -990,20 +994,24 @@ async function placeOrder(){
                         document.getElementById('co-lname').value.trim()).trim();
     const billingEmail = document.getElementById('co-email').value.trim();
 
-    // 1. Confirm the card with Stripe. CardElement uses confirmCardPayment
-    //    (not confirmPayment) and takes the clientSecret directly.
-    const { error, paymentIntent } = await stripe.confirmCardPayment(
-      currentPaymentIntent.clientSecret,
-      {
-        payment_method: {
-          card: stripePaymentElement,
+    // 1. Confirm with Stripe. PaymentElement uses confirmPayment() and reads
+    //    the selected method from the Elements instance. redirect:'if_required'
+    //    keeps card payments inline; only methods that genuinely require a
+    //    redirect (3DS challenges, some wallets) will navigate to return_url.
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements: stripeElements,
+      clientSecret: currentPaymentIntent.clientSecret,
+      confirmParams: {
+        return_url: window.location.origin + window.location.pathname + '?store=' + STORE_SLUG,
+        payment_method_data: {
           billing_details: {
             name:  billingName || undefined,
             email: billingEmail || undefined,
           },
         },
-      }
-    );
+      },
+      redirect: 'if_required',
+    });
 
     if(error){
       showStripeMsg(error.message || 'Payment failed. Please check your card details.');

@@ -511,14 +511,10 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
     // receipt_email must be a valid address or omitted entirely — Stripe
     // 400s on empty strings. The buyer often hasn't typed it yet when the
     // PaymentElement mounts, so the email is captured on /confirm.
-    //
-    // Card-only for now: Link/wallets will get re-enabled once the storefront
-    // properly supports the saved-card flow. Without this, Stripe Link
-    // hijacks checkout with an SMS-code challenge for any returning shopper.
     const piPayload = {
-      amount:               total,
-      currency:             'usd',
-      payment_method_types: ['card'],
+      amount:                    total,
+      currency:                  'usd',
+      automatic_payment_methods: { enabled: true },
       metadata: {
         orderId:   order.id,
         storeSlug,
