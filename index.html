@@ -687,6 +687,7 @@ function normalizeProduct(p) {
     variants:     Array.isArray(p.variants) ? p.variants : [],
     variantLabel: 'Option',
     quantity:     p.quantity,
+    images:       Array.isArray(p.imageUrls) ? p.imageUrls : [],
   };
 }
 
@@ -708,7 +709,9 @@ function getFiltered(cat,sort,search=''){
 function cardHTML(p){
   return`<div class="product-card" onclick="openModal(${p.id})">
     <div class="product-img-wrap">
-      ${p.emoji}
+      ${p.images && p.images.length
+        ? `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover">`
+        : p.emoji}
       ${p.badge?`<span class="product-badge ${p.badge}">${p.badge==='hot'?'🔥 Hot':p.badge==='new'?'New':'Sale'}</span>`:''}
       <button class="wishlist-btn" onclick="event.stopPropagation();toast('💛 Added to wishlist!')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
@@ -755,7 +758,16 @@ function searchProducts(q){renderGrid('homeGrid','homeCount',homeCat,homeSort,q)
 function openModal(id){
   const p=PRODUCTS.find(x=>x.id===id);
   currentModal=p; mq=1;
-  document.getElementById('modalEmoji').textContent=p.emoji;
+  const modalImgEl = document.getElementById('modalEmoji');
+  if(p.images && p.images.length){
+    modalImgEl.style.padding = '0';
+    modalImgEl.style.height  = '280px';
+    modalImgEl.innerHTML = `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;display:block">`;
+  } else {
+    modalImgEl.style.padding = '';
+    modalImgEl.style.height  = '';
+    modalImgEl.textContent = p.emoji;
+  }
   document.getElementById('modalCat').textContent=p.cat.toUpperCase();
   document.getElementById('modalName').textContent=p.name;
   document.getElementById('modalPrice').textContent=fmt(p.price);
@@ -828,7 +840,7 @@ function updateCartUI(){
     listEl.innerHTML=keys.map(key=>{
       const item=cart[key],p=PRODUCTS.find(x=>x.id===item.id);
       return`<div class="cart-item">
-        <div class="cart-item-img">${p.emoji}</div>
+        <div class="cart-item-img">${p.images && p.images.length ? `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">` : p.emoji}</div>
         <div class="cart-item-info">
           <div class="cart-item-name">${p.name}</div>
           ${item.variant?`<div class="cart-item-var">${item.variant}</div>`:''}
@@ -875,7 +887,7 @@ function updateCheckoutUI(){
     itemsEl.innerHTML=keys.map(key=>{
       const item=cart[key],p=PRODUCTS.find(x=>x.id===item.id);
       return`<div class="os-item">
-        <div class="os-img">${p.emoji}</div>
+        <div class="os-img">${p.images && p.images.length ? `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">` : p.emoji}</div>
         <div class="os-name">${p.name}${item.variant?' · '+item.variant:''} ×${item.qty}</div>
         <div class="os-price">${fmt(p.price*item.qty)}</div>
       </div>`;

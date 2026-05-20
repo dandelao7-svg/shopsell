@@ -1491,13 +1491,46 @@ function calcMargin(){
   } else {bar.style.display='none';}
 }
 
-function handleFiles(files){
-  Array.from(files).slice(0,6-uploadedImages.length).forEach(f=>{
-    if(!f.type.startsWith('image/'))return;
-    const r=new FileReader();
-    r.onload=e=>{uploadedImages.push(e.target.result);renderImgPreviews()};
-    r.readAsDataURL(f);
+function compressImage(file, maxDim, quality){
+  maxDim  = maxDim  || 1200;
+  quality = quality || 0.85;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > maxDim || height > maxDim){
+          const scale = maxDim / Math.max(width, height);
+          width  = Math.round(width  * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
+}
+
+async function handleFiles(files){
+  const slots = 6 - uploadedImages.length;
+  const arr = Array.from(files).slice(0, slots).filter(f => f.type.startsWith('image/'));
+  for(const f of arr){
+    try {
+      const dataUrl = await compressImage(f);
+      uploadedImages.push(dataUrl);
+      renderImgPreviews();
+    } catch(err){
+      console.error('Image compression failed for', f.name, err);
+      toast('Could not process image: ' + f.name);
+    }
+  }
 }
 
 function renderImgPreviews(){
@@ -1551,7 +1584,7 @@ async function publishProduct(){
     weight:           parseFloat(document.getElementById('pWeight').value)  || null,
     variants,
     status:           document.getElementById('pStatus').value || 'active',
-    imageUrls:        [], // wire when image upload is implemented
+    imageUrls:        uploadedImages.slice(),
     returnable:       document.getElementById('pReturnable').checked,
     returnWindowDays: parseInt(document.getElementById('pReturnDays').value)  || 30,
     restockingFeePct: parseFloat(document.getElementById('pRestockFee').value) || 0,
