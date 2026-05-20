@@ -526,9 +526,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
         <table class="orders-table">
           <thead><tr><th>Order #</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
           <tbody id="ordersBody">
-            <tr><td style="font-family:monospace;font-size:11px">#SS-10291</td><td>Apr 18, 2026</td><td style="color:var(--muted)">Linen Tote, White Tee</td><td style="font-weight:600">$68.87</td><td><span class="status-pill delivered">Delivered</span></td></tr>
-            <tr><td style="font-family:monospace;font-size:11px">#SS-10184</td><td>Mar 29, 2026</td><td style="color:var(--muted)">Ceramic Mug Set</td><td style="font-weight:600">$48.60</td><td><span class="status-pill delivered">Delivered</span></td></tr>
-            <tr><td style="font-family:monospace;font-size:11px">#SS-10072</td><td>Mar 12, 2026</td><td style="color:var(--muted)">Glow Face Serum</td><td style="font-weight:600">$79.92</td><td><span class="status-pill shipped">Shipped</span></td></tr>
+            <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px 8px">No orders yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1060,13 +1058,11 @@ async function placeOrder(){
 function renderOrders(){
   const tbody=document.getElementById('ordersBody');
   if(!tbody)return;
-  const all=[
-    ...newOrders,
-    {id:'10291',date:'Apr 18, 2026',items:'Linen Tote, White Tee',total:'$68.87',status:'delivered'},
-    {id:'10184',date:'Mar 29, 2026',items:'Ceramic Mug Set',total:'$48.60',status:'delivered'},
-    {id:'10072',date:'Mar 12, 2026',items:'Glow Face Serum',total:'$79.92',status:'shipped'},
-  ];
-  tbody.innerHTML=all.map(o=>`<tr>
+  if(!newOrders.length){
+    tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px 8px">No orders yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML=newOrders.map(o=>`<tr>
     <td style="font-family:monospace;font-size:11px">#SS-${o.id}</td>
     <td>${o.date}</td>
     <td style="color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.items}</td>

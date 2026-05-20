@@ -1257,18 +1257,48 @@ if(document.readyState === 'loading'){
   loadReturnAddress();
 }
 
-// ── SAMPLE DATA ──
-// API CALL: Replace with fetch('/api/orders') from server.js
-const ORDERS = [
-  {id:'SS-10312',date:'Apr 30, 2026',customer:'Sarah Johnson',email:'sarah@email.com',items:'Linen Tote Bag × 2',total:'$69.98',status:'processing'},
-  {id:'SS-10311',date:'Apr 30, 2026',customer:'Michael Chen',email:'m.chen@email.com',items:'Glow Face Serum',total:'$52.00',status:'processing'},
-  {id:'SS-10310',date:'Apr 29, 2026',customer:'Emma Williams',email:'emma.w@email.com',items:'Scented Candle × 3',total:'$66.00',status:'shipped'},
-  {id:'SS-10309',date:'Apr 29, 2026',customer:'James Rodriguez',email:'j.rod@email.com',items:'Classic White Tee',total:'$28.00',status:'processing'},
-  {id:'SS-10308',date:'Apr 28, 2026',customer:'Olivia Martinez',email:'olivia.m@email.com',items:'Floral Sundress',total:'$72.00',status:'shipped'},
-  {id:'SS-10307',date:'Apr 27, 2026',customer:'David Kim',email:'d.kim@email.com',items:'Leather Wallet',total:'$65.00',status:'delivered'},
-  {id:'SS-10306',date:'Apr 26, 2026',customer:'Sarah Johnson',email:'sarah@email.com',items:'Ceramic Mug Set',total:'$45.00',status:'delivered'},
-  {id:'SS-10305',date:'Apr 25, 2026',customer:'Michael Chen',email:'m.chen@email.com',items:'Lip Tint Trio',total:'$38.00',status:'delivered'},
-];
+// ── ORDERS DATA (loaded from /api/seller/orders on dashboard init) ──
+let ORDERS = [];
+
+function transformOrder(row){
+  const itemsArr = Array.isArray(row.items) ? row.items : [];
+  const itemsSummary = itemsArr.length === 0
+    ? '—'
+    : itemsArr.map(i => `${i.name}${i.qty > 1 ? ' × ' + i.qty : ''}`).join(', ');
+  const ci = row.customerInfo || {};
+  const customer = [ci.firstName, ci.lastName].filter(Boolean).join(' ').trim()
+                || ci.name || row.customerEmail || 'Customer';
+  const email = ci.email || row.customerEmail || '—';
+  const created = row.createdAt ? new Date(row.createdAt) : null;
+  const date = created
+    ? created.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '—';
+  const total = row.total != null ? '$' + parseFloat(row.total).toFixed(2) : '—';
+  return {
+    id:       `SS-${row.id}`,
+    date,
+    customer,
+    email,
+    items:    itemsSummary,
+    total,
+    status:   row.status || 'processing',
+  };
+}
+
+async function loadOrders(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try {
+    const res = await fetch('/api/seller/orders?limit=200', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    ORDERS = (data.orders || []).map(transformOrder);
+    renderRecentOrders();
+    renderOrders(currentOrderFilter);
+  } catch(e){ /* not fatal — table just stays empty */ }
+}
 
 // API CALL: Replace with fetch('/api/products') from server.js
 const PRODUCTS_DASH = [
@@ -1352,11 +1382,17 @@ function renderRecentOrders(){
 function renderOrders(filter='all',search=''){
   const tbody = document.getElementById('allOrdersTable');
   let list = filter==='all' ? ORDERS : ORDERS.filter(o=>o.status===filter);
-  if(search) list = list.filter(o=>
-    o.id.toLowerCase().includes(search) ||
-    o.customer.toLowerCase().includes(search) ||
-    o.items.toLowerCase().includes(search)
-  );
+  if(search){
+    // Mirror server-side normalizeOrderId so a scanned "SS8" matches "SS-8".
+    const digits = String(search).replace(/[^0-9]/g, '');
+    const scannedId = digits ? `ss-${parseInt(digits,10)}` : null;
+    list = list.filter(o=>
+      (scannedId && o.id.toLowerCase() === scannedId) ||
+      o.id.toLowerCase().includes(search) ||
+      o.customer.toLowerCase().includes(search) ||
+      o.items.toLowerCase().includes(search)
+    );
+  }
   tbody.innerHTML = list.map(o=>`
     <tr>
       <td style="font-family:monospace;font-size:12px">#${o.id}</td>
@@ -1627,8 +1663,9 @@ function toast(msg){
 
 // ── INIT ──
 renderRevenueChart();
-renderRecentOrders();
-renderOrders();
+renderRecentOrders();    // renders empty table immediately
+renderOrders();          // ditto — then loadOrders re-renders with real data
+loadOrders();
 renderProducts();
 calcStripeFee();
 </script>
