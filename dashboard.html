@@ -1300,21 +1300,42 @@ async function loadOrders(){
   } catch(e){ /* not fatal — table just stays empty */ }
 }
 
-// API CALL: Replace with fetch('/api/products') from server.js
-const PRODUCTS_DASH = [
-  {id:1,name:'Linen Tote Bag',cat:'accessories',price:34.99,emoji:'👜',qty:42,status:'active',sku:'ACC-TOTE-241'},
-  {id:2,name:'Classic White Tee',cat:'clothing',price:28.00,emoji:'👕',qty:18,status:'active',sku:'CLO-CLAS-882'},
-  {id:3,name:'Ceramic Mug Set',cat:'home',price:45.00,emoji:'☕',qty:9,status:'active',sku:'HOM-CERA-298'},
-  {id:4,name:'Glow Face Serum',cat:'beauty',price:52.00,emoji:'✨',qty:31,status:'active',sku:'BEA-GLOW-519'},
-  {id:5,name:'Leather Wallet',cat:'accessories',price:65.00,emoji:'👛',qty:7,status:'active',sku:'ACC-LEAT-667'},
-  {id:6,name:'Floral Sundress',cat:'clothing',price:72.00,emoji:'👗',qty:14,status:'active',sku:'CLO-FLOR-374'},
-  {id:7,name:'Scented Candle',cat:'home',price:22.00,emoji:'🕯️',qty:55,status:'active',sku:'HOM-SCEN-103'},
-  {id:8,name:'Lip Tint Trio',cat:'beauty',price:38.00,emoji:'💄',qty:22,status:'active',sku:'BEA-LIPT-556'},
-  {id:9,name:'Silk Scrunchie Set',cat:'accessories',price:18.00,emoji:'🪡',qty:38,status:'active',sku:'ACC-SILK-819'},
-  {id:10,name:'Linen Joggers',cat:'clothing',price:58.00,emoji:'👖',qty:11,status:'active',sku:'CLO-LINE-445'},
-  {id:11,name:'Bamboo Cutting Board',cat:'home',price:34.00,emoji:'🪵',qty:3,status:'active',sku:'HOM-BAMB-277'},
-  {id:12,name:'Rose Water Mist',cat:'beauty',price:26.00,emoji:'🌹',qty:0,status:'draft',sku:'BEA-ROSE-631'},
-];
+// Loaded from /api/seller/products via loadProducts() on init.
+let PRODUCTS_DASH = [];
+
+const CATEGORY_EMOJI_DASH = {
+  clothing:'👕', accessories:'👜', home:'🏠', beauty:'✨',
+  electronics:'📱', books:'📚', food:'🍪', toys:'🧸', other:'📦',
+};
+
+function transformDashProduct(row){
+  const category = (row.category || 'other').toLowerCase();
+  return {
+    id:     row.id,
+    name:   row.name,
+    cat:    category,
+    price:  parseFloat(row.price) || 0,
+    emoji:  CATEGORY_EMOJI_DASH[category] || CATEGORY_EMOJI_DASH.other,
+    qty:    row.quantity != null ? parseInt(row.quantity) : 0,
+    status: row.status || 'active',
+    sku:    row.sku || '—',
+    images: Array.isArray(row.imageUrls) ? row.imageUrls : [],
+  };
+}
+
+async function loadProducts(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try {
+    const res = await fetch('/api/seller/products', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if(!res.ok) return;
+    const arr = await res.json();
+    PRODUCTS_DASH = (Array.isArray(arr) ? arr : []).map(transformDashProduct);
+    renderProducts(currentProductFilter);
+  } catch(e){ /* not fatal — grid stays empty */ }
+}
 
 let uploadedImages = [];
 let currentOrderFilter = 'all';
@@ -1424,10 +1445,16 @@ function renderProducts(filter='all'){
   const grid = document.getElementById('productsMgmtGrid');
   const list = filter==='all' ? PRODUCTS_DASH : PRODUCTS_DASH.filter(p=>p.cat===filter);
   document.getElementById('productCountLabel').textContent = list.length+' product'+(list.length!==1?'s':'')+' in your catalog';
+  if(!list.length){
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:48px 16px;font-size:14px">No products yet. Use the Add product tab to publish your first listing.</div>`;
+    return;
+  }
   grid.innerHTML = list.map(p=>`
     <div class="product-mgmt-card">
       <div class="product-mgmt-img">
-        ${p.emoji}
+        ${p.images && p.images.length
+          ? `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">`
+          : p.emoji}
         <div class="product-mgmt-status">
           <span class="status-pill ${p.status==='active'?'active':'draft'}">${cap(p.status)}</span>
         </div>
@@ -1699,7 +1726,8 @@ renderRevenueChart();
 renderRecentOrders();    // renders empty table immediately
 renderOrders();          // ditto — then loadOrders re-renders with real data
 loadOrders();
-renderProducts();
+renderProducts();        // empty-state placeholder until loadProducts resolves
+loadProducts();
 calcStripeFee();
 </script>
 </body>
