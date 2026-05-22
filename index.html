@@ -952,10 +952,11 @@ async function setupStripeCheckout(){
 
     currentPaymentIntent = data;
 
-    // Modern PaymentElement: shows card + whatever wallets the seller has
-    // enabled in Stripe Dashboard (Apple Pay, Google Pay, Link). The element
-    // dynamically reflects the buyer's environment (e.g. Apple Pay button
-    // only appears on Safari/iOS with a saved card).
+    // Card-only PaymentElement. The PaymentIntent is created with
+    // payment_method_types:['card'], which structurally excludes Link
+    // (no shared-browser autofill risk) and wallets. Re-add wallets via a
+    // separate PaymentRequestButton if/when needed — that path doesn't pull
+    // Link back in.
     stripe = Stripe(STORE_CONFIG.publishableKey);
     stripeElements = stripe.elements({
       clientSecret: data.clientSecret,
@@ -963,9 +964,6 @@ async function setupStripeCheckout(){
     });
     stripePaymentElement = stripeElements.create('payment', {
       layout: 'tabs',
-      // Bury Link below card so returning shoppers aren't prompted with the
-      // SMS-code challenge as the first option.
-      paymentMethodOrder: ['card', 'apple_pay', 'google_pay', 'link'],
     });
     mountEl.innerHTML = '';
     stripePaymentElement.mount('#stripePaymentMount');

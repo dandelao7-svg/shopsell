@@ -512,9 +512,9 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
     // 400s on empty strings. The buyer often hasn't typed it yet when the
     // PaymentElement mounts, so the email is captured on /confirm.
     const piPayload = {
-      amount:                    total,
-      currency:                  'usd',
-      automatic_payment_methods: { enabled: true },
+      amount:               total,
+      currency:             'usd',
+      payment_method_types: ['card'],
       metadata: {
         orderId:   order.id,
         storeSlug,
