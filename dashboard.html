@@ -239,6 +239,17 @@ tr:hover td{background:#fafaf7}
 .product-mgmt-actions{display:flex;gap:4px}
 .action-btn{background:var(--light2);border:none;width:26px;height:26px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all 0.2s}
 .action-btn:hover{background:var(--accent);color:#fff}
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto}
+.modal-backdrop.show{display:flex}
+.modal-panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-lg);max-width:760px;width:100%;padding:24px;margin:auto}
+.modal-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:1px solid var(--border);padding-bottom:14px}
+.modal-hd-title{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700}
+.modal-close{background:none;border:none;font-size:26px;line-height:1;cursor:pointer;color:var(--muted);padding:0 6px;border-radius:6px}
+.modal-close:hover{background:var(--light2);color:var(--text)}
+.modal-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.modal-actions .right-group{display:flex;gap:10px}
+.btn.danger{background:var(--red,#dc2626);color:#fff}
+.btn.danger:hover{opacity:0.88}
 
 /* ── ORDERS FILTERS ── */
 .filter-bar{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center}
@@ -1134,6 +1145,137 @@ tr:hover td{background:#fafaf7}
 </main>
 </div>
 
+<!-- EDIT PRODUCT MODAL -->
+<div class="modal-backdrop" id="editProductModal">
+  <div class="modal-panel">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Edit product</div>
+      <button class="modal-close" onclick="closeEditProduct()" title="Close">×</button>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-hd">Product information</div>
+      <div class="field">
+        <label>Product name *</label>
+        <input type="text" id="epName" maxlength="80">
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea id="epDesc" maxlength="1000"></textarea>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label>Category *</label>
+          <select id="epCat">
+            <option value="clothing">Clothing</option>
+            <option value="accessories">Accessories</option>
+            <option value="home">Home & Living</option>
+            <option value="beauty">Beauty</option>
+            <option value="art">Art & Prints</option>
+            <option value="digital">Digital Products</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Brand / Maker</label>
+          <input type="text" id="epBrand">
+        </div>
+      </div>
+      <div class="field">
+        <label>SKU *</label>
+        <input type="text" id="epSKU" style="font-family:monospace;font-size:12px;letter-spacing:0.5px">
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-hd">Pricing & inventory</div>
+      <div class="three-col">
+        <div class="field">
+          <label>Price * ($)</label>
+          <input type="number" id="epPrice" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label>Compare-at price ($)</label>
+          <input type="number" id="epCompare" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label>Cost per item ($)</label>
+          <input type="number" id="epCost" min="0" step="0.01">
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label>Quantity in stock *</label>
+          <input type="number" id="epQty" min="0" step="1">
+        </div>
+        <div class="field">
+          <label>Variants (comma-separated)</label>
+          <input type="text" id="epVariants" placeholder="S, M, L — or Red, Blue">
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label>Weight (oz)</label>
+          <input type="number" id="epWeight" min="0" step="0.1">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="epStatus">
+            <option value="active">Active — visible in store</option>
+            <option value="draft">Draft — hidden</option>
+            <option value="archived">Archived</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-hd">Product images</div>
+      <div class="img-upload" id="epImgUpload" ondragover="epDragOver(event)" ondragleave="epDragLeave()" ondrop="epDropFiles(event)">
+        <input type="file" accept="image/*" multiple onchange="epHandleFiles(this.files)">
+        <div class="img-upload-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:3px">Drop images or click to browse</div>
+        <div style="font-size:11px;color:var(--muted)">JPG, PNG, WEBP · up to 6 images</div>
+      </div>
+      <div class="img-preview-grid" id="epImgPreviewGrid"></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px" id="epImgHint"></div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-hd">Returns policy</div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Returnable</div>
+          <div class="toggle-desc">Allow customers to request a return for this item</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="epReturnable" onchange="epToggleReturnFields()">
+          <span class="tslider"></span>
+        </label>
+      </div>
+      <div class="two-col" id="epReturnFields">
+        <div class="field">
+          <label>Return window (days)</label>
+          <input type="number" id="epReturnDays" min="0" max="365" step="1">
+        </div>
+        <div class="field">
+          <label>Restocking fee (%)</label>
+          <input type="number" id="epRestockFee" min="0" max="100" step="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn secondary sm" onclick="closeEditProduct()">Cancel</button>
+      <div class="right-group">
+        <button class="btn primary sm" id="epSaveBtn" onclick="saveEditProduct()">Save changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toastEl"></div>
 
@@ -1320,6 +1462,7 @@ function transformDashProduct(row){
     status: row.status || 'active',
     sku:    row.sku || '—',
     images: Array.isArray(row.imageUrls) ? row.imageUrls : [],
+    _raw:   row,
   };
 }
 
@@ -1465,13 +1608,13 @@ function renderProducts(filter='all'){
         <div class="product-mgmt-footer">
           <div class="product-mgmt-price">$${p.price.toFixed(2)}</div>
           <div class="product-mgmt-actions">
-            <button class="action-btn" title="Edit" onclick="toast('Editing ${p.name}...')">
+            <button class="action-btn" title="Edit" onclick="openEditProduct('${p.id}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
-            <button class="action-btn" title="Duplicate" onclick="toast('Duplicating ${p.name}...')">
+            <button class="action-btn" title="Duplicate" onclick="duplicateProductById('${p.id}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             </button>
-            <button class="action-btn" title="Delete" onclick="toast('Delete ${p.name}?')">
+            <button class="action-btn" title="Delete" onclick="deleteProductById('${p.id}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
             </button>
           </div>
@@ -1720,6 +1863,214 @@ function toast(msg){
   clearTimeout(el._t);
   el._t=setTimeout(()=>el.classList.remove('show'),2800);
 }
+
+// ── EDIT PRODUCT MODAL ──
+let editingProductId = null;
+let editUploadedImages = [];
+
+function openEditProduct(id){
+  const p = PRODUCTS_DASH.find(x => String(x.id) === String(id));
+  if(!p){ toast('Product not found'); return; }
+  const r = p._raw || {};
+  editingProductId = id;
+  editUploadedImages = Array.isArray(r.imageUrls) ? r.imageUrls.slice() : [];
+
+  document.getElementById('epName').value         = r.name || '';
+  document.getElementById('epDesc').value         = r.description || '';
+  document.getElementById('epCat').value          = (r.category || 'other').toLowerCase();
+  document.getElementById('epBrand').value        = r.brand || '';
+  document.getElementById('epSKU').value          = r.sku || '';
+  document.getElementById('epPrice').value        = r.price != null ? r.price : '';
+  document.getElementById('epCompare').value      = r.compareAtPrice != null ? r.compareAtPrice : '';
+  document.getElementById('epCost').value         = r.costPerItem != null ? r.costPerItem : '';
+  document.getElementById('epQty').value          = r.quantity != null ? r.quantity : 0;
+  document.getElementById('epVariants').value     = Array.isArray(r.variants) ? r.variants.join(', ') : '';
+  document.getElementById('epWeight').value       = r.weight != null ? r.weight : '';
+  document.getElementById('epStatus').value       = r.status || 'active';
+  document.getElementById('epReturnable').checked = r.returnable !== false;
+  document.getElementById('epReturnDays').value   = r.returnWindowDays != null ? r.returnWindowDays : 30;
+  document.getElementById('epRestockFee').value   = r.restockingFeePct != null ? r.restockingFeePct : 0;
+
+  epToggleReturnFields();
+  epRenderImgPreviews();
+  document.getElementById('editProductModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeEditProduct(){
+  document.getElementById('editProductModal').classList.remove('show');
+  document.body.style.overflow = '';
+  editingProductId = null;
+  editUploadedImages = [];
+}
+
+async function saveEditProduct(){
+  if(!editingProductId) return;
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+
+  const name  = document.getElementById('epName').value.trim();
+  const price = document.getElementById('epPrice').value;
+  const sku   = document.getElementById('epSKU').value.trim();
+  const cat   = document.getElementById('epCat').value;
+  if(!name){ toast('Product name is required'); return; }
+  if(!cat){  toast('Please select a category'); return; }
+  if(!price || parseFloat(price) <= 0){ toast('Enter a valid price'); return; }
+  if(!sku){  toast('SKU is required'); return; }
+
+  const variantsRaw = document.getElementById('epVariants').value.trim();
+  const variants = variantsRaw ? variantsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const payload = {
+    name,
+    description:      document.getElementById('epDesc').value.trim(),
+    category:         cat,
+    brand:            document.getElementById('epBrand').value.trim(),
+    sku,
+    price:            parseFloat(price),
+    compareAtPrice:   parseFloat(document.getElementById('epCompare').value) || null,
+    costPerItem:      parseFloat(document.getElementById('epCost').value)    || null,
+    quantity:         parseInt(document.getElementById('epQty').value)       || 0,
+    weight:           parseFloat(document.getElementById('epWeight').value)  || null,
+    variants,
+    status:           document.getElementById('epStatus').value || 'active',
+    imageUrls:        editUploadedImages.slice(),
+    returnable:       document.getElementById('epReturnable').checked,
+    returnWindowDays: parseInt(document.getElementById('epReturnDays').value)  || 30,
+    restockingFeePct: parseFloat(document.getElementById('epRestockFee').value) || 0,
+  };
+
+  const btn = document.getElementById('epSaveBtn');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = 'Saving…';
+
+  try {
+    const res = await fetch('/api/seller/products/' + encodeURIComponent(editingProductId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ toast(data.error || 'Failed to save changes'); return; }
+    toast('✓ Saved');
+    closeEditProduct();
+    await loadProducts();
+  } catch(err){
+    console.error('Update product error:', err);
+    toast('Network error — could not save');
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+async function deleteProductById(id){
+  const p = PRODUCTS_DASH.find(x => String(x.id) === String(id));
+  if(!p) return;
+  if(!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+  try {
+    const res = await fetch('/api/seller/products/' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ toast(data.error || 'Failed to delete'); return; }
+    toast('✓ Deleted');
+    await loadProducts();
+  } catch(err){
+    console.error('Delete product error:', err);
+    toast('Network error — could not delete');
+  }
+}
+
+async function duplicateProductById(id){
+  const p = PRODUCTS_DASH.find(x => String(x.id) === String(id));
+  if(!p){ toast('Product not found'); return; }
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+  const r = p._raw || {};
+  const suffix = String(Math.floor(Math.random() * 900) + 100);
+  const payload = {
+    name:             (r.name || 'Product') + ' (Copy)',
+    description:      r.description || '',
+    category:         r.category || 'other',
+    brand:            r.brand || '',
+    sku:              (r.sku || 'SKU') + '-COPY-' + suffix,
+    price:            parseFloat(r.price) || 0,
+    compareAtPrice:   r.compareAtPrice != null ? parseFloat(r.compareAtPrice) : null,
+    costPerItem:      r.costPerItem    != null ? parseFloat(r.costPerItem)    : null,
+    quantity:         r.quantity != null ? parseInt(r.quantity) : 0,
+    weight:           r.weight   != null ? parseFloat(r.weight) : null,
+    variants:         Array.isArray(r.variants)  ? r.variants  : [],
+    status:           'draft',
+    imageUrls:        Array.isArray(r.imageUrls) ? r.imageUrls : [],
+    returnable:       r.returnable !== false,
+    returnWindowDays: r.returnWindowDays != null ? r.returnWindowDays : 30,
+    restockingFeePct: r.restockingFeePct != null ? r.restockingFeePct : 0,
+  };
+  try {
+    const res = await fetch('/api/seller/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ toast(data.error || 'Failed to duplicate'); return; }
+    toast('✓ Duplicated as draft');
+    await loadProducts();
+  } catch(err){
+    console.error('Duplicate product error:', err);
+    toast('Network error — could not duplicate');
+  }
+}
+
+async function epHandleFiles(files){
+  const slots = 6 - editUploadedImages.length;
+  const arr = Array.from(files).slice(0, slots).filter(f => f.type.startsWith('image/'));
+  for(const f of arr){
+    try {
+      const dataUrl = await compressImage(f);
+      editUploadedImages.push(dataUrl);
+      epRenderImgPreviews();
+    } catch(err){
+      console.error('Image compression failed for', f.name, err);
+      toast('Could not process image: ' + f.name);
+    }
+  }
+}
+
+function epRenderImgPreviews(){
+  const grid = document.getElementById('epImgPreviewGrid');
+  grid.innerHTML = editUploadedImages.map((src,i)=>`
+    <div class="img-thumb">
+      <img src="${src}" alt="">
+      <button class="rm" onclick="editUploadedImages.splice(${i},1);epRenderImgPreviews()">×</button>
+      ${i===0?'<span class="primary-tag">Main</span>':''}
+    </div>`).join('');
+  document.getElementById('epImgHint').textContent = editUploadedImages.length
+    ? `${editUploadedImages.length} image${editUploadedImages.length>1?'s':''} — first is the main listing photo`
+    : 'No images yet. First one added becomes the main listing photo.';
+}
+
+function epDragOver(e){e.preventDefault();document.getElementById('epImgUpload').classList.add('drag')}
+function epDragLeave(){document.getElementById('epImgUpload').classList.remove('drag')}
+function epDropFiles(e){e.preventDefault();document.getElementById('epImgUpload').classList.remove('drag');epHandleFiles(e.dataTransfer.files)}
+
+function epToggleReturnFields(){
+  const on = document.getElementById('epReturnable').checked;
+  document.getElementById('epReturnDays').disabled = !on;
+  document.getElementById('epRestockFee').disabled = !on;
+  document.getElementById('epReturnFields').style.opacity = on ? '1' : '0.4';
+}
+
+// Close modal on backdrop click or ESC
+document.addEventListener('click', e => {
+  if(e.target && e.target.id === 'editProductModal') closeEditProduct();
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && document.getElementById('editProductModal').classList.contains('show')) closeEditProduct();
+});
 
 // ── INIT ──
 renderRevenueChart();
