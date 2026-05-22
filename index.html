@@ -657,7 +657,10 @@ let cart={}, homeCat='all', homeSort='default', shopCat='all', shopSort='default
 let currentModal=null, mq=1, mobileNavOpen=false, newOrders=[];
 
 // ── STRIPE STATE (set up lazily when entering checkout) ───────
-let stripe=null, stripeElements=null, stripePaymentElement=null;
+// Uses the legacy CardElement (not PaymentElement) so Link is structurally
+// impossible — CardElement only renders card number / expiry / CVC, with no
+// email recognition, no saved-card autofill, no Link prompt.
+let stripe=null, stripeElements=null, stripeCardElement=null;
 let currentPaymentIntent=null;  // { clientSecret, orderId, total }
 
 // ── CATEGORY EMOJI FALLBACK ───────────────────────────────────
@@ -937,7 +940,7 @@ async function setupStripeCheckout(){
 
   // Build cartItems shape expected by /api/checkout/create-payment-intent
   const cartItems = Object.values(cart).map(i => ({ productId: i.id, qty: i.qty, variant: i.variant }));
-  // Buyer often hasn't typed their email yet when the PaymentElement mounts.
+  // Buyer often hasn't typed their email yet when the card form mounts.
   // Pass whatever's there (may be empty); the real email is captured on confirm.
   const email = document.getElementById('co-email').value.trim();
 
@@ -952,21 +955,25 @@ async function setupStripeCheckout(){
 
     currentPaymentIntent = data;
 
-    // Card-only PaymentElement. The PaymentIntent is created with
-    // payment_method_types:['card'], which structurally excludes Link
-    // (no shared-browser autofill risk) and wallets. Re-add wallets via a
-    // separate PaymentRequestButton if/when needed — that path doesn't pull
-    // Link back in.
+    // Legacy CardElement — chosen deliberately over PaymentElement to make
+    // Link impossible. PaymentElement does Link email recognition at a layer
+    // below payment_method_types, so saved Link cards can autofill even on a
+    // card-only PaymentIntent. CardElement just renders card fields.
     stripe = Stripe(STORE_CONFIG.publishableKey);
-    stripeElements = stripe.elements({
-      clientSecret: data.clientSecret,
-      appearance: { theme: 'stripe', variables: { fontFamily: 'Outfit, sans-serif', fontSizeBase: '15px' } },
-    });
-    stripePaymentElement = stripeElements.create('payment', {
-      layout: 'tabs',
+    stripeElements = stripe.elements();
+    stripeCardElement = stripeElements.create('card', {
+      style: {
+        base: {
+          fontFamily: 'Outfit, sans-serif',
+          fontSize: '15px',
+          color: '#1a1a1a',
+          '::placeholder': { color: '#9ca3af' },
+        },
+        invalid: { color: '#dc2626' },
+      },
     });
     mountEl.innerHTML = '';
-    stripePaymentElement.mount('#stripePaymentMount');
+    stripeCardElement.mount('#stripePaymentMount');
 
     setPlaceBtn({label:'Place order', total:'$'+data.total, disabled:false});
   } catch(err){
@@ -977,7 +984,7 @@ async function setupStripeCheckout(){
 
 async function placeOrder(){
   if(!cartCount()){toast('Your cart is empty!');return}
-  if(!stripe || !stripeElements || !currentPaymentIntent){
+  if(!stripe || !stripeCardElement || !currentPaymentIntent){
     showStripeMsg('Payment is still loading. Please wait a moment.');
     return;
   }
@@ -992,24 +999,22 @@ async function placeOrder(){
                         document.getElementById('co-lname').value.trim()).trim();
     const billingEmail = document.getElementById('co-email').value.trim();
 
-    // 1. Confirm with Stripe. PaymentElement uses confirmPayment() and reads
-    //    the selected method from the Elements instance. redirect:'if_required'
-    //    keeps card payments inline; only methods that genuinely require a
-    //    redirect (3DS challenges, some wallets) will navigate to return_url.
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements: stripeElements,
-      clientSecret: currentPaymentIntent.clientSecret,
-      confirmParams: {
-        return_url: window.location.origin + window.location.pathname + '?store=' + STORE_SLUG,
-        payment_method_data: {
+    // 1. Confirm with Stripe via legacy confirmCardPayment(). CardElement
+    //    pairs with this call directly; no redirect handling needed because
+    //    card-only flow stays inline (3DS challenges open a modal, not a
+    //    full-page redirect).
+    const { error, paymentIntent } = await stripe.confirmCardPayment(
+      currentPaymentIntent.clientSecret,
+      {
+        payment_method: {
+          card: stripeCardElement,
           billing_details: {
             name:  billingName || undefined,
             email: billingEmail || undefined,
           },
         },
       },
-      redirect: 'if_required',
-    });
+    );
 
     if(error){
       showStripeMsg(error.message || 'Payment failed. Please check your card details.');
