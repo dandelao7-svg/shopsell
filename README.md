@@ -2,6 +2,12 @@
 
 Your complete ecommerce platform. Follow these steps exactly and you'll be live on Railway in about 20 minutes.
 
+> **Live deployment:** https://shopsell-production.up.railway.app
+> — storefront `/` · seller dashboard `/dashboard` · health check `/health`
+>
+> The steps below use `YOUR-DOMAIN.up.railway.app` as a placeholder for this domain
+> so the guide stays reusable; substitute the live URL above where you see it.
+
 ---
 
 ## What you have
@@ -121,11 +127,11 @@ ShopSell stores everything in PostgreSQL — products, orders, sellers, buyer ac
 
 ## Step 7 — Test it
 
-Open your Railway URL in a browser:
+Open your Railway URL in a browser (live domain: `shopsell-production.up.railway.app`):
 
-- `https://YOUR-DOMAIN.up.railway.app/` → buyer storefront
-- `https://YOUR-DOMAIN.up.railway.app/dashboard` → seller dashboard
-- `https://YOUR-DOMAIN.up.railway.app/health` → should return `{"status":"ok"}`
+- `https://shopsell-production.up.railway.app/` → buyer storefront
+- `https://shopsell-production.up.railway.app/dashboard` → seller dashboard
+- `https://shopsell-production.up.railway.app/health` → should return `{"status":"ok"}`
 
 ---
 
