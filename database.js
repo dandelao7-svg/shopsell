@@ -148,6 +148,22 @@ async function initSchema() {
       );
     `);
 
+    // CARRIER ACCOUNTS (per-seller UPS/FedEx/USPS credentials — bring-your-own-account)
+    // Secrets live in `credentials` as an AES-256-GCM ciphertext (see lib/crypto.js);
+    // account_number is non-secret and shown masked in the UI.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS carrier_accounts (
+        seller_id      INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        carrier        TEXT NOT NULL,                        -- 'ups' | 'fedex' | 'usps'
+        account_number TEXT,                                 -- non-secret (UPS/FedEx)
+        credentials    TEXT NOT NULL,                        -- encrypted secrets JSON
+        status         TEXT NOT NULL DEFAULT 'unverified',   -- unverified | verified | invalid
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (seller_id, carrier)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_carrier_accounts_seller ON carrier_accounts (seller_id);`);
+
     // SHIPMENTS — used by the Shipping History page
     await client.query(`
       CREATE TABLE IF NOT EXISTS shipments (
@@ -479,6 +495,13 @@ async function getOrderById(id) {
   return camelize(rows[0]);
 }
 
+async function getOrderByPaymentIntentId(paymentIntentId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM orders WHERE payment_intent_id = $1 LIMIT 1`, [paymentIntentId]
+  );
+  return camelize(rows[0]);
+}
+
 async function updateOrder(id, fields) {
   const map = {
     status:           'status',
@@ -557,6 +580,57 @@ async function getStripeKeys(sellerId) {
     [sellerId]
   );
   return camelize(rows[0]);
+}
+
+// ── CARRIER ACCOUNTS (per-seller BYOA credentials) ───────────
+// `credentials` is stored/returned as opaque ciphertext — encryption and
+// decryption happen in the route layer (lib/crypto.js), never here.
+async function saveCarrierAccount(sellerId, carrier, { accountNumber, credentials, status }) {
+  const { rows } = await pool.query(
+    `INSERT INTO carrier_accounts (seller_id, carrier, account_number, credentials, status)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (seller_id, carrier) DO UPDATE
+       SET account_number = EXCLUDED.account_number,
+           credentials    = EXCLUDED.credentials,
+           status         = EXCLUDED.status,
+           updated_at     = NOW()
+     RETURNING *`,
+    [sellerId, carrier, accountNumber || null, credentials, status || 'unverified']
+  );
+  return camelize(rows[0]);
+}
+
+async function getCarrierAccount(sellerId, carrier) {
+  const { rows } = await pool.query(
+    `SELECT * FROM carrier_accounts WHERE seller_id = $1 AND carrier = $2 LIMIT 1`,
+    [sellerId, carrier]
+  );
+  return camelize(rows[0]);
+}
+
+async function getCarrierAccounts(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM carrier_accounts WHERE seller_id = $1`,
+    [sellerId]
+  );
+  return camelizeAll(rows);
+}
+
+async function setCarrierAccountStatus(sellerId, carrier, status) {
+  const { rows } = await pool.query(
+    `UPDATE carrier_accounts SET status = $3, updated_at = NOW()
+       WHERE seller_id = $1 AND carrier = $2
+       RETURNING *`,
+    [sellerId, carrier, status]
+  );
+  return camelize(rows[0]);
+}
+
+async function deleteCarrierAccount(sellerId, carrier) {
+  await pool.query(
+    `DELETE FROM carrier_accounts WHERE seller_id = $1 AND carrier = $2`,
+    [sellerId, carrier]
+  );
 }
 
 // ── SHIPMENTS (Shipping History) ─────────────────────────────
@@ -726,6 +800,7 @@ module.exports = {
   // Orders
   createOrder,
   getOrderById,
+  getOrderByPaymentIntentId,
   updateOrder,
   getOrdersBySeller,
 
@@ -735,6 +810,13 @@ module.exports = {
   // Stripe keys
   saveStripeKeys,
   getStripeKeys,
+
+  // Carrier accounts (per-seller BYOA credentials)
+  saveCarrierAccount,
+  getCarrierAccount,
+  getCarrierAccounts,
+  setCarrierAccountStatus,
+  deleteCarrierAccount,
 
   // Shipments (Shipping History)
   createShipment,

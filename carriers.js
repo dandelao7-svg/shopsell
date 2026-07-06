@@ -13,16 +13,34 @@
 const nodeFetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
 // ============================================================
+// PER-SELLER TOKEN CACHE
+// Carrier instances are now built per request (each seller brings their
+// own credentials — see buildCarrier), so OAuth tokens can't live on the
+// instance. Cache them at the module level, keyed by the credential that
+// obtained them, so we don't re-authenticate on every label.
+// ============================================================
+const _tokenCache = new Map(); // key -> { token, expiresAt }
+
+function _getCachedToken(key) {
+  const hit = _tokenCache.get(key);
+  if (hit && Date.now() < hit.expiresAt) return hit.token;
+  return null;
+}
+
+function _setCachedToken(key, token, expiresInSec) {
+  _tokenCache.set(key, { token, expiresAt: Date.now() + (expiresInSec - 60) * 1000 });
+}
+
+// ============================================================
 // UPS
 // ============================================================
 class UPS {
-  constructor() {
+  constructor(creds = {}) {
     this.sandboxUrl = 'https://wwwcie.ups.com';
     this.baseUrl    = 'https://onlinetools.ups.com';
-    this.clientId   = process.env.UPS_CLIENT_ID;
-    this.clientSecret = process.env.UPS_CLIENT_SECRET;
-    this.accountNumber = process.env.UPS_ACCOUNT_NUMBER || '094D28';
-    this._tokenCache = { token: null, expiresAt: 0 };
+    this.clientId      = creds.clientId;
+    this.clientSecret  = creds.clientSecret;
+    this.accountNumber = creds.accountNumber;
   }
 
   get apiUrl() {
@@ -30,14 +48,14 @@ class UPS {
   }
 
   async getAccessToken() {
-    // Cache token to avoid re-auth on every request
-    if (this._tokenCache.token && Date.now() < this._tokenCache.expiresAt) {
-      return this._tokenCache.token;
+    if (!this.clientId || !this.clientSecret) {
+      throw new Error('UPS credentials not configured. Connect your UPS account in Settings.');
     }
 
-    if (!this.clientId || !this.clientSecret) {
-      throw new Error('UPS credentials not configured (UPS_CLIENT_ID / UPS_CLIENT_SECRET)');
-    }
+    // Cache per credential so we don't re-auth on every request.
+    const cacheKey = `ups:${this.clientId}`;
+    const cached = _getCachedToken(cacheKey);
+    if (cached) return cached;
 
     const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
 
@@ -57,10 +75,7 @@ class UPS {
     }
 
     const data = await res.json();
-    this._tokenCache = {
-      token:     data.access_token,
-      expiresAt: Date.now() + (data.expires_in - 60) * 1000,
-    };
+    _setCachedToken(cacheKey, data.access_token, data.expires_in);
     console.log('UPS: Access token obtained successfully');
     return data.access_token;
   }
@@ -360,13 +375,12 @@ class UPS {
 // FEDEX
 // ============================================================
 class FedEx {
-  constructor() {
+  constructor(creds = {}) {
     this.sandboxUrl  = 'https://apis-sandbox.fedex.com';
     this.baseUrl     = 'https://apis.fedex.com';
-    this.apiKey      = process.env.FEDEX_API_KEY;
-    this.secretKey   = process.env.FEDEX_SECRET_KEY;
-    this.accountNumber = process.env.FEDEX_ACCOUNT_NUMBER;
-    this._tokenCache = { token: null, expiresAt: 0 };
+    this.apiKey        = creds.apiKey;
+    this.secretKey     = creds.secretKey;
+    this.accountNumber = creds.accountNumber;
   }
 
   get apiUrl() {
@@ -374,13 +388,14 @@ class FedEx {
   }
 
   async getAccessToken() {
-    if (this._tokenCache.token && Date.now() < this._tokenCache.expiresAt) {
-      return this._tokenCache.token;
+    if (!this.apiKey || !this.secretKey) {
+      throw new Error('FedEx credentials not configured. Connect your FedEx account in Settings.');
     }
 
-    if (!this.apiKey || !this.secretKey) {
-      throw new Error('FedEx credentials not configured (FEDEX_API_KEY / FEDEX_SECRET_KEY)');
-    }
+    // Cache per credential so we don't re-auth on every request.
+    const cacheKey = `fedex:${this.apiKey}`;
+    const cached = _getCachedToken(cacheKey);
+    if (cached) return cached;
 
     const params = new URLSearchParams();
     params.append('grant_type',    'client_credentials');
@@ -399,10 +414,7 @@ class FedEx {
     }
 
     const data = await res.json();
-    this._tokenCache = {
-      token:     data.access_token,
-      expiresAt: Date.now() + (data.expires_in - 60) * 1000,
-    };
+    _setCachedToken(cacheKey, data.access_token, data.expires_in);
     console.log('FedEx: Access token obtained successfully');
     return data.access_token;
   }
@@ -577,14 +589,14 @@ class FedEx {
 // USPS — via Shippo
 // ============================================================
 class USPS {
-  constructor() {
-    this.apiKey  = process.env.SHIPPO_API_KEY;
+  constructor(creds = {}) {
+    this.apiKey  = creds.apiKey;
     this.baseUrl = 'https://api.goshippo.com';
   }
 
   async createShipment({ shipper, recipient, package: pkg, serviceToken, reference }) {
     if (!this.apiKey) {
-      throw new Error('Shippo API key not configured (SHIPPO_API_KEY)');
+      throw new Error('Shippo token not configured. Connect your USPS/Shippo account in Settings.');
     }
 
     // Step 1: Create shipment to get rates
@@ -677,7 +689,7 @@ class USPS {
 
   async refundLabel(transactionId) {
     if (!this.apiKey) {
-      throw new Error('Shippo API key not configured');
+      throw new Error('Shippo token not configured. Connect your USPS/Shippo account in Settings.');
     }
     if (!transactionId) {
       throw new Error('Shippo transactionId is required to refund a USPS label');
@@ -715,7 +727,7 @@ class USPS {
 
   async track(trackingNumber) {
     if (!this.apiKey) {
-      throw new Error('Shippo API key not configured');
+      throw new Error('Shippo token not configured. Connect your USPS/Shippo account in Settings.');
     }
 
     const res = await nodeFetch(`${this.baseUrl}/tracks/usps/${trackingNumber}`, {
@@ -739,41 +751,54 @@ class USPS {
 // ============================================================
 // EXPORTS
 // ============================================================
-const ups   = new UPS();
-const fedex = new FedEx();
-const usps  = new USPS();
 
-async function track(carrier, trackingNumber) {
-  switch (carrier.toLowerCase()) {
-    case 'ups':   return ups.track(trackingNumber);
-    case 'fedex': return fedex.track(trackingNumber);
-    case 'usps':  return usps.track(trackingNumber);
+// Build a carrier client from a specific seller's credentials.
+//   ups:   { clientId, clientSecret, accountNumber }
+//   fedex: { apiKey, secretKey, accountNumber }
+//   usps:  { apiKey }   (Shippo token)
+function buildCarrier(carrier, creds = {}) {
+  switch ((carrier || '').toLowerCase()) {
+    case 'ups':   return new UPS(creds);
+    case 'fedex': return new FedEx(creds);
+    case 'usps':  return new USPS(creds);
     default: throw new Error(`Unsupported carrier: ${carrier}`);
   }
 }
 
-async function createReturnLabel(carrier, params) {
-  switch (carrier.toLowerCase()) {
-    case 'ups':   return ups.createShipment(params);
-    case 'fedex': return fedex.createShipment(params);
-    case 'usps':  return usps.createShipment(params);
-    default: throw new Error(`Unsupported carrier: ${carrier}`);
-  }
+async function track(carrier, trackingNumber, creds) {
+  return buildCarrier(carrier, creds).track(trackingNumber);
 }
 
-async function testConnections() {
-  const results = { ups: false, fedex: false, usps: false };
-  try { await ups.getAccessToken();   results.ups   = true; } catch (e) { results.upsError   = e.message; }
-  try { await fedex.getAccessToken(); results.fedex = true; } catch (e) { results.fedexError = e.message; }
-  results.usps = !!process.env.SHIPPO_API_KEY;
-  return results;
+async function createReturnLabel(carrier, params, creds) {
+  return buildCarrier(carrier, creds).createShipment(params);
+}
+
+// Live auth/connectivity check for a single seller's credentials.
+// Returns { ok: true } or { ok: false, error }.
+async function testCarrierCreds(carrier, creds = {}) {
+  try {
+    const c = buildCarrier(carrier, creds);
+    if (carrier === 'usps') {
+      if (!creds.apiKey) throw new Error('Shippo API token is required.');
+      const res = await nodeFetch(`${c.baseUrl}/addresses/?results=1`, {
+        headers: { 'Authorization': `ShippoToken ${creds.apiKey}` },
+      });
+      if (!res.ok) throw new Error(`Shippo rejected the token (${res.status}).`);
+    } else {
+      await c.getAccessToken(); // UPS/FedEx OAuth round-trip
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 module.exports = {
-  ups,
-  fedex,
-  usps,
+  UPS,
+  FedEx,
+  USPS,
+  buildCarrier,
   track,
   createReturnLabel,
-  testConnections,
+  testCarrierCreds,
 };
