@@ -159,6 +159,9 @@ async function initSchema() {
 
     // Forward-compat: existing orders tables won't have buyer_id until ALTER'd in.
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL;`);
+    // Stripe Tax calculation id — kept so we can create a tax Transaction (for
+    // the seller's tax reporting) once the payment is confirmed.
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_calculation_id TEXT;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders (buyer_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_customer_email ON orders (customer_email);`);
 
@@ -587,6 +590,10 @@ async function updateOrder(id, fields) {
     paidAt:           'paid_at',
     trackingNumber:   'tracking_number',
     trackingCarrier:  'tracking_carrier',
+    subtotal:         'subtotal',
+    tax:              'tax',
+    total:            'total',
+    taxCalculationId: 'tax_calculation_id',
   };
   const sets = [];
   const vals = [];

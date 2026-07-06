@@ -733,8 +733,11 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       verifiedItems.push({ ...item, price: product.price, name: product.name });
     }
 
-    const tax   = subtotal * 0.08;
-    const total = Math.round((subtotal + tax) * 100);
+    // Tax is destination-based, so it can't be known until the buyer enters a
+    // ship-to address. The PaymentIntent is created at subtotal here and its
+    // amount is finalized by /api/checkout/calculate-tax (Stripe Tax) before
+    // the buyer confirms payment.
+    const total = Math.round(subtotal * 100);
 
     const order = await db.createOrder({
       sellerId:      seller.id,
@@ -742,8 +745,8 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       customerEmail,
       items:         verifiedItems,
       subtotal,
-      tax,
-      total:         subtotal + tax,
+      tax:           0,
+      total:         subtotal,
       status:        'pending',
     });
 
@@ -766,16 +769,110 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
 
     const paymentIntent = await sellerStripe.paymentIntents.create(piPayload);
 
+    // Persist the PI id now so calculate-tax can update its amount before confirm.
+    await db.updateOrder(order.id, { paymentIntentId: paymentIntent.id });
+
     res.json({
       clientSecret:   paymentIntent.client_secret,
       publishableKey: stripeConfig.publishableKey, // storefront confirms against the seller's account
       orderId:        order.id,
+      subtotal:       subtotal.toFixed(2),
+      tax:            '0.00',
       total:          (total / 100).toFixed(2),
     });
 
   } catch (err) {
     console.error('Payment intent error:', err);
     res.status(500).json({ error: 'Failed to initialize payment.' });
+  }
+});
+
+// Finalize sales tax for an in-progress order using Stripe Tax on the SELLER's
+// account, then bump the PaymentIntent amount to match. Called from checkout
+// once the buyer has entered a ship-to address, and again just before confirm.
+// If the seller hasn't set up Stripe Tax, we fall back to $0 tax (never a made-
+// up rate) and flag it, so checkout still works.
+app.post('/api/checkout/calculate-tax', async (req, res) => {
+  try {
+    const { orderId, address } = req.body;
+    if (!orderId || !address) {
+      return res.status(400).json({ error: 'orderId and address are required.' });
+    }
+
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+    if (order.status !== 'pending') {
+      return res.status(400).json({ error: 'This order can no longer be modified.' });
+    }
+
+    const stripeConfig = await loadStripeKeys(order.sellerId);
+    if (!stripeConfig || !stripeConfig.secretKey) {
+      return res.status(400).json({ error: 'Store payment configuration is missing.' });
+    }
+    const sellerStripe = require('stripe')(stripeConfig.secretKey);
+
+    const subtotal    = Number(order.subtotal) || 0;
+    const subtotalC   = Math.round(subtotal * 100);
+    const items       = Array.isArray(order.items) ? order.items : [];
+
+    // Attempt a real Stripe Tax calculation. Any failure (Stripe Tax not
+    // enabled, no origin address / registrations, unsupported region) falls
+    // through to zero tax rather than blocking the sale.
+    let taxC = 0, totalC = subtotalC, calculationId = null, taxApplied = false, reason = null;
+    try {
+      const calc = await sellerStripe.tax.calculations.create({
+        currency: 'usd',
+        line_items: items.map((it, idx) => ({
+          amount:       Math.max(0, Math.round((Number(it.price) || 0) * (Number(it.qty) || 0) * 100)),
+          reference:    String(it.productId || it.name || ('item-' + idx)),
+          tax_behavior: 'exclusive',
+        })),
+        customer_details: {
+          address: {
+            line1:       address.address1 || address.line1 || '',
+            city:        address.city || '',
+            state:       address.state || '',
+            postal_code: address.zip || address.postal_code || '',
+            country:     address.country || 'US',
+          },
+          address_source: 'shipping',
+        },
+      });
+      taxC          = calc.tax_amount_exclusive;
+      totalC        = calc.amount_total;
+      calculationId = calc.id;
+      taxApplied    = true;
+    } catch (taxErr) {
+      reason = taxErr.message;
+      console.warn(`Stripe Tax unavailable for seller ${order.sellerId}; charging $0 tax. Reason: ${taxErr.message}`);
+    }
+
+    // Keep the PaymentIntent amount in sync with the taxed total.
+    if (order.paymentIntentId) {
+      try {
+        await sellerStripe.paymentIntents.update(order.paymentIntentId, { amount: totalC });
+      } catch (piErr) {
+        console.error('Failed to update PaymentIntent amount for tax:', piErr.message);
+        return res.status(500).json({ error: 'Could not update payment total.' });
+      }
+    }
+
+    await db.updateOrder(orderId, {
+      tax:              taxC / 100,
+      total:            totalC / 100,
+      taxCalculationId: calculationId || undefined,
+    });
+
+    res.json({
+      subtotal:   (subtotalC / 100).toFixed(2),
+      tax:        (taxC / 100).toFixed(2),
+      total:      (totalC / 100).toFixed(2),
+      taxApplied,
+      reason,
+    });
+  } catch (err) {
+    console.error('Calculate tax error:', err);
+    res.status(500).json({ error: 'Failed to calculate tax.' });
   }
 });
 
@@ -825,6 +922,15 @@ app.post('/api/checkout/confirm', async (req, res) => {
 
     for (const item of order.items) {
       await db.decrementStock(item.productId, item.qty);
+    }
+
+    // Record the Stripe Tax transaction (for the seller's tax reporting) from
+    // the calculation made at checkout. Best-effort; never blocks confirmation.
+    if (order.taxCalculationId) {
+      sellerStripe.tax.transactions.createFromCalculation({
+        calculation: order.taxCalculationId,
+        reference:   `SS-${order.id}`,
+      }).catch(txErr => console.error('Tax transaction record failed:', txErr.message));
     }
 
     // Fire confirmation emails without blocking the response — a mail failure

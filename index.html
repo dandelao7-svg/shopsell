@@ -447,9 +447,9 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
         <div class="field"><label>Street address</label><input type="text" id="co-addr1" placeholder="123 Main Street"></div>
         <div class="field"><label>Apt / Suite (optional)</label><input type="text" id="co-addr2" placeholder="Apt 4B"></div>
         <div class="three-col">
-          <div class="field"><label>City</label><input type="text" id="co-city" placeholder="Los Angeles"></div>
-          <div class="field"><label>State</label><select id="co-state"><option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option></select></div>
-          <div class="field"><label>ZIP</label><input type="text" id="co-zip" placeholder="90001" maxlength="5"></div>
+          <div class="field"><label>City</label><input type="text" id="co-city" placeholder="Los Angeles" onblur="recalcTax()"></div>
+          <div class="field"><label>State</label><select id="co-state" onchange="recalcTax()"><option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option></select></div>
+          <div class="field"><label>ZIP</label><input type="text" id="co-zip" placeholder="90001" maxlength="5" onblur="recalcTax()"></div>
         </div>
         <div class="field"><label>Country</label><select id="co-country"><option>United States</option><option>Canada</option><option>United Kingdom</option><option>Australia</option></select></div>
       </div>
@@ -475,7 +475,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
           </div>
           <div class="os-row"><span>Subtotal</span><span id="coSubtotal">$0.00</span></div>
           <div class="os-row"><span>Shipping</span><span><span class="free-badge">Free</span></span></div>
-          <div class="os-row"><span>Tax (8%)</span><span id="coTax">$0.00</span></div>
+          <div class="os-row"><span id="coTaxLabel">Sales tax</span><span id="coTax">$0.00</span></div>
           <div class="os-row os-total"><span>Total</span><span id="coTotal" style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--accent)">$0.00</span></div>
         </div>
       </div>
@@ -734,7 +734,9 @@ let currentModal=null, mq=1, mobileNavOpen=false;
 // impossible — CardElement only renders card number / expiry / CVC, with no
 // email recognition, no saved-card autofill, no Link prompt.
 let stripe=null, stripeElements=null, stripeCardElement=null;
-let currentPaymentIntent=null;  // { clientSecret, orderId, total }
+let currentPaymentIntent=null;  // { clientSecret, orderId, subtotal, total }
+let currentTax=0;               // finalized sales tax (Stripe Tax), 0 until an address is entered
+let taxCalcInFlight=false;      // guards against overlapping calculate-tax calls
 
 // ── CATEGORY EMOJI FALLBACK ───────────────────────────────────
 // Used when a product has no image_urls. Keys are lowercase category names.
@@ -999,7 +1001,7 @@ function closeCart(){
 
 // ── CHECKOUT ──────────────────────────────────────────────────
 function updateCheckoutUI(){
-  const sub=cartTotal(),tax=sub*0.08,total=sub+tax;
+  const sub=cartTotal(),tax=currentTax,total=sub+tax;
   const keys=Object.keys(cart);
   ['coSubtotal','coTax','coTotal','coTotalBtn'].forEach((id,i)=>{
     const el=document.getElementById(id);
@@ -1018,9 +1020,51 @@ function updateCheckoutUI(){
   }
 }
 
+// Read the checkout ship-to address as { address1, city, state, zip, country }.
+function readCheckoutAddress(){
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const country = v('co-country');
+  const countryCode = country === 'United States' ? 'US'
+                   : country === 'Canada' ? 'CA'
+                   : country === 'United Kingdom' ? 'GB'
+                   : country === 'Australia' ? 'AU' : 'US';
+  return { address1:v('co-addr1'), city:v('co-city'), state:v('co-state'), zip:v('co-zip'), country:countryCode };
+}
+
+// Ask the server to finalize sales tax (Stripe Tax) from the ship-to address
+// and sync the PaymentIntent amount. Reflects the new tax + total in the UI.
+// No-op until we have an order and at least a US state + ZIP.
+async function doCalcTax(){
+  if(!currentPaymentIntent || !currentPaymentIntent.orderId) return null;
+  const addr = readCheckoutAddress();
+  if(!addr.state || !addr.zip) return null;
+  const res = await fetch('/api/checkout/calculate-tax', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ orderId: currentPaymentIntent.orderId, address: addr })
+  });
+  const data = await res.json();
+  if(res.ok){
+    currentTax = parseFloat(data.tax) || 0;
+    currentPaymentIntent.total = data.total;
+    updateCheckoutUI();
+    setPlaceBtn({label:'Place order', total:'$'+data.total, disabled:false});
+  }
+  return data;
+}
+
+// Event-driven wrapper (address field changes); guards against overlap.
+async function recalcTax(){
+  if(taxCalcInFlight) return;
+  taxCalcInFlight = true;
+  try { await doCalcTax(); } catch(e){ /* keep prior total; placeOrder re-runs before paying */ }
+  finally { taxCalcInFlight = false; }
+}
+
 async function goCheckout(){
   if(!cartCount()){toast('Your cart is empty!');return}
   closeCart();
+  currentTax=0;
   updateCheckoutUI();
   showPage('checkout');
   await setupStripeCheckout();
@@ -1049,12 +1093,12 @@ async function setupStripeCheckout(){
   const mountEl=document.getElementById('stripePaymentMount');
   if(!mountEl) return;
   mountEl.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading secure payment…</div>';
-  setPlaceBtn({label:'Loading…', total:fmt(cartTotal()*1.08), disabled:true});
+  setPlaceBtn({label:'Loading…', total:fmt(cartTotal()), disabled:true});
   showStripeMsg('', false);
 
   if(!STORE_CONFIG.publishableKey){
     mountEl.innerHTML = '<div style="color:var(--accent);font-size:13px">Payment is not configured for this store. The seller needs to add their Stripe publishable key.</div>';
-    setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()*1.08), disabled:true});
+    setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()), disabled:true});
     return;
   }
 
@@ -1098,7 +1142,7 @@ async function setupStripeCheckout(){
     setPlaceBtn({label:'Place order', total:'$'+data.total, disabled:false});
   } catch(err){
     mountEl.innerHTML = `<div style="color:var(--accent);font-size:13px">${err.message}</div>`;
-    setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()*1.08), disabled:true});
+    setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()), disabled:true});
   }
 }
 
@@ -1115,6 +1159,10 @@ async function placeOrder(){
   showStripeMsg('', false);
 
   try {
+    // Finalize sales tax against the entered address before charging, so the
+    // PaymentIntent amount matches the total the buyer is agreeing to pay.
+    try { await doCalcTax(); } catch(e){ /* proceed with last-known total */ }
+
     const billingName = (document.getElementById('co-fname').value.trim() + ' ' +
                         document.getElementById('co-lname').value.trim()).trim();
     const billingEmail = document.getElementById('co-email').value.trim();
