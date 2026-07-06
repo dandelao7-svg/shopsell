@@ -5,8 +5,8 @@ Your complete ecommerce platform. Follow these steps exactly and you'll be live 
 > **Live deployment:** https://shopsell-production.up.railway.app
 > — storefront `/` · seller dashboard `/dashboard` · health check `/health`
 >
-> The steps below use `YOUR-DOMAIN.up.railway.app` as a placeholder for this domain
-> so the guide stays reusable; substitute the live URL above where you see it.
+> The steps below are filled in with this live domain. If you redeploy under a
+> different Railway domain, swap `shopsell-production.up.railway.app` throughout.
 
 ---
 
@@ -35,7 +35,7 @@ This is the Stripe account that charges sellers their monthly fee.
    - Create product: "ShopSell Growth"  → $119/month recurring → copy the Price ID
    - Create product: "ShopSell Pro"     → $149/month recurring → copy the Price ID
 4. Go to **Developers → Webhooks** → **Add endpoint**
-   - URL: `https://YOUR-RAILWAY-DOMAIN.up.railway.app/api/stripe/webhook`
+   - URL: `https://shopsell-production.up.railway.app/api/stripe/webhook`
    - Events to send: select **All events** (or at minimum the ones listed in server.js)
    - Copy the **Signing secret** (`whsec_...`)
 
@@ -69,7 +69,7 @@ Railway deploys from GitHub. This takes 2 minutes.
 ```
 NODE_ENV=production
 PORT=3000
-ALLOWED_ORIGIN=https://YOUR-RAILWAY-DOMAIN.up.railway.app
+ALLOWED_ORIGIN=https://shopsell-production.up.railway.app
 
 # Database — auto-provided by the Railway PostgreSQL plugin (see Step 5).
 # Reference it rather than typing a raw URL:
