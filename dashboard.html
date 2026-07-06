@@ -347,6 +347,10 @@ tr:hover td{background:#fafaf7}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       Customers
     </a>
+    <a class="nav-item" onclick="showDash('storefront')" id="nav-storefront">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Storefront
+    </a>
 
     <div class="nav-section-label">Payments</div>
     <a class="nav-item" onclick="showDash('stripe')" id="nav-stripe">
@@ -1020,6 +1024,51 @@ tr:hover td{background:#fafaf7}
   <!-- ═══════════════════════════════════════
        SETTINGS PAGE
   ═══════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════════
+       STOREFRONT PAGES
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-storefront">
+    <div class="page-hd">
+      <div class="page-hd-title">Storefront pages</div>
+    </div>
+    <div style="max-width:720px">
+      <div class="form-card">
+        <div class="alert info" style="font-size:12px;margin-bottom:1rem">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Buyers see these pages in your storefront footer. Leave blank to show a friendly placeholder. Line breaks become paragraphs.
+        </div>
+
+        <div class="field">
+          <label>Contact email</label>
+          <input type="email" id="sfContactEmail" placeholder="(defaults to your account email)">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Used by the "Contact us" footer link. If blank, your account email is used.</div>
+        </div>
+
+        <div class="field">
+          <label>About</label>
+          <textarea id="sfAbout" rows="6" placeholder="Tell buyers who you are and what makes your store unique."></textarea>
+        </div>
+
+        <div class="field">
+          <label>FAQ</label>
+          <textarea id="sfFaq" rows="8" placeholder="Q: How long does shipping take?&#10;A: Most orders ship within 1-2 business days."></textarea>
+        </div>
+
+        <div class="field">
+          <label>Privacy policy</label>
+          <textarea id="sfPrivacy" rows="8" placeholder="Paste your privacy policy text here. If left blank, the link will show a 'not yet published' note."></textarea>
+        </div>
+
+        <div class="field">
+          <label>Terms of service</label>
+          <textarea id="sfTerms" rows="8" placeholder="Paste your terms of service here. If left blank, the link will show a 'not yet published' note."></textarea>
+        </div>
+
+        <button class="btn primary" onclick="saveStorefrontContent()" id="sfSaveBtn">Save storefront pages</button>
+      </div>
+    </div>
+  </div>
+
   <div class="page-content" id="dash-settings">
     <div class="page-hd">
       <div class="page-hd-title">Store settings</div>
@@ -1399,6 +1448,61 @@ if(document.readyState === 'loading'){
   loadReturnAddress();
 }
 
+// ── STOREFRONT CONTENT ──────────────────────────────────────
+async function loadStorefrontContent(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try {
+    const res = await fetch('/api/seller/storefront-content', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    const c = data.content || {};
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ''; };
+    set('sfContactEmail', c.contactEmail);
+    set('sfAbout',        c.about);
+    set('sfFaq',          c.faq);
+    set('sfPrivacy',      c.privacy);
+    set('sfTerms',        c.terms);
+  } catch(e){ /* not fatal */ }
+}
+
+async function saveStorefrontContent(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const payload = {
+    contactEmail: document.getElementById('sfContactEmail').value.trim(),
+    about:        document.getElementById('sfAbout').value,
+    faq:          document.getElementById('sfFaq').value,
+    privacy:      document.getElementById('sfPrivacy').value,
+    terms:        document.getElementById('sfTerms').value,
+  };
+  const btn = document.getElementById('sfSaveBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/seller/storefront-content', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body:    JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ toast(data.error || 'Failed to save'); return; }
+    toast('✓ Storefront pages saved');
+  } catch(err){
+    toast('Network error — could not save');
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', loadStorefrontContent);
+} else {
+  loadStorefrontContent();
+}
+
 // ── ORDERS DATA (loaded from /api/seller/orders on dashboard init) ──
 let ORDERS = [];
 
@@ -1494,6 +1598,7 @@ function showDash(name){
   const titles = {
     overview:'Overview', orders:'Orders', products:'Products',
     'add-product':'Add product', customers:'Customers',
+    storefront:'Storefront pages',
     stripe:'Stripe payment setup', payouts:'Payouts',
     modules:'Add-on modules', settings:'Settings', billing:'My subscription'
   };

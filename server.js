@@ -192,10 +192,34 @@ function requireAuth(req, res, next) {
   const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Reject buyer tokens — they share the same JWT_SECRET but must not
+    // satisfy seller-only routes. Existing seller tokens have no `type` claim
+    // (legacy), so only reject when type is explicitly 'buyer'.
+    if (decoded.type === 'buyer') {
+      return res.status(401).json({ error: 'Seller account required.' });
+    }
     req.seller = decoded;
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Session expired. Please log in again.' });
+  }
+}
+
+function requireBuyerAuth(req, res, next) {
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Please sign in to continue.' });
+  }
+  const token = header.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.type !== 'buyer' || !decoded.buyerId) {
+      return res.status(401).json({ error: 'Buyer account required.' });
+    }
+    req.buyer = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Session expired. Please sign in again.' });
   }
 }
 
@@ -365,6 +389,135 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 });
 
 /* ============================================================
+   ── BUYER AUTH ROUTES ────────────────────────────────────────
+   POST /api/buyer/signup   — create buyer account (auto-links past orders)
+   POST /api/buyer/login    — buyer login
+   GET  /api/buyer/me       — current buyer info
+   GET  /api/buyer/orders   — buyer's order history (across all stores)
+   ============================================================ */
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+app.post('/api/buyer/signup', async (req, res) => {
+  try {
+    const { email, password, firstName, lastName } = req.body || {};
+    const normEmail = (email || '').trim().toLowerCase();
+    if (!normEmail || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+    if (!EMAIL_RE.test(normEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+
+    const existing = await db.getBuyerByEmail(normEmail);
+    if (existing) {
+      return res.status(409).json({ error: 'An account with this email already exists. Try signing in.' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const buyer = await db.createBuyer({
+      email:      normEmail,
+      passwordHash,
+      firstName:  (firstName || '').trim() || null,
+      lastName:   (lastName  || '').trim() || null,
+    });
+
+    // Retroactively link any prior guest orders made with this email.
+    const linkedCount = await db.linkOrdersByEmail(buyer.id, normEmail);
+
+    const token = jwt.sign(
+      { buyerId: buyer.id, email: buyer.email, type: 'buyer' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    res.status(201).json({
+      message: linkedCount > 0
+        ? `Welcome! We found ${linkedCount} past order${linkedCount === 1 ? '' : 's'} and added them to your account.`
+        : 'Account created!',
+      token,
+      buyer: {
+        id:        buyer.id,
+        email:     buyer.email,
+        firstName: buyer.firstName,
+        lastName:  buyer.lastName,
+      },
+      linkedOrders: linkedCount,
+    });
+  } catch (err) {
+    console.error('Buyer signup error:', err);
+    res.status(500).json({ error: 'Signup failed. Please try again.' });
+  }
+});
+
+app.post('/api/buyer/login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    const normEmail = (email || '').trim().toLowerCase();
+    if (!normEmail || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+
+    const buyer = await db.getBuyerByEmail(normEmail);
+    if (!buyer) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const ok = await bcrypt.compare(password, buyer.passwordHash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const token = jwt.sign(
+      { buyerId: buyer.id, email: buyer.email, type: 'buyer' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    res.json({
+      token,
+      buyer: {
+        id:        buyer.id,
+        email:     buyer.email,
+        firstName: buyer.firstName,
+        lastName:  buyer.lastName,
+      },
+    });
+  } catch (err) {
+    console.error('Buyer login error:', err);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
+app.get('/api/buyer/me', requireBuyerAuth, async (req, res) => {
+  try {
+    const buyer = await db.getBuyerById(req.buyer.buyerId);
+    if (!buyer) return res.status(404).json({ error: 'Buyer not found.' });
+    res.json({
+      id:        buyer.id,
+      email:     buyer.email,
+      firstName: buyer.firstName,
+      lastName:  buyer.lastName,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load account.' });
+  }
+});
+
+app.get('/api/buyer/orders', requireBuyerAuth, async (req, res) => {
+  try {
+    const orders = await db.getOrdersByBuyer(req.buyer.buyerId);
+    res.json({ orders });
+  } catch (err) {
+    console.error('Buyer orders error:', err);
+    res.status(500).json({ error: 'Failed to load orders.' });
+  }
+});
+
+/* ============================================================
    ── PRODUCTS ROUTES ──────────────────────────────────────────
    GET    /api/products            — buyer: get all active products
    GET    /api/seller/products     — seller: get all their products
@@ -521,11 +674,24 @@ app.get('/api/checkout/config', async (req, res) => {
     // Buyer checkout runs on the SELLER's own Stripe account — return THEIR
     // publishable key so the storefront confirms against the right account.
     const stripeConfig = await loadStripeKeys(seller.id);
+
+    const content = (await db.getSellerStorefrontContent(seller.id)) || {};
+    // contactEmail falls back to the seller's account email so the Contact link
+    // always works even before the seller customizes it.
+    const storefrontContent = {
+      about:        content.about        || '',
+      faq:          content.faq          || '',
+      privacy:      content.privacy      || '',
+      terms:        content.terms        || '',
+      contactEmail: content.contactEmail || seller.email || '',
+    };
+
     res.json({
       publishableKey:  stripeConfig?.publishableKey || '',
       paymentsEnabled: !!(stripeConfig && stripeConfig.publishableKey && stripeConfig.secretKey),
       storeName:       seller.storeName,
       storeSlug:       seller.storeSlug,
+      storefrontContent,
     });
   } catch (err) {
     console.error('Checkout config error:', err);
@@ -648,6 +814,14 @@ app.post('/api/checkout/confirm', async (req, res) => {
       customerEmail:  realEmail || undefined,
       paidAt:         new Date(),
     });
+
+    // If this email matches an existing buyer account, link the order to it —
+    // even for guest checkouts. Covers the case where a buyer has an account
+    // but checked out without logging in.
+    if (realEmail) {
+      const buyer = await db.getBuyerByEmail(realEmail.toLowerCase());
+      if (buyer) await db.linkOrdersByEmail(buyer.id, realEmail);
+    }
 
     for (const item of order.items) {
       await db.decrementStock(item.productId, item.qty);
@@ -1159,6 +1333,56 @@ app.put('/api/seller/return-address', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save return address error:', err);
     res.status(500).json({ error: 'Failed to save return address.' });
+  }
+});
+
+/* ============================================================
+   ── SELLER STOREFRONT CONTENT ────────────────────────────────
+   GET /api/seller/storefront-content
+   PUT /api/seller/storefront-content
+   Powers the footer pages on the buyer storefront (About / FAQ /
+   Privacy / Terms / contact email). Stored as JSONB so new fields
+   can be added without a migration.
+   ============================================================ */
+
+app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
+  try {
+    const content = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    res.json({
+      content: {
+        about:        content.about        || '',
+        faq:          content.faq          || '',
+        privacy:      content.privacy      || '',
+        terms:        content.terms        || '',
+        contactEmail: content.contactEmail || '',
+      },
+    });
+  } catch (err) {
+    console.error('Get storefront content error:', err);
+    res.status(500).json({ error: 'Failed to load storefront content.' });
+  }
+});
+
+app.put('/api/seller/storefront-content', requireAuth, async (req, res) => {
+  try {
+    const { about, faq, privacy, terms, contactEmail } = req.body || {};
+    const trim = (v) => (typeof v === 'string' ? v.trim() : '');
+    const email = trim(contactEmail);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Contact email is not a valid email address.' });
+    }
+    const content = {
+      about:        trim(about),
+      faq:          trim(faq),
+      privacy:      trim(privacy),
+      terms:        trim(terms),
+      contactEmail: email,
+    };
+    await db.setSellerStorefrontContent(req.seller.sellerId, content);
+    res.json({ message: 'Storefront content saved.', content });
+  } catch (err) {
+    console.error('Save storefront content error:', err);
+    res.status(500).json({ error: 'Failed to save storefront content.' });
   }
 });
 

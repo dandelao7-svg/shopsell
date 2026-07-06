@@ -363,8 +363,11 @@ async function handleSignup(e){
   return false;
 }
 
-// If user already logged in, redirect them to dashboard
-if(localStorage.getItem('ss_token')){
+// If user already logged in, redirect them to dashboard — unless they got here
+// from a buyer storefront's "Sell with us" link, in which case they're browsing
+// as a buyer and should see the signup pitch.
+const cameFromStorefront = new URLSearchParams(window.location.search).get('from') === 'storefront';
+if(localStorage.getItem('ss_token') && !cameFromStorefront){
   // Verify the token actually works before redirecting
   fetch('/api/auth/me', {
     headers: { 'Authorization': 'Bearer ' + localStorage.getItem('ss_token') }

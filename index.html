@@ -135,6 +135,33 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .modal-add-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:14px;border-radius:11px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer}
 .modal-add-btn:hover{background:#c1121f}
 
+/* Buyer auth (sign-in / sign-up on the account page) */
+.buyer-auth-tabs{display:flex;gap:0;margin-bottom:1.25rem;border-bottom:1px solid var(--border)}
+.buyer-auth-tab{flex:1;background:none;border:none;padding:.85rem 1rem;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+.buyer-auth-tab:hover{color:var(--ink)}
+.buyer-auth-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.buyer-auth-form .field{margin-bottom:.85rem}
+.buyer-auth-form label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:var(--ink)}
+.buyer-auth-form input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:14px;background:var(--card)}
+.buyer-auth-form input:focus{outline:none;border-color:var(--accent)}
+.buyer-auth-form .two-col{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
+.buyer-auth-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:13px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:.5rem;transition:background .15s}
+.buyer-auth-btn:hover{background:#c1121f}
+.buyer-auth-btn:disabled{opacity:.6;cursor:wait}
+.buyer-auth-msg{padding:.75rem 1rem;border-radius:8px;font-size:13px;margin-bottom:1rem;line-height:1.5}
+.buyer-auth-msg.error{background:#fde2e2;color:#9b1c1c;border:1px solid #f5c2c2}
+.buyer-auth-msg.success{background:#d4f4dd;color:#1e6b3a;border:1px solid #a3e5b8}
+.acct-store-tag{display:inline-block;font-size:11px;font-weight:600;color:var(--muted);background:var(--light2);padding:2px 8px;border-radius:6px}
+
+/* Storefront content pages (About / FAQ / Privacy / Terms) */
+.content-modal{background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;padding:1.5rem 1.75rem 2rem}
+.content-modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;padding-bottom:.85rem;border-bottom:1px solid var(--border)}
+.content-modal-title{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:var(--ink)}
+.content-modal-close{background:none;border:none;font-size:1.5rem;color:var(--muted);cursor:pointer;line-height:1;padding:4px 8px;border-radius:6px}
+.content-modal-close:hover{background:var(--light2);color:var(--ink)}
+.content-modal-body{font-size:14px;line-height:1.7;color:var(--ink);white-space:pre-wrap;word-wrap:break-word}
+.content-modal-body.empty{color:var(--muted);font-style:italic;text-align:center;padding:2rem 0}
+
 /* CART SIDEBAR */
 .cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:400;display:none}
 .cart-overlay.open{display:block}
@@ -299,7 +326,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
   <span>Free shipping on every order — always.</span>
   <div class="topbar-links">
     <a onclick="navTo('account')">My account</a>
-    <a onclick="toast('Track your order at My Orders')">Track order</a>
+    <a href="/returns">Track order</a>
     <a onclick="toast('Help: support@shopsell.com')">Help</a>
   </div>
 </div>
@@ -499,9 +526,9 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
     <div>
       <div class="acct-sidebar">
         <div class="acct-avatar-sec">
-          <div class="avatar-circle">?</div>
-          <div class="avatar-name">Guest</div>
-          <div class="avatar-email">Not signed in</div>
+          <div class="avatar-circle" id="buyerAvatar">?</div>
+          <div class="avatar-name" id="buyerName">Guest</div>
+          <div class="avatar-email" id="buyerEmail">Not signed in</div>
         </div>
         <div class="acct-nav-item active">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/></svg>My orders
@@ -518,17 +545,52 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
         <div class="acct-nav-item" onclick="toast('Account settings coming soon!')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>Settings
         </div>
+        <div class="acct-nav-item" id="buyerSignOutItem" style="display:none" onclick="buyerLogout()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sign out
+        </div>
       </div>
     </div>
     <div>
       <div class="acct-content">
-        <div class="acct-title">My orders</div>
-        <table class="orders-table">
-          <thead><tr><th>Order #</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
-          <tbody id="ordersBody">
-            <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px 8px">No orders yet.</td></tr>
-          </tbody>
-        </table>
+
+        <!-- LOGGED-OUT: sign in / create account -->
+        <div id="buyerAuthView">
+          <div class="acct-title">Sign in to see your orders</div>
+          <div style="color:var(--muted);font-size:13px;margin-bottom:1.25rem">Create an account to track your orders across every store on ShopSell.</div>
+          <div class="buyer-auth-tabs">
+            <button class="buyer-auth-tab active" id="bTabLogin" onclick="switchBuyerAuthTab('login')">Sign in</button>
+            <button class="buyer-auth-tab" id="bTabSignup" onclick="switchBuyerAuthTab('signup')">Create account</button>
+          </div>
+          <div id="buyerAuthMsg" class="buyer-auth-msg" style="display:none"></div>
+
+          <form id="buyerLoginForm" class="buyer-auth-form" onsubmit="return buyerLogin(event)">
+            <div class="field"><label>Email</label><input type="email" id="bLoginEmail" autocomplete="email" required></div>
+            <div class="field"><label>Password</label><input type="password" id="bLoginPassword" autocomplete="current-password" required></div>
+            <button type="submit" class="buyer-auth-btn" id="bLoginBtn">Sign in</button>
+          </form>
+
+          <form id="buyerSignupForm" class="buyer-auth-form" onsubmit="return buyerSignup(event)" style="display:none">
+            <div class="two-col">
+              <div class="field"><label>First name</label><input type="text" id="bSignupFirst" autocomplete="given-name"></div>
+              <div class="field"><label>Last name</label><input type="text" id="bSignupLast" autocomplete="family-name"></div>
+            </div>
+            <div class="field"><label>Email *</label><input type="email" id="bSignupEmail" autocomplete="email" required></div>
+            <div class="field"><label>Password *</label><input type="password" id="bSignupPassword" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></div>
+            <button type="submit" class="buyer-auth-btn" id="bSignupBtn">Create account</button>
+          </form>
+        </div>
+
+        <!-- LOGGED-IN: orders list -->
+        <div id="buyerOrdersView" style="display:none">
+          <div class="acct-title">My orders</div>
+          <table class="orders-table">
+            <thead><tr><th>Order #</th><th>Date</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
+            <tbody id="ordersBody">
+              <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px 8px">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
       </div>
     </div>
   </div>
@@ -583,6 +645,17 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
   </div>
 </div>
 
+<!-- CONTENT PAGE MODAL (About / FAQ / Privacy / Terms) -->
+<div class="modal-overlay" id="contentModalOverlay" onclick="handleContentModalClick(event)">
+  <div class="content-modal">
+    <div class="content-modal-hd">
+      <div class="content-modal-title" id="contentModalTitle">Page</div>
+      <button class="content-modal-close" onclick="closeContentPage()" aria-label="Close">×</button>
+    </div>
+    <div class="content-modal-body" id="contentModalBody"></div>
+  </div>
+</div>
+
 <!-- FOOTER -->
 <footer class="site-footer">
   <div class="footer-grid">
@@ -599,17 +672,17 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
     </div>
     <div>
       <div class="footer-col-title">Help</div>
-      <a class="footer-link" onclick="toast('Track at My Orders above')">Track order</a>
-      <a class="footer-link" onclick="toast('Returns: support@shopsell.com')">Returns</a>
-      <a class="footer-link" onclick="toast('Contact: support@shopsell.com')">Contact us</a>
-      <a class="footer-link" onclick="toast('FAQ coming soon!')">FAQ</a>
+      <a class="footer-link" href="/returns">Track order</a>
+      <a class="footer-link" href="/returns">Returns</a>
+      <a class="footer-link" onclick="contactSeller()">Contact us</a>
+      <a class="footer-link" onclick="openContentPage('faq')">FAQ</a>
     </div>
     <div>
       <div class="footer-col-title">Company</div>
-      <a class="footer-link" onclick="toast('About us coming soon!')">About us</a>
-      <a class="footer-link" onclick="toast('Seller signup coming soon!')">Sell with us</a>
-      <a class="footer-link" onclick="toast('Privacy policy coming soon!')">Privacy</a>
-      <a class="footer-link" onclick="toast('Terms coming soon!')">Terms</a>
+      <a class="footer-link" onclick="openContentPage('about')">About us</a>
+      <a class="footer-link" href="/signup?from=storefront">Sell with us</a>
+      <a class="footer-link" onclick="openContentPage('privacy')">Privacy</a>
+      <a class="footer-link" onclick="openContentPage('terms')">Terms</a>
     </div>
   </div>
   <div class="footer-bottom">
@@ -654,7 +727,7 @@ let STORE_CONFIG = { publishableKey: '', storeName: '', storeSlug: STORE_SLUG };
 
 // ── STATE ──────────────────────────────────────────────────────
 let cart={}, homeCat='all', homeSort='default', shopCat='all', shopSort='default';
-let currentModal=null, mq=1, mobileNavOpen=false, newOrders=[];
+let currentModal=null, mq=1, mobileNavOpen=false;
 
 // ── STRIPE STATE (set up lazily when entering checkout) ───────
 // Uses the legacy CardElement (not PaymentElement) so Link is structurally
@@ -787,6 +860,53 @@ function openModal(id){
 }
 function closeModal(){document.getElementById('modalOverlay').classList.remove('open');document.body.style.overflow=''}
 function handleModalClick(e){if(e.target===document.getElementById('modalOverlay'))closeModal()}
+
+// ── STOREFRONT CONTENT MODAL (About / FAQ / Privacy / Terms) ──
+// Note: `about` title is computed inline in openContentPage so it can pick up
+// the store name after STORE_CONFIG loads asynchronously.
+const CONTENT_LABELS = {
+  faq:     'Frequently asked questions',
+  privacy: 'Privacy policy',
+  terms:   'Terms of service',
+};
+const CONTENT_EMPTY = {
+  about:   "This seller hasn't added an About page yet.",
+  faq:     "This seller hasn't published any FAQs yet.",
+  privacy: "This seller hasn't published a privacy policy yet — contact them with any questions.",
+  terms:   "This seller hasn't published terms of service yet — contact them with any questions.",
+};
+function openContentPage(field){
+  const sc    = STORE_CONFIG.storefrontContent || {};
+  const text  = (sc[field] || '').trim();
+  const title = field === 'about'
+    ? 'About ' + (STORE_CONFIG.storeName || 'us')
+    : CONTENT_LABELS[field] || 'Page';
+  document.getElementById('contentModalTitle').textContent = title;
+  const body = document.getElementById('contentModalBody');
+  if(text){
+    body.classList.remove('empty');
+    body.textContent = text; // textContent prevents XSS; CSS white-space:pre-wrap preserves line breaks
+  } else {
+    body.classList.add('empty');
+    body.textContent = CONTENT_EMPTY[field] || 'No content yet.';
+  }
+  document.getElementById('contentModalOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeContentPage(){
+  document.getElementById('contentModalOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function handleContentModalClick(e){
+  if(e.target === document.getElementById('contentModalOverlay')) closeContentPage();
+}
+function contactSeller(){
+  const sc = STORE_CONFIG.storefrontContent || {};
+  const email = (sc.contactEmail || '').trim();
+  if(!email){ toast('Contact email not available yet.'); return; }
+  const subject = encodeURIComponent('Question about ' + (STORE_CONFIG.storeName || 'your store'));
+  window.location.href = 'mailto:' + email + '?subject=' + subject;
+}
 function selVar(btn){document.querySelectorAll('.variant-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active')}
 function mqChange(d){mq=Math.max(1,Math.min(99,mq+d));document.getElementById('mqNum').textContent=mq}
 function addFromModal(){
@@ -1058,41 +1178,198 @@ async function placeOrder(){
 
     // 3. Show success screen
     document.getElementById('orderNum').textContent = currentPaymentIntent.orderId;
-    const itemNames = Object.keys(cart).map(key => PRODUCTS.find(x=>x.id===cart[key].id)?.name).filter(Boolean).join(', ');
-    newOrders.unshift({
-      id: currentPaymentIntent.orderId,
-      date: 'Today',
-      items: itemNames,
-      total: '$'+currentPaymentIntent.total,
-      status: 'processing',
-    });
-    renderOrders();
     cart={};
     currentPaymentIntent=null;
     updateCartUI();
     showPage('success');
+    // If the buyer is signed in, refresh their orders so the new one appears
+    // when they navigate to "My orders". Otherwise (guest checkout) the order
+    // will appear later if they sign up with the same email (auto-link).
+    if(BUYER) loadBuyerOrders();
   } catch(err) {
     showStripeMsg(err.message || 'Something went wrong. Please try again.');
     setPlaceBtn({label:'Place order', total:'$'+(currentPaymentIntent?.total||cartTotal().toFixed(2)), disabled:false});
   }
 }
 
-// ── ACCOUNT ───────────────────────────────────────────────────
-function renderOrders(){
-  const tbody=document.getElementById('ordersBody');
-  if(!tbody)return;
-  if(!newOrders.length){
-    tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px 8px">No orders yet.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML=newOrders.map(o=>`<tr>
-    <td style="font-family:monospace;font-size:11px">#SS-${o.id}</td>
-    <td>${o.date}</td>
-    <td style="color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.items}</td>
-    <td style="font-weight:600">${o.total}</td>
-    <td><span class="status-pill ${o.status}">${cap(o.status)}</span></td>
-  </tr>`).join('');
+// ── BUYER AUTH + ACCOUNT ──────────────────────────────────────
+let BUYER = null;
+const BUYER_TOKEN_KEY = 'ss_buyer_token';
+const BUYER_INFO_KEY  = 'ss_buyer';
+
+function buyerToken(){ return localStorage.getItem(BUYER_TOKEN_KEY); }
+
+function setBuyerAuthMsg(text, kind){
+  const el = document.getElementById('buyerAuthMsg');
+  if(!el) return;
+  if(!text){ el.style.display = 'none'; return; }
+  el.textContent = text;
+  el.className = 'buyer-auth-msg ' + (kind || 'error');
+  el.style.display = 'block';
 }
+
+function switchBuyerAuthTab(which){
+  const isLogin = which === 'login';
+  document.getElementById('bTabLogin').classList.toggle('active', isLogin);
+  document.getElementById('bTabSignup').classList.toggle('active', !isLogin);
+  document.getElementById('buyerLoginForm').style.display  = isLogin ? '' : 'none';
+  document.getElementById('buyerSignupForm').style.display = isLogin ? 'none' : '';
+  setBuyerAuthMsg('', null);
+}
+
+function renderAccountPage(){
+  const authView   = document.getElementById('buyerAuthView');
+  const ordersView = document.getElementById('buyerOrdersView');
+  const signOut    = document.getElementById('buyerSignOutItem');
+  const avatar     = document.getElementById('buyerAvatar');
+  const nameEl     = document.getElementById('buyerName');
+  const emailEl    = document.getElementById('buyerEmail');
+
+  if(BUYER){
+    authView.style.display   = 'none';
+    ordersView.style.display = '';
+    signOut.style.display    = '';
+    const display = ([BUYER.firstName, BUYER.lastName].filter(Boolean).join(' ')) || BUYER.email;
+    nameEl.textContent  = display;
+    emailEl.textContent = BUYER.email;
+    avatar.textContent  = (display[0] || '?').toUpperCase();
+    loadBuyerOrders();
+  } else {
+    authView.style.display   = '';
+    ordersView.style.display = 'none';
+    signOut.style.display    = 'none';
+    nameEl.textContent  = 'Guest';
+    emailEl.textContent = 'Not signed in';
+    avatar.textContent  = '?';
+  }
+}
+
+async function loadBuyerOrders(){
+  const tbody = document.getElementById('ordersBody');
+  if(!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px 8px">Loading…</td></tr>`;
+  try {
+    const res = await fetch('/api/buyer/orders', {
+      headers: { 'Authorization': 'Bearer ' + buyerToken() },
+    });
+    if(res.status === 401){ buyerLogout(true); return; }
+    const data = await res.json();
+    const orders = data.orders || [];
+    if(!orders.length){
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px 8px">No orders yet — start shopping!</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = orders.map(o => {
+      const date = o.createdAt ? new Date(o.createdAt).toLocaleDateString() : '';
+      const itemNames = (o.items || []).map(i => i.name).filter(Boolean).join(', ') || `${(o.items||[]).length} item(s)`;
+      const total = typeof o.total === 'number' ? '$' + o.total.toFixed(2) : (o.total ? '$' + o.total : '');
+      const status = o.status || 'processing';
+      return `<tr>
+        <td style="font-family:monospace;font-size:11px">#SS-${o.id}</td>
+        <td>${date}</td>
+        <td><span class="acct-store-tag">${escapeHtml(o.storeName || '')}</span></td>
+        <td style="color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(itemNames)}</td>
+        <td style="font-weight:600">${total}</td>
+        <td><span class="status-pill ${status}">${cap(status)}</span></td>
+      </tr>`;
+    }).join('');
+  } catch(err){
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px 8px">Could not load orders.</td></tr>`;
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function buyerLogin(e){
+  if(e) e.preventDefault();
+  const email    = document.getElementById('bLoginEmail').value.trim();
+  const password = document.getElementById('bLoginPassword').value;
+  const btn      = document.getElementById('bLoginBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  setBuyerAuthMsg('', null);
+  try {
+    const res = await fetch('/api/buyer/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ setBuyerAuthMsg(data.error || 'Sign-in failed.', 'error'); return false; }
+    BUYER = data.buyer;
+    localStorage.setItem(BUYER_TOKEN_KEY, data.token);
+    localStorage.setItem(BUYER_INFO_KEY, JSON.stringify(data.buyer));
+    renderAccountPage();
+    toast('Welcome back!');
+  } catch(err){
+    setBuyerAuthMsg('Network error — please try again.', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+  return false;
+}
+
+async function buyerSignup(e){
+  if(e) e.preventDefault();
+  const payload = {
+    firstName: document.getElementById('bSignupFirst').value.trim(),
+    lastName:  document.getElementById('bSignupLast').value.trim(),
+    email:     document.getElementById('bSignupEmail').value.trim(),
+    password:  document.getElementById('bSignupPassword').value,
+  };
+  const btn      = document.getElementById('bSignupBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Creating account…';
+  setBuyerAuthMsg('', null);
+  try {
+    const res = await fetch('/api/buyer/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ setBuyerAuthMsg(data.error || 'Sign-up failed.', 'error'); return false; }
+    BUYER = data.buyer;
+    localStorage.setItem(BUYER_TOKEN_KEY, data.token);
+    localStorage.setItem(BUYER_INFO_KEY, JSON.stringify(data.buyer));
+    renderAccountPage();
+    toast(data.message || 'Account created!');
+  } catch(err){
+    setBuyerAuthMsg('Network error — please try again.', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+  return false;
+}
+
+function buyerLogout(silent){
+  BUYER = null;
+  localStorage.removeItem(BUYER_TOKEN_KEY);
+  localStorage.removeItem(BUYER_INFO_KEY);
+  renderAccountPage();
+  if(!silent) toast('Signed out');
+}
+
+// Verify any existing buyer session against the server on page load.
+async function initBuyerSession(){
+  const token = buyerToken();
+  if(!token) return;
+  try {
+    const res = await fetch('/api/buyer/me', {
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    if(!res.ok){ buyerLogout(true); return; }
+    BUYER = await res.json();
+    localStorage.setItem(BUYER_INFO_KEY, JSON.stringify(BUYER));
+  } catch(err){ /* offline — keep cached */ }
+}
+initBuyerSession();
+
+// Back-compat shim — existing call sites use renderOrders(). When the buyer
+// is logged in we refetch from the server; otherwise we show the auth view.
+function renderOrders(){ renderAccountPage(); }
 
 // ── NAVIGATION ────────────────────────────────────────────────
 function showPage(name){

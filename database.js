@@ -76,6 +76,10 @@ async function initSchema() {
     // so we can extend (e.g. residential flag, instructions) without migrating.
     await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS return_address JSONB;`);
 
+    // Per-seller storefront page content (About / FAQ / Privacy / Terms / contactEmail).
+    // JSONB so new fields can be added without a migration.
+    await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS storefront_content JSONB;`);
+
     // PRODUCTS
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
@@ -112,6 +116,21 @@ async function initSchema() {
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS return_window_days  INTEGER NOT NULL DEFAULT 30;`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS restocking_fee_pct  NUMERIC(5,2) NOT NULL DEFAULT 0;`);
 
+    // BUYERS — accounts for the buyer storefront. Separate from sellers
+    // (different login flow, different JWT claim type).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS buyers (
+        id            SERIAL PRIMARY KEY,
+        email         TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        first_name    TEXT,
+        last_name     TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_buyers_email ON buyers (email);`);
+
     // ORDERS
     await client.query(`
       CREATE TABLE IF NOT EXISTS orders (
@@ -129,6 +148,7 @@ async function initSchema() {
         tracking_number    TEXT,
         tracking_carrier   TEXT,
         paid_at            TIMESTAMPTZ,
+        buyer_id           INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
         created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -136,6 +156,11 @@ async function initSchema() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_seller ON orders (seller_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_payment_intent ON orders (payment_intent_id);`);
+
+    // Forward-compat: existing orders tables won't have buyer_id until ALTER'd in.
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders (buyer_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_customer_email ON orders (customer_email);`);
 
     // STRIPE KEYS (per-seller saved Stripe credentials)
     await client.query(`
@@ -349,6 +374,57 @@ async function updateSeller(id, fields) {
     vals
   );
   return camelize(rows[0]);
+}
+
+// ── BUYERS ───────────────────────────────────────────────────
+async function createBuyer({ email, passwordHash, firstName, lastName }) {
+  const { rows } = await pool.query(
+    `INSERT INTO buyers (email, password_hash, first_name, last_name)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [email, passwordHash, firstName || null, lastName || null]
+  );
+  return camelize(rows[0]);
+}
+
+async function getBuyerByEmail(email) {
+  const { rows } = await pool.query(
+    `SELECT * FROM buyers WHERE email = $1 LIMIT 1`, [email]
+  );
+  return camelize(rows[0]);
+}
+
+async function getBuyerById(id) {
+  const { rows } = await pool.query(
+    `SELECT * FROM buyers WHERE id = $1 LIMIT 1`, [id]
+  );
+  return camelize(rows[0]);
+}
+
+// Attach all past orders made under this email to a buyer account.
+// Used on signup AND on every successful checkout (to retroactively link
+// guest checkouts made after signup but without logging in).
+async function linkOrdersByEmail(buyerId, email) {
+  const { rowCount } = await pool.query(
+    `UPDATE orders SET buyer_id = $1, updated_at = NOW()
+       WHERE LOWER(customer_email) = LOWER($2) AND buyer_id IS NULL`,
+    [buyerId, email]
+  );
+  return rowCount;
+}
+
+// Returns orders for a buyer joined with the seller's store name so the UI
+// can show "from {Store Name}" for buyers who shopped across multiple stores.
+async function getOrdersByBuyer(buyerId) {
+  const { rows } = await pool.query(
+    `SELECT o.*, s.store_name, s.store_slug
+       FROM orders o
+       JOIN sellers s ON s.id = o.seller_id
+      WHERE o.buyer_id = $1
+      ORDER BY o.created_at DESC`,
+    [buyerId]
+  );
+  return camelizeAll(rows);
 }
 
 // ── PRODUCTS ─────────────────────────────────────────────────
@@ -726,6 +802,21 @@ async function setSellerReturnAddress(sellerId, address) {
   );
 }
 
+async function getSellerStorefrontContent(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT storefront_content FROM sellers WHERE id = $1 LIMIT 1`,
+    [sellerId]
+  );
+  return rows[0]?.storefront_content || null;
+}
+
+async function setSellerStorefrontContent(sellerId, content) {
+  await pool.query(
+    `UPDATE sellers SET storefront_content = $1, updated_at = NOW() WHERE id = $2`,
+    [content ? JSON.stringify(content) : null, sellerId]
+  );
+}
+
 async function createReturn(data) {
   const { rows } = await pool.query(
     `INSERT INTO returns
@@ -831,6 +922,17 @@ module.exports = {
   setSellerReturnAddress,
   createReturn,
   getReturnsByOrder,
+
+  // Storefront content
+  getSellerStorefrontContent,
+  setSellerStorefrontContent,
+
+  // Buyers
+  createBuyer,
+  getBuyerByEmail,
+  getBuyerById,
+  linkOrdersByEmail,
+  getOrdersByBuyer,
 
   // Internal — exposed in case anything needs raw access
   pool,
