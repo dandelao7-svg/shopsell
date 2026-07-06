@@ -199,7 +199,210 @@ async function sendReturnNotificationToSeller({
   }
 }
 
+// ── Shared helpers for order/receipt emails ─────────────────
+function money(n) {
+  const v = Number(n);
+  return '$' + (Number.isFinite(v) ? v : 0).toFixed(2);
+}
+
+// Public carrier tracking URLs. Returns null for unknown carriers so the
+// template can fall back to just showing the number.
+function trackingUrl(carrier, tracking) {
+  const t = encodeURIComponent(tracking || '');
+  switch ((carrier || '').toLowerCase()) {
+    case 'ups':   return `https://www.ups.com/track?tracknum=${t}`;
+    case 'fedex': return `https://www.fedex.com/fedextrack/?trknbr=${t}`;
+    case 'usps':  return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${t}`;
+    default:      return null;
+  }
+}
+
+// Itemized rows with a line total (name ×qty ........ $line). Order items
+// carry { name, qty, price }; price is per-unit.
+function renderReceiptRows(items) {
+  return (items || []).map(it => {
+    const qty = Number(it.qty) || 0;
+    const line = (Number(it.price) || 0) * qty;
+    return `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0">${esc(it.name)}${qty > 1 ? ` <span style="color:#9ca3af">× ${qty}</span>` : ''}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0;text-align:right;font-variant-numeric:tabular-nums">${money(line)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTotals(subtotal, tax, total) {
+  const row = (label, val, bold) => `
+    <tr>
+      <td style="padding:4px 12px;text-align:right;font-size:${bold ? '15px;font-weight:700;color:#0f0f1a' : '13px;color:#6b7280'}">${esc(label)}</td>
+      <td style="padding:4px 12px;text-align:right;width:96px;font-variant-numeric:tabular-nums;font-size:${bold ? '15px;font-weight:700' : '13px'}">${money(val)}</td>
+    </tr>`;
+  return `<table style="width:100%;border-collapse:collapse;margin-top:6px">
+      ${subtotal != null ? row('Subtotal', subtotal) : ''}
+      ${tax != null ? row('Tax', tax) : ''}
+      ${row('Total', total, true)}
+    </table>`;
+}
+
+// Shipping/ship-to address card. Accepts the checkout customerInfo shape
+// ({ firstName, lastName, address1, address2, city, state, zip }).
+function renderAddressBlock(a, label) {
+  if (!a || !(a.address1 || a.city)) return '';
+  const name = [a.firstName, a.lastName].filter(Boolean).join(' ') || a.name || '';
+  return `
+    <div style="margin-top:18px;padding:12px 14px;background:#f7f7f2;border-radius:8px;font-size:13px;color:#374151">
+      <div style="font-weight:600;margin-bottom:4px">${esc(label)}</div>
+      ${name ? esc(name) + '<br>' : ''}
+      ${esc(a.address1 || '')}${a.address2 ? '<br>' + esc(a.address2) : ''}<br>
+      ${esc(a.city || '')}, ${esc(a.state || '')} ${esc(a.zip || '')}
+    </div>`;
+}
+
+function emailShell(inner, footerNote) {
+  return `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f2;margin:0;padding:24px;color:#0f0f1a">
+    <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;border:1px solid #e5e5e0">
+      ${inner}
+    </div>
+    <p style="text-align:center;color:#9ca3af;font-size:11px;margin-top:16px">${esc(footerNote)}</p>
+  </body></html>`;
+}
+
+async function _send(payload, who) {
+  try {
+    const { data, error } = await client.emails.send(payload);
+    if (error) { console.error(`Resend (${who}) error:`, error); return { sent: false, error }; }
+    return { sent: true, id: data?.id };
+  } catch (err) {
+    console.error(`Resend (${who}) exception:`, err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
+// ============================================================
+// BUYER EMAIL — "order confirmed" receipt
+// ============================================================
+async function sendOrderConfirmationToBuyer({
+  toEmail, orderNumber, storeName, items, subtotal, tax, total, shippingAddress,
+}) {
+  if (!client) return { skipped: true };
+  if (!toEmail) return { skipped: true, reason: 'no recipient' };
+
+  const inner = `
+      <h1 style="font-size:22px;margin:0 0 8px;font-weight:700">Thanks for your order</h1>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:14px">Order ${esc(orderNumber)} · ${esc(storeName)}</p>
+
+      <div style="background:#0f0f1a;color:#fff;padding:14px 16px;border-radius:10px;text-align:center;margin:14px 0">
+        <div style="font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.6);text-transform:uppercase;margin-bottom:4px">Order confirmed</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:1px">${esc(orderNumber)}</div>
+      </div>
+
+      <h3 style="font-size:14px;margin:22px 0 8px">Order summary</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tbody>${renderReceiptRows(items)}</tbody>
+      </table>
+      ${renderTotals(subtotal, tax, total)}
+
+      ${renderAddressBlock(shippingAddress, 'Shipping to')}
+
+      <p style="margin:22px 0 0;font-size:13px;color:#6b7280;line-height:1.6">
+        We'll email you tracking details as soon as your order ships.
+      </p>`;
+
+  return _send({
+    from:    fromAddr,
+    to:      [toEmail],
+    subject: `Order confirmed — ${orderNumber}`,
+    html:    emailShell(inner, `Sent by ${storeName} via ShopSell`),
+  }, 'order-confirm');
+}
+
+// ============================================================
+// SELLER EMAIL — "you have a new order"
+// ============================================================
+async function sendNewOrderToSeller({
+  toEmail, orderNumber, storeName, buyerName, buyerEmail, items, total,
+}) {
+  if (!client) return { skipped: true };
+  if (!toEmail) return { skipped: true, reason: 'no recipient' };
+
+  const inner = `
+      <h1 style="font-size:22px;margin:0 0 8px;font-weight:700">New order: ${esc(orderNumber)}</h1>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:14px">${money(total)} · ${esc(storeName)}</p>
+
+      <h3 style="font-size:14px;margin:14px 0 6px">Customer</h3>
+      <p style="margin:0 0 4px;font-size:14px">${esc(buyerName || buyerEmail || 'Guest')}</p>
+      ${buyerEmail ? `<p style="margin:0;font-size:13px;color:#6b7280">${esc(buyerEmail)}</p>` : ''}
+
+      <h3 style="font-size:14px;margin:22px 0 8px">Items</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tbody>${renderReceiptRows(items)}</tbody>
+      </table>
+      ${renderTotals(null, null, total)}
+
+      <p style="margin:24px 0 0;font-size:13px;color:#6b7280">
+        Log in to your dashboard to fulfill this order and print a shipping label.
+      </p>`;
+
+  return _send({
+    from:    fromAddr,
+    to:      [toEmail],
+    subject: `New order ${orderNumber} — ${money(total)}`,
+    html:    emailShell(inner, `${storeName} · ShopSell orders`),
+  }, 'new-order-seller');
+}
+
+// ============================================================
+// BUYER EMAIL — "your order has shipped" + tracking
+// ============================================================
+async function sendShippingNotificationToBuyer({
+  toEmail, orderNumber, storeName, carrier, trackingNumber, items, shippingAddress,
+}) {
+  if (!client) return { skipped: true };
+  if (!toEmail) return { skipped: true, reason: 'no recipient' };
+
+  const url = trackingUrl(carrier, trackingNumber);
+  const carrierLabel = (carrier || '').toUpperCase();
+
+  const trackingBox = trackingNumber ? `
+      <div style="background:#0f0f1a;color:#fff;padding:16px;border-radius:10px;text-align:center;margin:14px 0">
+        <div style="font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.6);text-transform:uppercase;margin-bottom:4px">Tracking number</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:1.5px;word-break:break-all">${esc(trackingNumber)}</div>
+        ${carrierLabel ? `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px">${esc(carrierLabel)}</div>` : ''}
+      </div>` : '';
+
+  const trackBtn = url ? `
+      <p style="margin:18px 0"><a href="${esc(url)}" style="display:inline-block;background:#0f0f1a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Track your package</a></p>` : '';
+
+  const inner = `
+      <h1 style="font-size:22px;margin:0 0 8px;font-weight:700">Your order is on its way</h1>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:14px">Order ${esc(orderNumber)} · ${esc(storeName)}</p>
+
+      ${trackingBox}
+      ${trackBtn}
+
+      <h3 style="font-size:14px;margin:22px 0 8px">What's shipping</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tbody>${renderItemsHtml(items)}</tbody>
+      </table>
+
+      ${renderAddressBlock(shippingAddress, 'Shipping to')}
+
+      <p style="margin:22px 0 0;font-size:13px;color:#6b7280;line-height:1.6">
+        ${url ? 'Use the button above to follow your package.' : 'Your carrier will provide delivery updates shortly.'}
+      </p>`;
+
+  return _send({
+    from:    fromAddr,
+    to:      [toEmail],
+    subject: `Your ${storeName} order has shipped — ${orderNumber}`,
+    html:    emailShell(inner, `Sent by ${storeName} via ShopSell`),
+  }, 'shipping-notify');
+}
+
 module.exports = {
   sendReturnLabelToBuyer,
   sendReturnNotificationToSeller,
+  sendOrderConfirmationToBuyer,
+  sendNewOrderToSeller,
+  sendShippingNotificationToBuyer,
 };

@@ -827,6 +827,43 @@ app.post('/api/checkout/confirm', async (req, res) => {
       await db.decrementStock(item.productId, item.qty);
     }
 
+    // Fire confirmation emails without blocking the response — a mail failure
+    // must never break a paid checkout. No-op if RESEND_API_KEY is unset.
+    (async () => {
+      try {
+        const seller = await db.getSellerById(order.sellerId);
+        const storeName = seller?.storeName || 'ShopSell';
+        const ship = order.customerInfo || {};
+        const buyerName = [ship.firstName, ship.lastName].filter(Boolean).join(' ') || null;
+
+        if (realEmail) {
+          await emailService.sendOrderConfirmationToBuyer({
+            toEmail:         realEmail,
+            orderNumber:     `SS-${order.id}`,
+            storeName,
+            items:           order.items,
+            subtotal:        order.subtotal,
+            tax:             order.tax,
+            total:           order.total,
+            shippingAddress: ship,
+          });
+        }
+        if (seller?.email) {
+          await emailService.sendNewOrderToSeller({
+            toEmail:     seller.email,
+            orderNumber: `SS-${order.id}`,
+            storeName,
+            buyerName,
+            buyerEmail:  realEmail,
+            items:       order.items,
+            total:       order.total,
+          });
+        }
+      } catch (e) {
+        console.error('Order confirmation email failed:', e.message);
+      }
+    })();
+
     res.json({
       message:     'Order confirmed!',
       orderNumber: `SS-${order.id}`,
@@ -908,7 +945,33 @@ app.patch('/api/seller/orders/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid status.' });
     }
 
+    const wasShipped = order.status === 'shipped';
     const updated = await db.updateOrder(orderId, { status, trackingNumber, trackingCarrier });
+
+    // Notify the buyer only on the transition INTO "shipped" — not on every
+    // re-save of an already-shipped order. Non-blocking; no-op without RESEND.
+    if (updated.status === 'shipped' && !wasShipped) {
+      const toEmail = updated.customerEmail || updated.customerInfo?.email || null;
+      if (toEmail) {
+        (async () => {
+          try {
+            const seller = await db.getSellerById(order.sellerId);
+            await emailService.sendShippingNotificationToBuyer({
+              toEmail,
+              orderNumber:     `SS-${updated.id}`,
+              storeName:       seller?.storeName || 'ShopSell',
+              carrier:         updated.trackingCarrier,
+              trackingNumber:  updated.trackingNumber,
+              items:           updated.items,
+              shippingAddress: updated.customerInfo || {},
+            });
+          } catch (e) {
+            console.error('Shipping notification email failed:', e.message);
+          }
+        })();
+      }
+    }
+
     res.json({ message: 'Order updated!', order: updated });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update order.' });
