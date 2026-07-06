@@ -37,6 +37,66 @@ const PDFDocument  = require('pdfkit');
 const db           = require('./database');
 const carriers     = require('./carriers');
 const emailService = require('./email');
+const cryptoLib    = require('./lib/crypto');
+
+// Fail loud at startup if secrets can't be encrypted — we never want to
+// silently store carrier/Stripe credentials in plaintext.
+if (!cryptoLib.isConfigured()) {
+  console.warn('⚠ ENCRYPTION_KEY is not set or invalid. Credential routes will reject saves until it is configured (64 hex chars).');
+}
+
+// ── CARRIER CREDENTIALS (per-seller BYOA) ─────────────────────
+const CARRIER_FIELDS = {
+  ups:   ['clientId', 'clientSecret', 'accountNumber'],
+  fedex: ['apiKey', 'secretKey', 'accountNumber'],
+  usps:  ['apiKey'],
+};
+
+function maskAccount(acct) {
+  if (!acct) return null;
+  const s = String(acct);
+  return s.length <= 4 ? '••' + s.slice(-2) : '••••' + s.slice(-4);
+}
+
+// Load + decrypt a seller's stored credentials for a carrier.
+async function loadSellerCarrierCreds(sellerId, carrier) {
+  const row = await db.getCarrierAccount(sellerId, carrier);
+  if (!row) return null;
+  try {
+    const secrets = cryptoLib.decrypt(row.credentials);
+    return { ...secrets, accountNumber: row.accountNumber || secrets.accountNumber };
+  } catch (e) {
+    console.error(`Failed to decrypt ${carrier} creds for seller ${sellerId}:`, e.message);
+    return null;
+  }
+}
+
+function carrierNotConnected(res, carrier, verb = 'shipping') {
+  return res.status(400).json({
+    error: `Connect your ${String(carrier).toUpperCase()} account in Settings before ${verb}.`,
+    carrierSetupRequired: true,
+    carrier,
+  });
+}
+
+// ── STRIPE KEYS (encrypted at rest) ──────────────────────────
+async function persistStripeKeys(sellerId, { publishableKey, secretKey, webhookSecret }) {
+  await db.saveStripeKeys(sellerId, {
+    publishableKey,
+    secretKey:     cryptoLib.encrypt(secretKey),
+    webhookSecret: webhookSecret ? cryptoLib.encrypt(webhookSecret) : null,
+  });
+}
+
+async function loadStripeKeys(sellerId) {
+  const config = await db.getStripeKeys(sellerId);
+  if (!config) return null;
+  const dec = (v) => {
+    if (!v) return v;
+    try { return cryptoLib.decrypt(v); } catch { return v; } // legacy plaintext
+  };
+  return { ...config, secretKey: dec(config.secretKey), webhookSecret: dec(config.webhookSecret) };
+}
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -458,10 +518,14 @@ app.get('/api/checkout/config', async (req, res) => {
     const seller = await db.getSellerBySlug(storeSlug);
     if (!seller) return res.status(404).json({ error: 'Store not found.' });
 
+    // Buyer checkout runs on the SELLER's own Stripe account — return THEIR
+    // publishable key so the storefront confirms against the right account.
+    const stripeConfig = await loadStripeKeys(seller.id);
     res.json({
-      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
-      storeName:      seller.storeName,
-      storeSlug:      seller.storeSlug,
+      publishableKey:  stripeConfig?.publishableKey || '',
+      paymentsEnabled: !!(stripeConfig && stripeConfig.publishableKey && stripeConfig.secretKey),
+      storeName:       seller.storeName,
+      storeSlug:       seller.storeSlug,
     });
   } catch (err) {
     console.error('Checkout config error:', err);
@@ -479,6 +543,15 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
 
     const seller = await db.getSellerBySlug(storeSlug);
     if (!seller) return res.status(404).json({ error: 'Store not found.' });
+
+    // Buyer payments settle into the SELLER's own connected Stripe account —
+    // never the platform's. If the seller hasn't connected Stripe, they can't
+    // take payments yet.
+    const stripeConfig = await loadStripeKeys(seller.id);
+    if (!stripeConfig || !stripeConfig.secretKey) {
+      return res.status(400).json({ error: 'This store isn’t accepting payments yet.', paymentSetupRequired: true });
+    }
+    const sellerStripe = require('stripe')(stripeConfig.secretKey);
 
     let subtotal = 0;
     const verifiedItems = [];
@@ -525,12 +598,13 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       piPayload.receipt_email = customerEmail;
     }
 
-    const paymentIntent = await stripe.paymentIntents.create(piPayload);
+    const paymentIntent = await sellerStripe.paymentIntents.create(piPayload);
 
     res.json({
-      clientSecret: paymentIntent.client_secret,
-      orderId:      order.id,
-      total:        (total / 100).toFixed(2),
+      clientSecret:   paymentIntent.client_secret,
+      publishableKey: stripeConfig.publishableKey, // storefront confirms against the seller's account
+      orderId:        order.id,
+      total:          (total / 100).toFixed(2),
     });
 
   } catch (err) {
@@ -543,9 +617,23 @@ app.post('/api/checkout/confirm', async (req, res) => {
   try {
     const { orderId, paymentIntentId, customerInfo } = req.body;
 
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    // The payment lives in the seller's own Stripe account, so we must verify
+    // it with the seller's key — the platform key can't see it.
+    const existingOrder = await db.getOrderById(orderId);
+    if (!existingOrder) return res.status(404).json({ error: 'Order not found.' });
+
+    const stripeConfig = await loadStripeKeys(existingOrder.sellerId);
+    if (!stripeConfig || !stripeConfig.secretKey) {
+      return res.status(400).json({ error: 'Store payment configuration is missing.' });
+    }
+    const sellerStripe = require('stripe')(stripeConfig.secretKey);
+
+    const paymentIntent = await sellerStripe.paymentIntents.retrieve(paymentIntentId);
     if (paymentIntent.status !== 'succeeded') {
       return res.status(400).json({ error: 'Payment not completed.' });
+    }
+    if (String(paymentIntent.metadata?.orderId) !== String(orderId)) {
+      return res.status(400).json({ error: 'Payment does not match this order.' });
     }
 
     // The payment intent was created before the buyer typed their email,
@@ -792,6 +880,10 @@ app.post('/api/seller/stripe/keys', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid Stripe key format.' });
     }
 
+    if (!cryptoLib.isConfigured()) {
+      return res.status(500).json({ error: 'Server is missing ENCRYPTION_KEY — cannot store keys securely. Contact the administrator.' });
+    }
+
     try {
       const testStripe = require('stripe')(secretKey);
       await testStripe.balance.retrieve();
@@ -799,7 +891,7 @@ app.post('/api/seller/stripe/keys', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Stripe rejected these keys. Double-check them in your Stripe dashboard.' });
     }
 
-    await db.saveStripeKeys(req.seller.sellerId, { publishableKey, secretKey, webhookSecret });
+    await persistStripeKeys(req.seller.sellerId, { publishableKey, secretKey, webhookSecret });
     res.json({ message: 'Stripe keys saved and verified!' });
   } catch (err) {
     console.error('Save Stripe keys error:', err);
@@ -809,7 +901,7 @@ app.post('/api/seller/stripe/keys', requireAuth, async (req, res) => {
 
 app.get('/api/seller/stripe/keys', requireAuth, async (req, res) => {
   try {
-    const config = await db.getStripeKeys(req.seller.sellerId);
+    const config = await loadStripeKeys(req.seller.sellerId);
     if (!config) return res.json({ connected: false });
     res.json({
       connected:        true,
@@ -824,7 +916,7 @@ app.get('/api/seller/stripe/keys', requireAuth, async (req, res) => {
 
 app.post('/api/seller/stripe/test', requireAuth, async (req, res) => {
   try {
-    const config = await db.getStripeKeys(req.seller.sellerId);
+    const config = await loadStripeKeys(req.seller.sellerId);
     if (!config) return res.status(400).json({ error: 'No Stripe keys found. Add them first.' });
 
     const testStripe = require('stripe')(config.secretKey);
@@ -843,7 +935,7 @@ app.post('/api/seller/stripe/test', requireAuth, async (req, res) => {
 
 app.get('/api/seller/stripe/balance', requireAuth, async (req, res) => {
   try {
-    const config = await db.getStripeKeys(req.seller.sellerId);
+    const config = await loadStripeKeys(req.seller.sellerId);
     if (!config) return res.status(400).json({ error: 'Stripe not connected.' });
 
     const sellerStripe = require('stripe')(config.secretKey);
@@ -855,6 +947,117 @@ app.get('/api/seller/stripe/balance', requireAuth, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to retrieve balance.' });
+  }
+});
+
+/* ============================================================
+   ── SELLER CARRIER ACCOUNT ROUTES (bring-your-own-account) ────
+   GET    /api/seller/carriers            — connection status per carrier
+   POST   /api/seller/carriers/:carrier   — save + verify credentials
+   POST   /api/seller/carriers/:carrier/test — re-test saved credentials
+   DELETE /api/seller/carriers/:carrier   — disconnect a carrier
+   Secrets are encrypted at rest and never returned to the client.
+   ============================================================ */
+
+app.get('/api/seller/carriers', requireAuth, async (req, res) => {
+  try {
+    const rows = await db.getCarrierAccounts(req.seller.sellerId);
+    const out = { ups: { connected: false }, fedex: { connected: false }, usps: { connected: false } };
+    for (const r of rows) {
+      if (!out[r.carrier]) continue;
+      out[r.carrier] = {
+        connected: true,
+        status: r.status,
+        accountNumberMasked: maskAccount(r.accountNumber),
+        updatedAt: r.updatedAt,
+      };
+    }
+    res.json(out);
+  } catch (err) {
+    console.error('Get carriers error:', err);
+    res.status(500).json({ error: 'Failed to load carrier accounts.' });
+  }
+});
+
+app.post('/api/seller/carriers/:carrier', requireAuth, async (req, res) => {
+  try {
+    const carrier = (req.params.carrier || '').toLowerCase();
+    const fields  = CARRIER_FIELDS[carrier];
+    if (!fields) {
+      return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
+    }
+    if (!cryptoLib.isConfigured()) {
+      return res.status(500).json({ error: 'Server is missing ENCRYPTION_KEY — cannot store credentials securely. Contact the administrator.' });
+    }
+
+    const missing = fields.filter(f => !req.body[f] || !String(req.body[f]).trim());
+    if (missing.length) {
+      return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}.` });
+    }
+
+    let accountNumber = null;
+    let secrets = {};
+    if (carrier === 'ups') {
+      accountNumber = String(req.body.accountNumber).trim();
+      secrets = { clientId: String(req.body.clientId).trim(), clientSecret: String(req.body.clientSecret).trim() };
+    } else if (carrier === 'fedex') {
+      accountNumber = String(req.body.accountNumber).trim();
+      secrets = { apiKey: String(req.body.apiKey).trim(), secretKey: String(req.body.secretKey).trim() };
+    } else { // usps (Shippo)
+      secrets = { apiKey: String(req.body.apiKey).trim() };
+    }
+
+    const credentials = cryptoLib.encrypt(secrets);
+    await db.saveCarrierAccount(req.seller.sellerId, carrier, { accountNumber, credentials, status: 'unverified' });
+
+    const test   = await carriers.testCarrierCreds(carrier, { ...secrets, accountNumber });
+    const status = test.ok ? 'verified' : 'invalid';
+    await db.setCarrierAccountStatus(req.seller.sellerId, carrier, status);
+
+    res.json({
+      connected: true,
+      status,
+      verified: test.ok,
+      accountNumberMasked: maskAccount(accountNumber),
+      ...(test.ok ? {} : { warning: `Saved, but the carrier rejected these credentials: ${test.error}` }),
+    });
+  } catch (err) {
+    console.error('Save carrier creds error:', err);
+    res.status(500).json({ error: 'Failed to save carrier credentials: ' + err.message });
+  }
+});
+
+app.post('/api/seller/carriers/:carrier/test', requireAuth, async (req, res) => {
+  try {
+    const carrier = (req.params.carrier || '').toLowerCase();
+    if (!CARRIER_FIELDS[carrier]) {
+      return res.status(400).json({ error: 'Unsupported carrier.' });
+    }
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
+    if (!creds) {
+      return res.status(400).json({ error: 'No credentials saved for this carrier yet.' });
+    }
+    const test   = await carriers.testCarrierCreds(carrier, creds);
+    const status = test.ok ? 'verified' : 'invalid';
+    await db.setCarrierAccountStatus(req.seller.sellerId, carrier, status);
+    res.json({ success: test.ok, status, ...(test.ok ? {} : { error: test.error }) });
+  } catch (err) {
+    console.error('Test carrier creds error:', err);
+    res.status(500).json({ error: 'Failed to test carrier credentials: ' + err.message });
+  }
+});
+
+app.delete('/api/seller/carriers/:carrier', requireAuth, async (req, res) => {
+  try {
+    const carrier = (req.params.carrier || '').toLowerCase();
+    if (!CARRIER_FIELDS[carrier]) {
+      return res.status(400).json({ error: 'Unsupported carrier.' });
+    }
+    await db.deleteCarrierAccount(req.seller.sellerId, carrier);
+    res.json({ message: `${carrier.toUpperCase()} disconnected.` });
+  } catch (err) {
+    console.error('Delete carrier error:', err);
+    res.status(500).json({ error: 'Failed to disconnect carrier.' });
   }
 });
 
@@ -1019,9 +1222,70 @@ app.get('/api/seller/analytics', requireAuth, async (req, res) => {
 });
 
 /* ============================================================
-   ── STRIPE WEBHOOK ───────────────────────────────────────────
-   POST /api/stripe/webhook
+   ── STRIPE WEBHOOKS ──────────────────────────────────────────
+   - POST /api/stripe/webhook            → PLATFORM account events
+     (seller subscriptions/invoices), verified with the platform secret.
+   - POST /api/stripe/webhook/:storeSlug → each SELLER's account events
+     (buyer payments/refunds/disputes), verified with that seller's own
+     signing secret. Sellers register this URL in their Stripe dashboard.
    ============================================================ */
+
+// Buyer-payment events now happen inside each seller's own Stripe account.
+// This handler is scoped to a specific seller — it only touches that seller's orders.
+async function handleBuyerPaymentEvent(event, sellerId) {
+  const orderBelongsToSeller = async (orderId) => {
+    if (!orderId) return null;
+    const order = await db.getOrderById(orderId);
+    if (!order || order.sellerId !== sellerId) {
+      console.warn(`Webhook: order ${orderId} missing or not owned by seller ${sellerId}; ignoring.`);
+      return null;
+    }
+    return order;
+  };
+
+  switch (event.type) {
+    case 'payment_intent.succeeded': {
+      const pi = event.data.object;
+      if (await orderBelongsToSeller(pi.metadata?.orderId)) {
+        await db.updateOrder(pi.metadata.orderId, {
+          status: 'processing', paymentIntentId: pi.id, paidAt: new Date(),
+        });
+        console.log(`Order ${pi.metadata.orderId} marked as paid (seller ${sellerId})`);
+      }
+      break;
+    }
+    case 'payment_intent.payment_failed': {
+      const pi = event.data.object;
+      if (await orderBelongsToSeller(pi.metadata?.orderId)) {
+        await db.updateOrder(pi.metadata.orderId, { status: 'payment_failed' });
+        console.log(`Order ${pi.metadata.orderId} payment failed (seller ${sellerId})`);
+      }
+      break;
+    }
+    case 'charge.refunded': {
+      const charge = event.data.object;
+      let order = await orderBelongsToSeller(charge.metadata?.orderId);
+      if (!order && charge.payment_intent) {
+        const o = await db.getOrderByPaymentIntentId(charge.payment_intent);
+        if (o && o.sellerId === sellerId) order = o;
+        else if (o) console.warn(`Webhook: refund order ${o.id} not owned by seller ${sellerId}; ignoring.`);
+      }
+      if (order) {
+        await db.updateOrder(order.id, { status: 'refunded' });
+        console.log(`Order ${order.id} refunded (seller ${sellerId})`);
+      }
+      break;
+    }
+    case 'charge.dispute.created': {
+      const dispute = event.data.object;
+      console.warn(`Chargeback filed (seller ${sellerId}):`, dispute.id, 'Amount:', dispute.amount);
+      break;
+    }
+    default:
+      console.log(`Seller webhook: unhandled event ${event.type} (seller ${sellerId})`);
+      break;
+  }
+}
 
 app.post('/api/stripe/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -1038,50 +1302,10 @@ app.post('/api/stripe/webhook', async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  console.log(`Stripe webhook: ${event.type}`);
+  console.log(`Stripe webhook (platform): ${event.type}`);
 
   try {
     switch (event.type) {
-
-      case 'payment_intent.succeeded': {
-        const pi      = event.data.object;
-        const orderId = pi.metadata?.orderId;
-        if (orderId) {
-          await db.updateOrder(orderId, {
-            status:          'processing',
-            paymentIntentId: pi.id,
-            paidAt:          new Date(),
-          });
-          console.log(`Order ${orderId} marked as paid`);
-        }
-        break;
-      }
-
-      case 'payment_intent.payment_failed': {
-        const pi      = event.data.object;
-        const orderId = pi.metadata?.orderId;
-        if (orderId) {
-          await db.updateOrder(orderId, { status: 'payment_failed' });
-          console.log(`Order ${orderId} payment failed`);
-        }
-        break;
-      }
-
-      case 'charge.refunded': {
-        const charge  = event.data.object;
-        const orderId = charge.metadata?.orderId;
-        if (orderId) {
-          await db.updateOrder(orderId, { status: 'refunded' });
-          console.log(`Order ${orderId} refunded`);
-        }
-        break;
-      }
-
-      case 'charge.dispute.created': {
-        const dispute = event.data.object;
-        console.warn('Chargeback filed:', dispute.id, 'Amount:', dispute.amount);
-        break;
-      }
 
       case 'customer.subscription.updated': {
         const sub    = event.data.object;
@@ -1131,6 +1355,40 @@ app.post('/api/stripe/webhook', async (req, res) => {
   res.json({ received: true });
 });
 
+// PER-SELLER BUYER WEBHOOK — verified with the seller's own signing secret.
+// The seller registers  https://<your-domain>/api/stripe/webhook/<storeSlug>
+// in their Stripe dashboard and pastes the resulting signing secret into the
+// dashboard (stored encrypted). Raw body is preserved by the express.raw
+// middleware mounted on the /api/stripe/webhook prefix.
+app.post('/api/stripe/webhook/:storeSlug', async (req, res) => {
+  const slug = req.params.storeSlug;
+
+  const seller = await db.getSellerBySlug(slug);
+  if (!seller) return res.status(404).send('Unknown store.');
+
+  const config = await loadStripeKeys(seller.id);
+  if (!config || !config.webhookSecret) {
+    return res.status(400).send('This store has no webhook signing secret configured.');
+  }
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], config.webhookSecret);
+  } catch (err) {
+    console.error(`Seller webhook signature verification failed (${slug}):`, err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  console.log(`Stripe webhook (store ${slug}): ${event.type}`);
+  try {
+    await handleBuyerPaymentEvent(event, seller.id);
+  } catch (err) {
+    console.error(`Error processing seller webhook ${event.type} (${slug}):`, err);
+  }
+
+  res.json({ received: true });
+});
+
 /* ============================================================
    ── SHIPPING ROUTES ──────────────────────────────────────────
    POST /api/shipping/label        — create UPS/FedEx label
@@ -1142,9 +1400,16 @@ app.post('/api/stripe/webhook', async (req, res) => {
    ============================================================ */
 
 // TEST CARRIER CONNECTIONS
-app.get('/api/shipping/carriers/test', async (req, res) => {
+app.get('/api/shipping/carriers/test', requireAuth, async (req, res) => {
   try {
-    const results = await carriers.testConnections();
+    const results = {};
+    for (const carrier of ['ups', 'fedex', 'usps']) {
+      const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
+      if (!creds) { results[carrier] = false; continue; }
+      const test = await carriers.testCarrierCreds(carrier, creds);
+      results[carrier] = test.ok;
+      if (!test.ok) results[`${carrier}Error`] = test.error;
+    }
     res.json(results);
   } catch(err) {
     res.status(500).json({ error: 'Carrier test failed: '+err.message });
@@ -1152,7 +1417,7 @@ app.get('/api/shipping/carriers/test', async (req, res) => {
 });
 
 // CREATE SHIPPING LABEL
-app.post('/api/shipping/label', async (req, res) => {
+app.post('/api/shipping/label', requireAuth, async (req, res) => {
   try {
     const {
       carrier = 'ups',
@@ -1170,13 +1435,24 @@ app.post('/api/shipping/label', async (req, res) => {
       return res.status(400).json({ error: 'shipper, recipient, and package are required.' });
     }
 
+    if (!['ups', 'fedex', 'usps'].includes(carrier)) {
+      return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
+    }
+
+    // Bring-your-own-account: the label is created with THIS seller's own
+    // carrier credentials, so the charge lands on their account, never the
+    // platform's. No credentials = no shipping.
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
+    if (!creds) return carrierNotConnected(res, carrier);
+    const client = carriers.buildCarrier(carrier, creds);
+
     // Build billing info
     const billingInfo = billing || { type: '01' };
 
     // Create label with appropriate carrier
     let label;
     if(carrier === 'ups') {
-      label = await carriers.ups.createShipment({
+      label = await client.createShipment({
         shipper, recipient,
         package: pkg,
         serviceCode: serviceCode || '03',
@@ -1185,7 +1461,7 @@ app.post('/api/shipping/label', async (req, res) => {
         billing: billingInfo,
       });
     } else if(carrier === 'fedex') {
-      label = await carriers.fedex.createShipment({
+      label = await client.createShipment({
         shipper, recipient,
         package: pkg,
         serviceType: serviceType || 'FEDEX_GROUND',
@@ -1193,15 +1469,13 @@ app.post('/api/shipping/label', async (req, res) => {
         reference: orderId,
         billing: billingInfo,
       });
-    } else if(carrier === 'usps') {
-      label = await carriers.usps.createShipment({
+    } else { // usps
+      label = await client.createShipment({
         shipper, recipient,
         package: pkg,
         serviceToken: serviceType || 'usps_priority',
         reference: orderId,
       });
-    } else {
-      return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
     }
 
     // Save shipment record to the database for the Shipping History page.
@@ -1209,7 +1483,7 @@ app.post('/api/shipping/label', async (req, res) => {
     // can reprint, void, and email customers without re-calling the carrier API.
     try {
       await db.createShipment({
-        sellerId:       null,                              // wire when auth is added
+        sellerId:       req.seller.sellerId,               // attribute to the logged-in seller
         orderId:        Number.isFinite(parseInt(orderId)) ? parseInt(orderId) : null,
         trackingNumber: label.trackingNumber,
         carrier,
@@ -1254,7 +1528,7 @@ app.post('/api/shipping/label', async (req, res) => {
 });
 
 // CREATE RETURN LABEL
-app.post('/api/shipping/return-label', async (req, res) => {
+app.post('/api/shipping/return-label', requireAuth, async (req, res) => {
   try {
     const { carrier = 'ups', returnId, sellerAddress, customerAddress, pkg } = req.body;
 
@@ -1262,12 +1536,15 @@ app.post('/api/shipping/return-label', async (req, res) => {
       return res.status(400).json({ error: 'sellerAddress and customerAddress are required.' });
     }
 
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
+    if (!creds) return carrierNotConnected(res, carrier);
+
     const label = await carriers.createReturnLabel(carrier, {
       shipper:   sellerAddress,   // Where it goes back to
       recipient: customerAddress, // Customer sending it back
       package:   pkg || { weight: 2, length: 12, width: 9, height: 4 },
       reference: `RETURN-${returnId}`,
-    });
+    }, creds);
 
     console.log(`Return label created: ${carrier.toUpperCase()} ${label.trackingNumber}`);
     res.json({ success: true, label });
@@ -1279,10 +1556,12 @@ app.post('/api/shipping/return-label', async (req, res) => {
 });
 
 // TRACK SHIPMENT
-app.get('/api/shipping/track/:carrier/:tracking', async (req, res) => {
+app.get('/api/shipping/track/:carrier/:tracking', requireAuth, async (req, res) => {
   try {
     const { carrier, tracking } = req.params;
-    const result = await carriers.track(carrier, tracking);
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
+    if (!creds) return carrierNotConnected(res, carrier, 'tracking');
+    const result = await carriers.track(carrier, tracking, creds);
     res.json(result);
   } catch(err) {
     console.error('Track error:', err);
@@ -1291,7 +1570,7 @@ app.get('/api/shipping/track/:carrier/:tracking', async (req, res) => {
 });
 
 // SCHEDULE UPS PICKUP
-app.post('/api/shipping/pickup', async (req, res) => {
+app.post('/api/shipping/pickup', requireAuth, async (req, res) => {
   try {
     const { pickupDate, earliestTime, latestTime, address, packageCount, totalWeight } = req.body;
 
@@ -1299,7 +1578,11 @@ app.post('/api/shipping/pickup', async (req, res) => {
       return res.status(400).json({ error: 'pickupDate and address are required.' });
     }
 
-    const result = await carriers.ups.schedulePickup({
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, 'ups');
+    if (!creds) return carrierNotConnected(res, 'ups', 'scheduling a pickup');
+    const ups = carriers.buildCarrier('ups', creds);
+
+    const result = await ups.schedulePickup({
       pickupDate,
       earliestTime: earliestTime || '0900',
       latestTime:   latestTime   || '1700',
@@ -1351,14 +1634,21 @@ app.get('/api/shipping/zip-lookup', async (req, res) => {
 });
 
 // VALIDATE ADDRESS
-app.post('/api/shipping/validate-address', async (req, res) => {
+app.post('/api/shipping/validate-address', requireAuth, async (req, res) => {
   try {
     const { address1, city, state, zip } = req.body;
     if(!address1 || !city || !state || !zip) {
       return res.status(400).json({ error: 'Address fields required.' });
     }
 
-    const token = await carriers.ups.getAccessToken();
+    // Address validation runs against the seller's own UPS credentials.
+    // If UPS isn't connected, don't block shipping — just skip validation.
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, 'ups');
+    if (!creds) {
+      return res.json({ valid: true, message: 'Validation unavailable (UPS not connected) — proceeding.' });
+    }
+    const ups = carriers.buildCarrier('ups', creds);
+    const token = await ups.getAccessToken();
     const nodeFetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
 
     const payload = {
@@ -1377,7 +1667,7 @@ app.post('/api/shipping/validate-address', async (req, res) => {
       },
     };
 
-    const apiRes = await nodeFetch(`${carriers.ups.apiUrl}/api/addressvalidation/v2/1`, {
+    const apiRes = await nodeFetch(`${ups.apiUrl}/api/addressvalidation/v2/1`, {
       method: 'POST',
       headers: {
         'Authorization':  `Bearer ${token}`,
@@ -1445,18 +1735,23 @@ app.post('/api/shipping/validate-address', async (req, res) => {
 });
 
 // VERIFY UPS ACCOUNT NUMBER
-app.post('/api/shipping/verify-account', async (req, res) => {
+app.post('/api/shipping/verify-account', requireAuth, async (req, res) => {
   try {
     const { accountNumber, zip } = req.body;
     if(!accountNumber) return res.status(400).json({ error: 'Account number required.' });
 
-    // Attempt to get a token using the platform credentials
-    // UPS account verification is done by attempting to rate-shop with that account
-    const token = await carriers.ups.getAccessToken();
+    // Verify using the seller's OWN connected UPS credentials — they must
+    // connect UPS first. Account verification is a rate-shop against that account.
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, 'ups');
+    if (!creds) {
+      return res.json({ valid: false, message: 'Connect your UPS account in Settings first.', carrierSetupRequired: true });
+    }
+    const ups = carriers.buildCarrier('ups', creds);
+    const token = await ups.getAccessToken();
     const nodeFetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
 
-    // Try a minimal address validation call to verify the account exists
-    const res2 = await nodeFetch(`${carriers.ups.apiUrl}/api/rating/v2403/Shop`, {
+    // Try a minimal rate-shop call to verify the account exists
+    const res2 = await nodeFetch(`${ups.apiUrl}/api/rating/v2403/Shop`, {
       method: 'POST',
       headers: {
         'Authorization':  `Bearer ${token}`,
@@ -1506,7 +1801,7 @@ app.post('/api/shipping/verify-account', async (req, res) => {
 //   - UPS:   instant void, no charge if package never scanned
 //   - FedEx: instant cancel, no charge if package never scanned
 //   - USPS:  refund request through Shippo (charges immediately, refund in 14-21 days)
-app.post('/api/shipping/void', async (req, res) => {
+app.post('/api/shipping/void', requireAuth, async (req, res) => {
   try {
     const { carrier, trackingNumber, transactionId } = req.body;
 
@@ -1514,21 +1809,39 @@ app.post('/api/shipping/void', async (req, res) => {
       return res.status(400).json({ error: 'carrier and trackingNumber are required.' });
     }
 
+    // Ownership check: only let a seller void a label that belongs to them.
+    const existing = await db.getShipmentByTracking(trackingNumber);
+    if (!existing) {
+      return res.status(404).json({ error: 'Shipment not found.' });
+    }
+    if (existing.sellerId !== req.seller.sellerId) {
+      return res.status(403).json({ error: 'You do not own this shipment.' });
+    }
+
+    if (!['ups', 'fedex', 'usps'].includes(carrier)) {
+      return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
+    }
+
+    // Void against the seller's own carrier credentials.
+    const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
+    if (!creds) return carrierNotConnected(res, carrier, 'voiding a label');
+    const client = carriers.buildCarrier(carrier, creds);
+
     let result;
 
     if (carrier === 'ups') {
-      result = await carriers.ups.voidShipment(trackingNumber);
+      result = await client.voidShipment(trackingNumber);
       result.carrier      = 'ups';
       result.action       = 'voided';
       result.userMessage  = 'UPS label voided. No charge applied since package was never scanned.';
 
     } else if (carrier === 'fedex') {
-      result = await carriers.fedex.cancelShipment(trackingNumber);
+      result = await client.cancelShipment(trackingNumber);
       result.carrier      = 'fedex';
       result.action       = 'cancelled';
       result.userMessage  = 'FedEx label cancelled. No charge applied since package was never scanned.';
 
-    } else if (carrier === 'usps') {
+    } else { // usps
       // USPS via Shippo: requires the transactionId from when the label was created.
       // Shippo charges immediately on label purchase — refund is requested from USPS.
       if (!transactionId) {
@@ -1536,13 +1849,10 @@ app.post('/api/shipping/void', async (req, res) => {
           error: 'USPS refunds require a transactionId. Pass the Shippo transactionId from when the label was created.'
         });
       }
-      result = await carriers.usps.refundLabel(transactionId);
+      result = await client.refundLabel(transactionId);
       result.carrier      = 'usps';
       result.action       = 'refund_requested';
       result.userMessage  = 'Refund requested through Shippo. USPS reviews unused labels — refund typically issued in 14-21 days if approved.';
-
-    } else {
-      return res.status(400).json({ error: 'Unsupported carrier. Use ups, fedex, or usps.' });
     }
 
     // Update the shipment status in the database so the Shipping History
@@ -1567,14 +1877,13 @@ app.post('/api/shipping/void', async (req, res) => {
    GET /api/shipping/history — list shipments for the history page
    ============================================================ */
 
-app.get('/api/shipping/history', async (req, res) => {
+app.get('/api/shipping/history', requireAuth, async (req, res) => {
   try {
     const limit  = Math.min(parseInt(req.query.limit)  || 200, 1000);
     const offset = parseInt(req.query.offset) || 0;
 
-    // When auth is wired into shipping routes, switch to getShipmentsBySeller(req.seller.sellerId, ...).
-    // For now we return all recent shipments (acceptable while there's a single seller).
-    const shipments = await db.getRecentShipments({ limit, offset });
+    // Scoped to the logged-in seller so one tenant never sees another's shipments.
+    const shipments = await db.getShipmentsBySeller(req.seller.sellerId, { limit, offset });
 
     res.json({ shipments, total: shipments.length });
   } catch (err) {
@@ -1769,6 +2078,16 @@ app.post('/api/returns', async (req, res) => {
       residential: ship.residential !== false,
     };
 
+    // Return label is created on the SELLER's own carrier account (the buyer
+    // pays nothing, and it never bills the platform). If the seller hasn't
+    // connected this carrier, we can't generate the label.
+    const carrierCreds = await loadSellerCarrierCreds(order.sellerId, carrier);
+    if (!carrierCreds) {
+      return res.status(400).json({
+        error: 'This seller has not connected a shipping carrier yet, so a return label cannot be generated. Please contact them directly.',
+      });
+    }
+
     const label = await carriers.createReturnLabel(carrier, {
       shipper:     buyer,           // package travels FROM the buyer
       recipient:   returnAddress,   // TO the seller's return address
@@ -1782,7 +2101,7 @@ app.post('/api/returns', async (req, res) => {
       // frontend wrap it in an HTML page that prints at 1:1 via a hidden
       // iframe. The browser PDF viewer path was unreliable across drivers.
       labelFormat: 'GIF',
-    });
+    }, carrierCreds);
 
     const returnRow = await db.createReturn({
       orderId:        order.id,

@@ -422,7 +422,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0"></div>
           <div style="text-align:left;overflow:hidden">
             <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="activeShipperName">NextLao Store</div>
-            <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace" id="activeShipperAcct">UPS #094D28</div>
+            <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace" id="activeShipperAcct">Connect a carrier →</div>
           </div>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -1298,7 +1298,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <button class="api-save" style="width:100%;padding:9px;border-radius:8px;font-size:13px" onclick="saveShipperAccounts()">Save shipper accounts</button>
         </div>
 
-        <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;margin-top:4px">Carrier API credentials</div>
+        <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;margin-top:4px">Carrier API credentials</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:12px">You must connect your <b>own</b> carrier accounts to ship — every label bills the account you connect here. Credentials are encrypted and never leave your account.</div>
 
         <div class="api-card">
           <div class="api-card-hd">
@@ -1306,32 +1307,32 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
               <div style="width:28px;height:28px;border-radius:6px;background:rgba(255,181,0,0.12);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--ups-gold)">UPS</div>
               UPS API
             </div>
-            <div class="api-connected yes">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Connected
-            </div>
+            <div class="api-connected no" id="upsBadge">Not connected</div>
           </div>
           <div class="form-field" style="margin-bottom:8px">
             <label>Client ID</label>
             <div class="api-key-row">
-              <input type="password" value="your_ups_client_id_here" id="upsClientId">
+              <input type="password" value="" id="upsClientId" placeholder="Your UPS app Client ID" autocomplete="off">
               <button class="api-reveal" onclick="toggleReveal('upsClientId',this)">Show</button>
             </div>
           </div>
           <div class="form-field" style="margin-bottom:8px">
             <label>Client Secret</label>
             <div class="api-key-row">
-              <input type="password" value="your_ups_client_secret_here" id="upsSecret">
+              <input type="password" value="" id="upsSecret" placeholder="Your UPS app Client Secret" autocomplete="off">
               <button class="api-reveal" onclick="toggleReveal('upsSecret',this)">Show</button>
-              <button class="api-save" onclick="toast('UPS credentials saved','success')">Save</button>
             </div>
           </div>
-          <div class="form-field" style="margin-bottom:0">
-            <label>Account number</label>
+          <div class="form-field" style="margin-bottom:8px">
+            <label>Account number <span id="upsAcctHint" style="color:var(--muted);font-weight:400"></span></label>
             <div class="api-key-row">
-              <input type="password" value="your_ups_account_number" id="upsAccount">
+              <input type="password" value="" id="upsAccount" placeholder="Your UPS account #" autocomplete="off">
               <button class="api-reveal" onclick="toggleReveal('upsAccount',this)">Show</button>
             </div>
+          </div>
+          <div class="api-key-row">
+            <button class="api-save" onclick="saveCarrierCreds('ups')">Save &amp; verify</button>
+            <button class="api-reveal" onclick="testCarrierConnection('ups')">Test</button>
           </div>
         </div>
 
@@ -1341,25 +1342,32 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
               <div style="width:28px;height:28px;border-radius:6px;background:rgba(123,47,212,0.12);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#a855f7">FDX</div>
               FedEx API
             </div>
-            <div class="api-connected yes">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Connected
-            </div>
+            <div class="api-connected no" id="fedexBadge">Not connected</div>
           </div>
           <div class="form-field" style="margin-bottom:8px">
             <label>API Key</label>
             <div class="api-key-row">
-              <input type="password" value="your_fedex_api_key_here" id="fedexKey">
+              <input type="password" value="" id="fedexKey" placeholder="Your FedEx API Key" autocomplete="off">
               <button class="api-reveal" onclick="toggleReveal('fedexKey',this)">Show</button>
             </div>
           </div>
-          <div class="form-field" style="margin-bottom:0">
+          <div class="form-field" style="margin-bottom:8px">
             <label>Secret Key</label>
             <div class="api-key-row">
-              <input type="password" value="your_fedex_secret_here" id="fedexSecret">
+              <input type="password" value="" id="fedexSecret" placeholder="Your FedEx Secret Key" autocomplete="off">
               <button class="api-reveal" onclick="toggleReveal('fedexSecret',this)">Show</button>
-              <button class="api-save" onclick="toast('FedEx credentials saved','success')">Save</button>
             </div>
+          </div>
+          <div class="form-field" style="margin-bottom:8px">
+            <label>Account number <span id="fedexAcctHint" style="color:var(--muted);font-weight:400"></span></label>
+            <div class="api-key-row">
+              <input type="password" value="" id="fedexAccount" placeholder="Your FedEx account #" autocomplete="off">
+              <button class="api-reveal" onclick="toggleReveal('fedexAccount',this)">Show</button>
+            </div>
+          </div>
+          <div class="api-key-row">
+            <button class="api-save" onclick="saveCarrierCreds('fedex')">Save &amp; verify</button>
+            <button class="api-reveal" onclick="testCarrierConnection('fedex')">Test</button>
           </div>
         </div>
 
@@ -1367,20 +1375,20 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div class="api-card-hd">
             <div class="api-carrier">
               <div style="width:28px;height:28px;border-radius:6px;background:rgba(0,80,200,0.12);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:var(--usps-light)">USPS</div>
-              USPS API
+              USPS (Shippo)
             </div>
-            <div class="api-connected yes">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Connected
+            <div class="api-connected no" id="uspsBadge">Not connected</div>
+          </div>
+          <div class="form-field" style="margin-bottom:8px">
+            <label>Shippo API token <span style="color:var(--muted);font-weight:400">— USPS labels are purchased through your Shippo account</span></label>
+            <div class="api-key-row">
+              <input type="password" value="" id="uspsKey" placeholder="shippo_live_… or shippo_test_…" autocomplete="off">
+              <button class="api-reveal" onclick="toggleReveal('uspsKey',this)">Show</button>
             </div>
           </div>
-          <div class="form-field" style="margin-bottom:0">
-            <label>API Key</label>
-            <div class="api-key-row">
-              <input type="password" value="your_usps_api_key_here" id="uspsKey">
-              <button class="api-reveal" onclick="toggleReveal('uspsKey',this)">Show</button>
-              <button class="api-save" onclick="toast('USPS credentials saved','success')">Save</button>
-            </div>
+          <div class="api-key-row">
+            <button class="api-save" onclick="saveCarrierCreds('usps')">Save &amp; verify</button>
+            <button class="api-reveal" onclick="testCarrierConnection('usps')">Test</button>
           </div>
         </div>
       </div>
@@ -1760,7 +1768,7 @@ async function loadOrders(forceRefresh = false){
     // Fetch real orders + shipments in parallel
     const [ordersRes, shipmentsRes] = await Promise.all([
       fetch('/api/seller/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
-      fetch('/api/shipping/history?limit=500'),
+      fetch('/api/shipping/history?limit=500', { headers: { 'Authorization': `Bearer ${token}` } }),
     ]);
 
     if(ordersRes.status === 401){
@@ -2413,7 +2421,10 @@ async function trackPackage(){
   else if(/^1Z/i.test(num)) carrier = 'ups';
 
   try {
-    const res  = await fetch(`/api/shipping/track/${carrier}/${num}`);
+    const token = localStorage.getItem('ss_token');
+    const res  = await fetch(`/api/shipping/track/${carrier}/${num}`, {
+      headers: { 'Authorization': `Bearer ${token||'demo_token'}` },
+    });
     const data = await res.json();
 
     if(data.error) throw new Error(data.error);
@@ -2731,14 +2742,18 @@ function showPage(name){
     ordersLoaded = false;
     renderOrders();
   }
+  if(name === 'settings'){
+    // Load per-seller carrier connection status (server-backed, encrypted)
+    loadCarrierStatus();
+  }
 }
 
 // ── SHIPPER ACCOUNTS ──────────────────────────────────────────
 const DEFAULT_SHIPPER = {
   id:        'default',
-  name:      'NextLao Store',
-  company:   'NextLao Store',
-  acct:      '094D28',
+  name:      'My Store',
+  company:   'My Store',
+  acct:      '',
   carrier:   'UPS',
   address1:  '123 Main Street',
   city:      'Los Angeles',
@@ -2860,9 +2875,10 @@ async function verifyShipperAccount(idx){
   btn.disabled    = true;
 
   try {
+    const token = localStorage.getItem('ss_token');
     const res  = await fetch('/api/shipping/verify-account', {
       method:  'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${token||'demo_token'}`},
       body:    JSON.stringify({ accountNumber: acct.acct, zip: acct.zip }),
     });
     const data = await res.json();
@@ -2887,6 +2903,94 @@ function saveShipperAccounts(){
   localStorage.setItem('shipperAccounts', JSON.stringify(shipperAccounts));
   renderShipperDropdown();
   toast('Shipper accounts saved ✓','success');
+}
+
+/* ── CARRIER CREDENTIALS (bring-your-own-account) ──────────────
+   These persist server-side (encrypted) via /api/seller/carriers.
+   The seller must connect their OWN carrier accounts to ship —
+   every label bills the account connected here, never the platform's. */
+
+const CARRIER_FIELD_IDS = {
+  ups:   { clientId:'upsClientId', clientSecret:'upsSecret', accountNumber:'upsAccount' },
+  fedex: { apiKey:'fedexKey', secretKey:'fedexSecret', accountNumber:'fedexAccount' },
+  usps:  { apiKey:'uspsKey' },
+};
+
+function _carrierAuthHeaders(json){
+  const token = localStorage.getItem('ss_token');
+  const h = { 'Authorization': `Bearer ${token||'demo_token'}` };
+  if(json) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+function setCarrierBadge(carrier, state, label){
+  const badge = document.getElementById(`${carrier}Badge`);
+  if(!badge) return;
+  badge.className = 'api-connected ' + (state === 'connected' ? 'yes' : 'no');
+  const check = state === 'connected'
+    ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> '
+    : '';
+  badge.innerHTML = check + (label || (state === 'connected' ? 'Connected' : 'Not connected'));
+}
+
+async function loadCarrierStatus(){
+  try {
+    const res = await fetch('/api/seller/carriers', { headers: _carrierAuthHeaders(false) });
+    if(!res.ok) return;
+    const data = await res.json();
+    ['ups','fedex','usps'].forEach(c => {
+      const info = data[c] || { connected:false };
+      if(!info.connected){ setCarrierBadge(c, 'none', 'Not connected'); }
+      else if(info.status === 'verified'){ setCarrierBadge(c, 'connected', 'Connected'); }
+      else if(info.status === 'invalid'){ setCarrierBadge(c, 'warn', 'Invalid — re-check'); }
+      else { setCarrierBadge(c, 'warn', 'Saved — unverified'); }
+      const hint = document.getElementById(`${c}AcctHint`);
+      if(hint) hint.textContent = info.accountNumberMasked ? `(saved: ${info.accountNumberMasked})` : '';
+    });
+  } catch(e){ /* non-fatal */ }
+}
+
+async function saveCarrierCreds(carrier){
+  const map = CARRIER_FIELD_IDS[carrier];
+  if(!map) return;
+  const body = {};
+  for(const [field, id] of Object.entries(map)){
+    body[field] = (document.getElementById(id)?.value || '').trim();
+  }
+  const missing = Object.entries(map).filter(([f]) => !body[f]).map(([f]) => f);
+  if(missing.length){ toast(`Fill in: ${missing.join(', ')}`,'error'); return; }
+
+  setCarrierBadge(carrier, 'warn', 'Saving…');
+  try {
+    const res  = await fetch(`/api/seller/carriers/${carrier}`, {
+      method:'POST', headers:_carrierAuthHeaders(true), body:JSON.stringify(body),
+    });
+    const data = await res.json();
+    if(!res.ok){ toast(data.error || 'Save failed','error'); await loadCarrierStatus(); return; }
+
+    if(data.verified){ toast(`${carrier.toUpperCase()} connected & verified ✓`,'success'); }
+    else { toast(data.warning || `${carrier.toUpperCase()} saved but not verified`,'error'); }
+    for(const id of Object.values(map)){ const el = document.getElementById(id); if(el) el.value = ''; }
+    await loadCarrierStatus();
+  } catch(e){
+    toast('Save failed: '+e.message,'error');
+    await loadCarrierStatus();
+  }
+}
+
+async function testCarrierConnection(carrier){
+  setCarrierBadge(carrier, 'warn', 'Testing…');
+  try {
+    const res  = await fetch(`/api/seller/carriers/${carrier}/test`, {
+      method:'POST', headers:_carrierAuthHeaders(true),
+    });
+    const data = await res.json();
+    if(res.ok && data.success){ toast(`${carrier.toUpperCase()} connection OK ✓`,'success'); }
+    else { toast(data.error || `${carrier.toUpperCase()} test failed`,'error'); }
+  } catch(e){
+    toast('Test failed: '+e.message,'error');
+  }
+  await loadCarrierStatus();
 }
 
 function renderShipperDropdown(){
@@ -4212,7 +4316,10 @@ async function loadHistory(forceRefresh = false){
 
   historyLoadInFlight = (async () => {
     try {
-      const res  = await fetch('/api/shipping/history?limit=500');
+      const token = localStorage.getItem('ss_token');
+      const res  = await fetch('/api/shipping/history?limit=500', {
+        headers: { 'Authorization': `Bearer ${token||'demo_token'}` },
+      });
       const data = await res.json();
       if(data.error) throw new Error(data.error);
 

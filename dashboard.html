@@ -1499,6 +1499,8 @@ function showDash(name){
   };
   document.getElementById('topbarTitle').textContent = titles[name]||name;
   window.scrollTo(0,0);
+
+  if(name === 'stripe') loadStripeConfig();
 }
 
 // ── MODE TOGGLE ──
@@ -1821,24 +1823,78 @@ function setStripeMode(mode,btn){
   toast(mode==='live'?'Switched to live Stripe keys':'Switched to test Stripe keys');
 }
 
-function saveStripeKeys(){
-  // API CALL: POST /api/stripe/keys — store securely in server environment
-  toast('✓ Stripe keys saved securely on your server');
+function _stripeAuthHeaders(json){
+  const token = localStorage.getItem('ss_token');
+  const h = { 'Authorization': `Bearer ${token||'demo_token'}` };
+  if(json) h['Content-Type'] = 'application/json';
+  return h;
 }
 
-function testStripeConnection(){
-  const pk=document.getElementById('pkInput').value.trim();
-  const sk=document.getElementById('skInput').value.trim();
-  const result=document.getElementById('stripeTestResult');
-  if(!pk||!sk){toast('Enter both keys first');return}
+async function saveStripeKeys(){
+  const publishableKey = document.getElementById('pkInput').value.trim();
+  const secretKey      = document.getElementById('skInput').value.trim();
+  const webhookSecret  = document.getElementById('webhookSecret').value.trim();
+  if(!publishableKey || !secretKey){ toast('Enter both your publishable and secret key first'); return; }
+
+  try {
+    const res  = await fetch('/api/seller/stripe/keys', {
+      method:'POST', headers:_stripeAuthHeaders(true),
+      body: JSON.stringify({ publishableKey, secretKey, webhookSecret }),
+    });
+    const data = await res.json();
+    if(!res.ok){ toast(data.error || 'Failed to save keys'); return; }
+    toast('✓ '+(data.message || 'Stripe keys saved & verified'));
+    document.getElementById('skInput').value = '';
+    document.getElementById('webhookSecret').value = '';
+    loadStripeConfig();
+  } catch(e){ toast('Failed to save keys: '+e.message); }
+}
+
+async function testStripeConnection(){
+  const result = document.getElementById('stripeTestResult');
   result.style.display='block';
-  if(pk.startsWith('pk_')&&sk.startsWith('sk_')){
-    result.style.color='var(--green)';
-    result.textContent='✓ Connection successful — Stripe is ready to accept payments';
-  } else {
+  result.style.color='var(--muted)';
+  result.textContent='Testing…';
+  try {
+    const res  = await fetch('/api/seller/stripe/test', { method:'POST', headers:_stripeAuthHeaders(false) });
+    const data = await res.json();
+    if(res.ok && data.success){
+      result.style.color='var(--green)';
+      result.textContent=`✓ ${data.message} (${data.mode} mode · ${data.currency})`;
+    } else {
+      result.style.color='var(--red)';
+      result.textContent='✗ '+(data.error || 'Connection failed');
+    }
+  } catch(e){
     result.style.color='var(--red)';
-    result.textContent='✗ Connection failed — check key format (should start with pk_test_ and sk_test_)';
+    result.textContent='✗ '+e.message;
   }
+}
+
+// Load saved Stripe config (publishable key + masked secret status + the
+// seller's per-store webhook URL). Secrets are never returned by the server.
+async function loadStripeConfig(){
+  if(!localStorage.getItem('ss_token')) return;
+  try {
+    const slug = JSON.parse(localStorage.getItem('ss_seller')||'{}').storeSlug;
+    const urlEl = document.getElementById('webhookUrl');
+    if(urlEl && slug){ urlEl.value = location.origin + '/api/stripe/webhook/' + slug; urlEl.readOnly = true; }
+  } catch(e){}
+  try {
+    const res  = await fetch('/api/seller/stripe/keys', { headers:_stripeAuthHeaders(false) });
+    if(!res.ok) return;
+    const data = await res.json();
+    if(!data.connected) return;
+    const pk = document.getElementById('pkInput');
+    if(pk && data.publishableKey && !pk.value){
+      pk.value = data.publishableKey;
+      if(typeof validateStripeKey === 'function') validateStripeKey('pkInput','pkStatus','pk_test_','pk_live_');
+    }
+    const skStatus = document.getElementById('skStatus');
+    if(skStatus){ skStatus.textContent = 'Saved ✓'; skStatus.className = 'key-status valid'; }
+    const sk = document.getElementById('skInput');
+    if(sk && data.secretKeyMasked){ sk.placeholder = data.secretKeyMasked; }
+  } catch(e){ /* non-fatal */ }
 }
 
 function calcStripeFee(){
