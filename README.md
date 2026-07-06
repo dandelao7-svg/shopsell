@@ -14,6 +14,7 @@ Your complete ecommerce platform. Follow these steps exactly and you'll be live 
 | `database.js` | PostgreSQL data layer — products, orders, sellers, buyers |
 | `carriers.js` / `lib/crypto.js` | Multi-carrier shipping + encryption for stored credentials |
 | `package.json` | Node dependencies |
+| `.env.example` | Template listing every environment variable — copy to `.env` and fill in |
 
 ---
 
