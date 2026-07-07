@@ -2334,6 +2334,58 @@ app.get('/api/shipping/carriers/test', requireAuth, async (req, res) => {
   }
 });
 
+// RATE SHOPPING — compare live rates across ALL of the seller's connected
+// carriers for one package/route. Queries each connected carrier in parallel
+// (Promise.allSettled) so one carrier erroring never sinks the others; returns
+// the combined rate list sorted cheapest-first plus any per-carrier errors.
+app.post('/api/shipping/rates', requireAuth, async (req, res) => {
+  try {
+    const { shipper, recipient, package: pkg } = req.body;
+    if (!shipper || !recipient || !pkg) {
+      return res.status(400).json({ error: 'shipper, recipient, and package are required.' });
+    }
+
+    // Which carriers has this seller actually connected?
+    const accounts  = await db.getCarrierAccounts(req.seller.sellerId);
+    const connected = (accounts || [])
+      .map(a => a.carrier)
+      .filter(c => ['ups', 'fedex', 'usps'].includes(c));
+
+    if (connected.length === 0) {
+      return res.status(400).json({
+        error: 'Connect at least one carrier account in Settings to compare rates.',
+        carrierSetupRequired: true,
+      });
+    }
+
+    const settled = await Promise.allSettled(connected.map(async carrier => {
+      const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
+      if (!creds) throw new Error('credentials unavailable');
+      return carriers.getRates(carrier, { shipper, recipient, package: pkg }, creds);
+    }));
+
+    const rates  = [];
+    const errors = [];
+    settled.forEach((result, i) => {
+      const carrier = connected[i];
+      if (result.status === 'fulfilled') {
+        rates.push(...result.value);
+      } else {
+        console.error(`Rate lookup failed for ${carrier}:`, result.reason?.message);
+        errors.push({ carrier, error: result.reason?.message || 'Rate lookup failed' });
+      }
+    });
+
+    // Cheapest first — the whole point of rate shopping.
+    rates.sort((a, b) => a.totalCharge - b.totalCharge);
+
+    res.json({ rates, errors, cheapest: rates[0] || null });
+  } catch (err) {
+    console.error('Rate shopping error:', err);
+    res.status(500).json({ error: 'Failed to fetch rates: ' + err.message });
+  }
+});
+
 // CREATE SHIPPING LABEL
 app.post('/api/shipping/label', requireAuth, async (req, res) => {
   try {

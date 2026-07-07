@@ -869,6 +869,14 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
               </select>
             </div>
           </div>
+          <!-- RATE SHOPPING -->
+          <div style="margin-bottom:1.25rem">
+            <button type="button" id="qsRatesBtn" onclick="compareRates()" style="width:100%;justify-content:center;padding:11px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 7l10-5 10 5M4 7v6a8 8 0 0016 0V7"/><path d="M2 13h4M18 13h4"/></svg>
+              Compare live rates across your carriers
+            </button>
+            <div id="rateResults" style="display:none;margin-top:12px"></div>
+          </div>
           <div class="form-field" style="margin-bottom:1.25rem">
             <label>Package description (optional)</label>
             <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
@@ -3840,6 +3848,149 @@ function updateServiceOptions(){
     .map(s=>`<option value="${s.v}">${s.l}</option>`).join('');
 }
 
+// ── RATE SHOPPING ─────────────────────────────────────────────
+// Build the shipper/recipient/package object from the Quick Ship form —
+// shared by both the rate lookup and the label purchase.
+function collectShipmentForm(){
+  return {
+    shipper: {
+      name:     document.getElementById('qs-from-name').value,
+      phone:    document.getElementById('qs-from-phone').value || '5550000000',
+      address1: document.getElementById('qs-from-addr').value,
+      city:     document.getElementById('qs-from-city').value,
+      state:    document.getElementById('qs-from-state').value,
+      zip:      document.getElementById('qs-from-zip').value,
+      country:  'US',
+    },
+    recipient: {
+      name:        document.getElementById('qs-to-name').value.trim(),
+      company:     document.getElementById('qs-to-company').value.trim() || undefined,
+      phone:       document.getElementById('qs-to-phone').value || '5550000000',
+      address1:    document.getElementById('qs-to-addr').value.trim(),
+      address2:    document.getElementById('qs-to-addr2').value.trim() || undefined,
+      city:        document.getElementById('qs-to-city').value.trim(),
+      state:       document.getElementById('qs-to-state').value,
+      zip:         document.getElementById('qs-to-zip').value.trim(),
+      country:     'US',
+      residential: document.getElementById('qs-residential').checked,
+    },
+    package: {
+      weight: parseFloat(document.getElementById('qs-weight').value) || 1,
+      length: parseFloat(document.getElementById('qs-length').value) || 12,
+      width:  parseFloat(document.getElementById('qs-width').value)  || 9,
+      height: parseFloat(document.getElementById('qs-height').value) || 4,
+    },
+  };
+}
+
+const CARRIER_BRAND = {
+  ups:   { name:'UPS',   color:'#ffb500' },
+  fedex: { name:'FedEx', color:'#7b2fd4' },
+  usps:  { name:'USPS',  color:'#0050c8' },
+};
+
+async function compareRates(){
+  const form = collectShipmentForm();
+  if(!form.recipient.name || !form.recipient.address1 || !form.recipient.city || !form.recipient.zip){
+    toast('Fill in the recipient address first','error');
+    return;
+  }
+
+  const btn = document.getElementById('qsRatesBtn');
+  const box = document.getElementById('rateResults');
+  btn.disabled = true;
+  const btnHtml = btn.innerHTML;
+  btn.innerHTML = 'Fetching live rates…';
+  box.style.display = 'block';
+  box.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Asking your connected carriers for rates…</div>';
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/rates', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${token||'demo_token'}` },
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+
+    if(!res.ok){
+      box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Could not fetch rates.'}</div>`;
+      return;
+    }
+    renderRates(data);
+  } catch(err){
+    box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">Network error: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = btnHtml;
+  }
+}
+
+function renderRates({ rates = [], errors = [] }){
+  const box = document.getElementById('rateResults');
+  if(!rates.length){
+    box.innerHTML = `<div style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;color:var(--muted);font-size:12px">No rates returned${errors.length?': '+errors.map(e=>`${e.carrier.toUpperCase()} — ${e.error}`).join('; '):'.'}</div>`;
+    return;
+  }
+
+  const cheapest = rates[0].totalCharge;
+  const fastest  = rates.filter(r=>r.estimatedDays!=null).sort((a,b)=>a.estimatedDays-b.estimatedDays)[0];
+
+  const cards = rates.map((r,i) => {
+    const brand = CARRIER_BRAND[r.carrier] || { name:r.carrier.toUpperCase(), color:'var(--muted)' };
+    const isCheapest = r.totalCharge === cheapest;
+    const isFastest  = fastest && r.serviceCode===fastest.serviceCode && r.carrier===fastest.carrier && !isCheapest;
+    const eta = r.estimatedDays!=null ? `${r.estimatedDays} business day${r.estimatedDays===1?'':'s'}` : 'Transit varies';
+    return `
+      <div onclick='selectRate(this, ${JSON.stringify(r).replace(/'/g,"&#39;")})' data-rate-idx="${i}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-left:3px solid ${brand.color};border-radius:9px;margin-bottom:8px;cursor:pointer;background:var(--card);transition:border-color .15s,background .15s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='var(--card)'">
+        <div style="width:52px;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${brand.color}">${brand.name}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${r.serviceName}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">${eta}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+          ${isCheapest?'<span style="font-size:9px;font-weight:700;color:var(--green);background:var(--green-bg);padding:2px 7px;border-radius:5px;letter-spacing:.5px">CHEAPEST</span>':''}
+          ${isFastest?'<span style="font-size:9px;font-weight:700;color:#3b82f6;background:rgba(59,130,246,0.1);padding:2px 7px;border-radius:5px;letter-spacing:.5px">FASTEST</span>':''}
+          <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--text)">$${r.totalCharge.toFixed(2)}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const errNote = errors.length
+    ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Couldn’t reach: ${errors.map(e=>e.carrier.toUpperCase()).join(', ')}</div>`
+    : '';
+
+  box.innerHTML = `
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${rates.length} rate${rates.length===1?'':'s'} · tap one to select</div>
+    ${cards}${errNote}`;
+}
+
+// A rate was chosen — point the carrier + service selectors at it so the
+// existing Generate-label flow buys exactly this service.
+function selectRate(cardEl, rate){
+  const carrierSel = document.getElementById('qs-carrier');
+  const serviceSel = document.getElementById('qs-service');
+  carrierSel.value = rate.carrier;
+  updateServiceOptions(); // rebuild service list + recolor the card for this carrier
+
+  // Ensure the exact service exists as an option (rate serviceCodes can be
+  // more specific than the preset list), then select it.
+  if(![...serviceSel.options].some(o=>o.value===String(rate.serviceCode))){
+    serviceSel.add(new Option(rate.serviceName, rate.serviceCode));
+  }
+  serviceSel.value = rate.serviceCode;
+
+  // Highlight the chosen card.
+  document.querySelectorAll('#rateResults [data-rate-idx]').forEach(el=>{
+    el.style.outline = '';
+  });
+  if(cardEl) cardEl.style.outline = '2px solid var(--green)';
+
+  const btn = document.getElementById('qsSubmitBtn');
+  if(btn) btn.innerHTML = `Generate label · ${(CARRIER_BRAND[rate.carrier]||{}).name} ${rate.serviceName} — $${rate.totalCharge.toFixed(2)}`;
+  toast(`Selected ${rate.serviceName} — $${rate.totalCharge.toFixed(2)}`,'success');
+}
+
 async function generateQuickShipLabel(){
   const toName = document.getElementById('qs-to-name').value.trim();
   const toAddr = document.getElementById('qs-to-addr').value.trim();
@@ -3887,7 +4038,7 @@ async function generateQuickShipLabel(){
     carrier,
     orderId:     qsLabelData.ref || `QS-${Date.now()}`,
     serviceCode: carrier==='ups'   ? service : undefined,
-    serviceType: carrier==='fedex' ? service : undefined,
+    serviceType: (carrier==='fedex'||carrier==='usps') ? service : undefined,
     shipper: {
       name:     qsLabelData.fromName,
       phone:    document.getElementById('qs-from-phone').value||'5550000000',
