@@ -348,6 +348,28 @@ async function initSchema() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_package_presets_seller ON package_presets (seller_id, sort_order);`);
 
+    // SHIP-FROM PROFILES — named warehouse/return addresses the seller ships
+    // from. account_number is an optional per-address carrier account label.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ship_from_profiles (
+        id             SERIAL PRIMARY KEY,
+        seller_id      INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        name           TEXT NOT NULL,
+        company        TEXT,
+        address1       TEXT,
+        city           TEXT,
+        state          TEXT,
+        zip            TEXT,
+        phone          TEXT,
+        account_number TEXT,
+        verified       BOOLEAN NOT NULL DEFAULT FALSE,
+        is_default     BOOLEAN NOT NULL DEFAULT FALSE,
+        sort_order     INTEGER NOT NULL DEFAULT 0,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ship_from_seller ON ship_from_profiles (seller_id, sort_order);`);
+
     // PRODUCT REVIEWS — one per buyer per product; feeds products.rating/review_count.
     await client.query(`
       CREATE TABLE IF NOT EXISTS reviews (
@@ -1164,6 +1186,39 @@ async function savePackagePresets(sellerId, list) {
   return getPackagePresets(sellerId);
 }
 
+// ── SHIP-FROM PROFILES ────────────────────────────────────────
+async function getShipFromProfiles(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM ship_from_profiles WHERE seller_id = $1 ORDER BY sort_order ASC, id ASC`, [sellerId]);
+  return rows.map(r => camelize(r));
+}
+
+async function saveShipFromProfiles(sellerId, list) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM ship_from_profiles WHERE seller_id = $1`, [sellerId]);
+    let i = 0;
+    for (const p of (list || [])) {
+      await client.query(
+        `INSERT INTO ship_from_profiles
+           (seller_id, name, company, address1, city, state, zip, phone, account_number, verified, is_default, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [sellerId, String(p.name || 'Location').slice(0, 80), p.company || null,
+         p.address1 || null, p.city || null, p.state || null, p.zip || null, p.phone || null,
+         (p.accountNumber ?? p.acct) || null, !!p.verified, !!p.isDefault, i++]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+  return getShipFromProfiles(sellerId);
+}
+
 // Atomically bump usage, respecting max_uses. Returns true if it incremented.
 async function incrementDiscountUse(sellerId, code) {
   const { rowCount } = await pool.query(
@@ -1295,6 +1350,10 @@ module.exports = {
   // Package presets
   getPackagePresets,
   savePackagePresets,
+
+  // Ship-from profiles
+  getShipFromProfiles,
+  saveShipFromProfiles,
 
   // Stripe keys
   saveStripeKeys,
