@@ -478,13 +478,19 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    const subscription = await stripe.subscriptions.retrieve(seller.stripeSubscriptionId);
-    const isActive = ['active', 'trialing'].includes(subscription.status);
-    if (!isActive) {
-      return res.status(403).json({
-        error: 'Your subscription is inactive. Please update your billing.',
-        subscriptionStatus: subscription.status,
-      });
+    // Report subscription status but DON'T block login on it — a seller must be
+    // able to log in to fix their billing (blocking login there is a deadlock).
+    // Feature-gating by subscription belongs inside the app, not at the door.
+    let subscriptionStatus = 'none';
+    let subscriptionActive = false;
+    try {
+      if (seller.stripeSubscriptionId) {
+        const subscription = await stripe.subscriptions.retrieve(seller.stripeSubscriptionId);
+        subscriptionStatus = subscription.status;
+        subscriptionActive = ['active', 'trialing'].includes(subscription.status);
+      }
+    } catch (e) {
+      console.warn(`Subscription lookup failed for seller ${seller.id} at login:`, e.message);
     }
 
     const token = jwt.sign(
@@ -495,6 +501,8 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({
       token,
+      subscriptionStatus,
+      subscriptionActive,
       seller: {
         id:        seller.id,
         firstName: seller.firstName,
