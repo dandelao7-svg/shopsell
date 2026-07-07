@@ -1161,6 +1161,21 @@ app.post('/api/checkout/confirm', async (req, res) => {
         .catch(e => console.error('Discount usage increment failed:', e.message));
     }
 
+    // Roll this order up into the seller's customer records — but only on the
+    // first confirm (existingOrder was still 'pending') so a retried confirm
+    // can't double-count. Best-effort.
+    if (existingOrder.status === 'pending') {
+      const ci = order.customerInfo || {};
+      db.upsertCustomerFromOrder({
+        sellerId:  order.sellerId,
+        email:     realEmail || order.customerEmail,
+        firstName: ci.firstName,
+        lastName:  ci.lastName,
+        phone:     ci.phone,
+        amount:    order.total,
+      }).catch(e => console.error('Customer upsert failed:', e.message));
+    }
+
     // Fire confirmation emails without blocking the response — a mail failure
     // must never break a paid checkout. No-op if RESEND_API_KEY is unset.
     (async () => {

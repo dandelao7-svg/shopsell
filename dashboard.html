@@ -784,24 +784,13 @@ tr:hover td{background:#fafaf7}
     <div class="page-hd">
       <div>
         <div class="page-hd-title">Customers</div>
-        <div class="page-hd-sub">843 total customers</div>
+        <div class="page-hd-sub" id="customerCountLabel">Your customers</div>
       </div>
-      <button class="btn secondary sm" onclick="toast('Exporting customer list...')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Export
-      </button>
     </div>
     <div class="table-card">
       <table>
-        <thead><tr><th>Customer</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th>Status</th></tr></thead>
-        <tbody>
-          <tr><td><strong>Sarah Johnson</strong></td><td>sarah@email.com</td><td>8</td><td style="font-weight:600;color:var(--green)">$412.40</td><td>Apr 28, 2026</td><td><span class="status-pill active">Active</span></td></tr>
-          <tr><td><strong>Michael Chen</strong></td><td>m.chen@email.com</td><td>5</td><td style="font-weight:600;color:var(--green)">$287.50</td><td>Apr 25, 2026</td><td><span class="status-pill active">Active</span></td></tr>
-          <tr><td><strong>Emma Williams</strong></td><td>emma.w@email.com</td><td>12</td><td style="font-weight:600;color:var(--green)">$634.80</td><td>Apr 22, 2026</td><td><span class="status-pill active">Active</span></td></tr>
-          <tr><td><strong>James Rodriguez</strong></td><td>j.rod@email.com</td><td>2</td><td style="font-weight:600;color:var(--green)">$89.98</td><td>Apr 18, 2026</td><td><span class="status-pill active">Active</span></td></tr>
-          <tr><td><strong>Olivia Martinez</strong></td><td>olivia.m@email.com</td><td>1</td><td style="font-weight:600;color:var(--green)">$34.99</td><td>Mar 29, 2026</td><td><span class="status-pill pending">New</span></td></tr>
-          <tr><td><strong>David Kim</strong></td><td>d.kim@email.com</td><td>6</td><td style="font-weight:600;color:var(--green)">$318.60</td><td>Mar 15, 2026</td><td><span class="status-pill active">Active</span></td></tr>
-        </tbody>
+        <thead><tr><th>Customer</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr></thead>
+        <tbody id="customersTable"></tbody>
       </table>
     </div>
   </div>
@@ -1574,6 +1563,44 @@ if(document.readyState === 'loading'){
   loadStorefrontContent();
 }
 
+// ── CUSTOMERS ──
+async function loadCustomers(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  const tb = document.getElementById('customersTable');
+  if(tb) tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:16px">Loading…</td></tr>';
+  try {
+    const res = await fetch('/api/seller/customers', { headers:{ 'Authorization':'Bearer '+token } });
+    if(!res.ok){ if(tb) tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:16px">Could not load customers.</td></tr>'; return; }
+    const rows = await res.json();
+    renderCustomers(Array.isArray(rows) ? rows : []);
+  } catch(e){ if(tb) tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:16px">Network error.</td></tr>'; }
+}
+
+function renderCustomers(list){
+  const tb = document.getElementById('customersTable');
+  const label = document.getElementById('customerCountLabel');
+  if(label) label.textContent = list.length ? (list.length + ' customer' + (list.length!==1?'s':'')) : 'No customers yet';
+  if(!tb) return;
+  if(!list.length){
+    tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:2rem">No customers yet — they appear here after their first paid order.</td></tr>';
+    return;
+  }
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  tb.innerHTML = list.map(c=>{
+    const name  = [c.firstName, c.lastName].filter(Boolean).join(' ') || '—';
+    const spent = '$' + (Number(c.totalSpent)||0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+    const last  = c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—';
+    return `<tr>
+      <td><strong>${esc(name)}</strong></td>
+      <td>${esc(c.email)}</td>
+      <td>${c.totalOrders||0}</td>
+      <td style="font-weight:600;color:var(--green)">${spent}</td>
+      <td>${last}</td>
+    </tr>`;
+  }).join('');
+}
+
 // ── DISCOUNT CODES ──
 function dcTypeChanged(){
   const t = document.getElementById('dcType').value;
@@ -1772,6 +1799,7 @@ function showDash(name){
   if(name === 'discounts') loadDiscounts();
   if(name === 'add-product') initVariantEditor(ADD_VAR_CTX);
   if(name === 'overview') loadAnalytics();
+  if(name === 'customers') loadCustomers();
 }
 
 // ── MODE TOGGLE ──

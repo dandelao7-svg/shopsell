@@ -714,6 +714,24 @@ async function getCustomersBySeller(sellerId) {
   return camelizeAll(rows);
 }
 
+// Record/roll up a customer when one of the seller's orders is paid. Keyed by
+// (seller_id, lowercased email); increments order count + lifetime spend.
+async function upsertCustomerFromOrder({ sellerId, email, firstName, lastName, phone, amount }) {
+  if (!email) return;
+  await pool.query(
+    `INSERT INTO customers (seller_id, email, first_name, last_name, phone, total_orders, total_spent, last_order_at)
+     VALUES ($1,$2,$3,$4,$5,1,$6,NOW())
+     ON CONFLICT (seller_id, email) DO UPDATE SET
+       total_orders  = customers.total_orders + 1,
+       total_spent   = customers.total_spent + EXCLUDED.total_spent,
+       last_order_at = NOW(),
+       first_name    = COALESCE(NULLIF(EXCLUDED.first_name, ''), customers.first_name),
+       last_name     = COALESCE(NULLIF(EXCLUDED.last_name, ''), customers.last_name),
+       phone         = COALESCE(NULLIF(EXCLUDED.phone, ''), customers.phone)`,
+    [sellerId, String(email).toLowerCase(), firstName || '', lastName || '', phone || '', Number(amount) || 0]
+  );
+}
+
 // ── STRIPE KEYS ──────────────────────────────────────────────
 async function saveStripeKeys(sellerId, { publishableKey, secretKey, webhookSecret }) {
   await pool.query(
@@ -1091,6 +1109,7 @@ module.exports = {
 
   // Customers
   getCustomersBySeller,
+  upsertCustomerFromOrder,
 
   // Reviews
   upsertReview,
