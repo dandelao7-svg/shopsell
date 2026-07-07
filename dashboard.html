@@ -707,6 +707,15 @@ tr:hover td{background:#fafaf7}
               </select>
             </div>
           </div>
+          <div class="field">
+            <label>Package dimensions (in) — optional</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+              <input type="number" id="pLength" placeholder="Length" min="0" step="0.1">
+              <input type="number" id="pWidth"  placeholder="Width"  min="0" step="0.1">
+              <input type="number" id="pHeight" placeholder="Height" min="0" step="0.1">
+            </div>
+            <div class="hint">Auto-sizes the box for single-item orders when batch shipping.</div>
+          </div>
         </div>
 
         <div class="form-card">
@@ -1383,6 +1392,15 @@ tr:hover td{background:#fafaf7}
             <option value="archived">Archived</option>
           </select>
         </div>
+      </div>
+      <div class="field">
+        <label>Package dimensions (in) — optional</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          <input type="number" id="epLength" placeholder="Length" min="0" step="0.1">
+          <input type="number" id="epWidth"  placeholder="Width"  min="0" step="0.1">
+          <input type="number" id="epHeight" placeholder="Height" min="0" step="0.1">
+        </div>
+        <div class="hint">Auto-sizes the box for single-item orders when batch shipping.</div>
       </div>
     </div>
 
@@ -2403,6 +2421,9 @@ async function publishProduct(){
     costPerItem:      parseFloat(document.getElementById('pCost').value)    || null,
     quantity:         parseInt(document.getElementById('pQty').value)       || 0,
     weight:           parseFloat(document.getElementById('pWeight').value)  || null,
+    length:           parseFloat(document.getElementById('pLength').value)  || null,
+    width:            parseFloat(document.getElementById('pWidth').value)   || null,
+    height:           parseFloat(document.getElementById('pHeight').value)  || null,
     options,
     variants,
     status:           document.getElementById('pStatus').value || 'active',
@@ -2600,6 +2621,9 @@ function openEditProduct(id){
   document.getElementById('epCost').value         = r.costPerItem != null ? r.costPerItem : '';
   document.getElementById('epQty').value          = r.quantity != null ? r.quantity : 0;
   document.getElementById('epWeight').value       = r.weight != null ? r.weight : '';
+  document.getElementById('epLength').value        = r.length != null ? r.length : '';
+  document.getElementById('epWidth').value         = r.width  != null ? r.width  : '';
+  document.getElementById('epHeight').value        = r.height != null ? r.height : '';
   document.getElementById('epStatus').value       = r.status || 'active';
   document.getElementById('epReturnable').checked = r.returnable !== false;
   document.getElementById('epReturnDays').value   = r.returnWindowDays != null ? r.returnWindowDays : 30;
@@ -2645,6 +2669,9 @@ async function saveEditProduct(){
     costPerItem:      parseFloat(document.getElementById('epCost').value)    || null,
     quantity:         parseInt(document.getElementById('epQty').value)       || 0,
     weight:           parseFloat(document.getElementById('epWeight').value)  || null,
+    length:           parseFloat(document.getElementById('epLength').value)  || null,
+    width:            parseFloat(document.getElementById('epWidth').value)   || null,
+    height:           parseFloat(document.getElementById('epHeight').value)  || null,
     options,
     variants,
     status:           document.getElementById('epStatus').value || 'active',

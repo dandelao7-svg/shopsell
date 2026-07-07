@@ -129,6 +129,11 @@ async function initSchema() {
     // Denormalized review count (rating column already exists). Both are kept in
     // sync from the reviews table.
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS review_count INTEGER NOT NULL DEFAULT 0;`);
+    // Per-product package dimensions (inches). Optional — used to auto-size the
+    // box for single-item orders when batch shipping.
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS length NUMERIC(10,2);`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS width  NUMERIC(10,2);`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS height NUMERIC(10,2);`);
 
     // BUYERS — accounts for the buyer storefront. Separate from sellers
     // (different login flow, different JWT claim type).
@@ -621,8 +626,9 @@ async function createProduct(data) {
        (seller_id, name, description, category, brand,
         price, compare_at_price, cost_per_item, sku, quantity,
         weight, options, variants, status, image_urls,
-        returnable, return_window_days, restocking_fee_pct)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        returnable, return_window_days, restocking_fee_pct,
+        length, width, height)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      RETURNING *`,
     [
       data.sellerId, data.name, data.description, data.category, data.brand,
@@ -635,6 +641,9 @@ async function createProduct(data) {
       data.returnable !== undefined ? !!data.returnable : true,
       Number.isFinite(parseInt(data.returnWindowDays)) ? parseInt(data.returnWindowDays) : 30,
       Number.isFinite(parseFloat(data.restockingFeePct)) ? parseFloat(data.restockingFeePct) : 0,
+      (data.length == null || data.length === '') ? null : Number(data.length),
+      (data.width  == null || data.width  === '') ? null : Number(data.width),
+      (data.height == null || data.height === '') ? null : Number(data.height),
     ]
   );
   return camelize(rows[0]);
@@ -666,6 +675,9 @@ async function updateProduct(id, fields) {
     returnable:       'returnable',
     returnWindowDays: 'return_window_days',
     restockingFeePct: 'restocking_fee_pct',
+    length:           'length',
+    width:            'width',
+    height:           'height',
   };
   const sets = [];
   const vals = [];

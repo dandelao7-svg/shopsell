@@ -761,6 +761,7 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       name, description, category, brand,
       price, compareAtPrice, costPerItem,
       sku, quantity, weight,
+      length, width, height,
       status, imageUrls,
       returnable, returnWindowDays, restockingFeePct,
     } = req.body;
@@ -807,6 +808,9 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       sku,
       quantity:       effQty,
       weight:         weight ? parseFloat(weight) : null,
+      length:         length ? parseFloat(length) : null,
+      width:          width  ? parseFloat(width)  : null,
+      height:         height ? parseFloat(height) : null,
       options:          options,
       variants:         variants,
       status:           status     || 'active',
@@ -831,6 +835,11 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'You do not own this product.' });
     }
     const body = { ...req.body };
+    // Dimensions are optional NUMERICs — coerce '' / undefined to null so the
+    // UPDATE doesn't try to cast an empty string.
+    for (const dim of ['length', 'width', 'height']) {
+      if (dim in body) body[dim] = (body[dim] === '' || body[dim] == null) ? null : Number(body[dim]);
+    }
     // When options/variants are being edited, normalize them and re-derive the
     // product-level price/quantity from the variants.
     if (body.options !== undefined || body.variants !== undefined) {
@@ -2737,24 +2746,44 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
       return credCache[c];
     };
 
-    // Per-order weight = sum of each line's product weight × qty (lbs). Products
-    // are cached across the whole batch since orders often share items. Returns
-    // 0 when no product has a weight set, so the caller can fall back to the
-    // batch default.
+    // Per-order weight = sum of each line's product weight × qty, in POUNDS.
+    // Product weights are stored in OUNCES (the product form is labelled oz), so
+    // convert to lbs for the carrier APIs. Products are cached across the batch
+    // since orders often share items. Returns 0 when no product has a weight set
+    // so the caller can fall back to the batch default.
+    const OZ_PER_LB = 16;
     const productCache = {};
     async function computeOrderWeight(order) {
       const items = Array.isArray(order.items) ? order.items : [];
-      let total = 0;
+      let totalOz = 0;
       for (const it of items) {
         if (!it.productId) continue;
         if (!(it.productId in productCache)) {
           productCache[it.productId] = await db.getProductById(it.productId).catch(() => null);
         }
         const p = productCache[it.productId];
-        const w = p && p.weight != null ? Number(p.weight) : 0;
-        if (Number.isFinite(w)) total += w * (Number(it.qty) || 1);
+        const oz = p && p.weight != null ? Number(p.weight) : 0;
+        if (Number.isFinite(oz)) totalOz += oz * (Number(it.qty) || 1);
       }
-      return total;
+      return totalOz / OZ_PER_LB;
+    }
+
+    // Per-order dimensions from the product — only meaningful for a single-item,
+    // single-qty order (you can't just add box dimensions together). Returns
+    // [L,W,H] or null so the caller keeps the batch default for multi-item orders.
+    async function computeOrderDims(order) {
+      const items = Array.isArray(order.items) ? order.items : [];
+      if (items.length !== 1) return null;
+      const it = items[0];
+      if (!it.productId || (Number(it.qty) || 1) !== 1) return null;
+      if (!(it.productId in productCache)) {
+        productCache[it.productId] = await db.getProductById(it.productId).catch(() => null);
+      }
+      const p = productCache[it.productId];
+      if (p && p.length != null && p.width != null && p.height != null) {
+        return [Number(p.length), Number(p.width), Number(p.height)];
+      }
+      return null;
     }
 
     async function processOrder(orderId) {
@@ -2783,10 +2812,12 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
         }
 
         // Weigh this specific order from its line items; fall back to the batch
-        // default when no product weights are set. Dimensions stay the batch
-        // default (dims aren't tracked per product yet).
+        // default when no product weights are set. For single-item orders, also
+        // auto-size the box from the product's dimensions when it has them.
         const orderWeight = await computeOrderWeight(order);
+        const orderDims   = await computeOrderDims(order);
         const pkgForOrder = { ...defaultPkg, weight: orderWeight > 0 ? orderWeight : defaultPkg.weight };
+        if (orderDims) { pkgForOrder.length = orderDims[0]; pkgForOrder.width = orderDims[1]; pkgForOrder.height = orderDims[2]; }
 
         // Pick carrier + service for this order.
         let chosenCarrier = carrier, chosenService = service;
