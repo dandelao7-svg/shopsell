@@ -400,10 +400,44 @@ async function sendShippingNotificationToBuyer({
   }, 'shipping-notify');
 }
 
+// ============================================================
+// SELLER EMAIL — "reset your password"
+// ============================================================
+async function sendPasswordReset({ toEmail, firstName, resetUrl }) {
+  if (!client) return { skipped: true };
+  if (!toEmail) return { skipped: true, reason: 'no recipient' };
+
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+      <h2 style="font-weight:700">Reset your password</h2>
+      <p>Hi ${esc(firstName) || 'there'}, we got a request to reset your ShopSell password.</p>
+      <p style="margin:24px 0">
+        <a href="${esc(resetUrl)}" style="background:#e63946;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block">Reset password</a>
+      </p>
+      <p style="color:#6b7280;font-size:13px">This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't change.</p>
+      <p style="color:#9ca3af;font-size:12px;word-break:break-all">Or paste this link: ${esc(resetUrl)}</p>
+    </div>`;
+
+  try {
+    const { data, error } = await client.emails.send({
+      from:    fromAddr,
+      to:      [toEmail],
+      subject: 'Reset your ShopSell password',
+      html,
+    });
+    if (error) { console.error('Password reset email error:', error); return { skipped: false, error }; }
+    return { skipped: false, id: data?.id };
+  } catch (err) {
+    console.error('Password reset email failed:', err.message);
+    return { skipped: false, error: err.message };
+  }
+}
+
 module.exports = {
   sendReturnLabelToBuyer,
   sendReturnNotificationToSeller,
   sendOrderConfirmationToBuyer,
   sendNewOrderToSeller,
   sendShippingNotificationToBuyer,
+  sendPasswordReset,
 };

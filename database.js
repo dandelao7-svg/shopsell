@@ -76,6 +76,10 @@ async function initSchema() {
     // so we can extend (e.g. residential flag, instructions) without migrating.
     await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS return_address JSONB;`);
 
+    // Password reset: a hashed one-time token + its expiry.
+    await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS reset_token TEXT;`);
+    await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMPTZ;`);
+
     // Per-seller storefront page content (About / FAQ / Privacy / Terms / contactEmail).
     // JSONB so new fields can be added without a migration.
     await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS storefront_content JSONB;`);
@@ -475,6 +479,15 @@ async function getSellerByEmail(email) {
   return camelize(rows[0]);
 }
 
+// Find a seller by a still-valid (non-expired) password-reset token hash.
+async function getSellerByResetToken(tokenHash) {
+  const { rows } = await pool.query(
+    `SELECT * FROM sellers WHERE reset_token = $1 AND reset_token_expires > NOW() LIMIT 1`,
+    [tokenHash]
+  );
+  return camelize(rows[0]);
+}
+
 async function getSellerById(id) {
   const { rows } = await pool.query(
     `SELECT * FROM sellers WHERE id = $1 LIMIT 1`, [id]
@@ -536,6 +549,9 @@ async function updateSeller(id, fields) {
     plan:               'plan',
     subscriptionStatus: 'subscription_status',
     storeActive:        'store_active',
+    passwordHash:       'password_hash',
+    resetToken:         'reset_token',
+    resetTokenExpires:  'reset_token_expires',
   };
   const sets = [];
   const vals = [];
@@ -1378,6 +1394,7 @@ module.exports = {
   // Sellers
   createSeller,
   getSellerByEmail,
+  getSellerByResetToken,
   getSellerById,
   getSellerBySlug,
   getSellerByStripeCustomerId,

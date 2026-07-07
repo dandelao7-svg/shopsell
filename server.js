@@ -306,6 +306,10 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
 });
 
+app.get('/reset-password', (req, res) => {
+  res.sendFile(path.join(__dirname, 'reset-password.html'));
+});
+
 // Serve the seller dashboard
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
@@ -505,6 +509,58 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
+// Request a password-reset link. Always responds generically so it never
+// reveals whether an email has an account.
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const generic = { message: 'If an account exists for that email, a reset link is on its way.' };
+  try {
+    const email = String(req.body.email || '').trim();
+    if (!email) return res.status(400).json({ error: 'Email is required.' });
+
+    const seller = await db.getSellerByEmail(email);
+    if (seller) {
+      // Store only a HASH of the token; email the raw token in the link.
+      const rawToken  = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expires   = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await db.updateSeller(seller.id, { resetToken: tokenHash, resetTokenExpires: expires });
+
+      const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
+      const resetUrl = `${base}/reset-password?token=${rawToken}`;
+      const result = await emailService.sendPasswordReset({
+        toEmail: seller.email, firstName: seller.firstName, resetUrl,
+      });
+      // Bootstrap fallback: if email isn't configured, log the link so the
+      // operator can retrieve it from the server logs.
+      if (result.skipped) console.log(`[password-reset] email not sent (Resend unconfigured). Link for ${seller.email}: ${resetUrl}`);
+    }
+    res.json(generic);
+  } catch (err) {
+    console.error('Forgot-password error:', err);
+    res.json(generic); // still generic on failure
+  }
+});
+
+// Complete a reset with the token + a new password.
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Token and new password are required.' });
+    if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+
+    const tokenHash = crypto.createHash('sha256').update(String(token)).digest('hex');
+    const seller = await db.getSellerByResetToken(tokenHash);
+    if (!seller) return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await db.updateSeller(seller.id, { passwordHash, resetToken: null, resetTokenExpires: null });
+    res.json({ message: 'Password updated. You can now log in.' });
+  } catch (err) {
+    console.error('Reset-password error:', err);
+    res.status(500).json({ error: 'Could not reset password. Please try again.' });
   }
 });
 

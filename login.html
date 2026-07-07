@@ -158,6 +158,23 @@ button.submit:disabled{opacity:0.5;cursor:not-allowed}
     <button type="submit" class="submit" id="submitBtn">Log in →</button>
   </form>
 
+  <div class="foot" style="margin-top:14px">
+    <a href="#" id="forgotLink" onclick="showForgot(event)">Forgot your password?</a>
+  </div>
+
+  <!-- Forgot-password request form (hidden until the link is clicked) -->
+  <form id="forgotForm" onsubmit="return handleForgot(event)" style="display:none;margin-top:8px">
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="forgotEmail" autocomplete="email" placeholder="you@example.com">
+    </div>
+    <button type="submit" class="submit" id="forgotBtn">Send reset link</button>
+    <div class="foot" style="margin-top:12px"><a href="#" onclick="showLogin(event)">← Back to log in</a></div>
+  </form>
+  <div class="foot" id="forgotSuccess" style="display:none;margin-top:8px;color:var(--green,#00a878)">
+    If an account exists for that email, a reset link is on its way. Check your inbox.
+  </div>
+
   <div class="foot">
     New here? <a href="/signup">Create an account</a>
   </div>
@@ -213,6 +230,44 @@ async function handleLogin(e){
     showError(err.message);
     btn.disabled = false;
     btn.textContent = 'Log in →';
+  }
+  return false;
+}
+
+function showForgot(e){
+  e.preventDefault();
+  clearError();
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('forgotLink').parentElement.style.display = 'none';
+  document.getElementById('forgotForm').style.display = 'block';
+  // Prefill with whatever they typed in the login email field.
+  document.getElementById('forgotEmail').value = document.getElementById('email').value.trim();
+}
+function showLogin(e){
+  if(e) e.preventDefault();
+  document.getElementById('forgotForm').style.display = 'none';
+  document.getElementById('forgotSuccess').style.display = 'none';
+  document.getElementById('loginForm').style.display = 'block';
+  document.getElementById('forgotLink').parentElement.style.display = 'block';
+}
+async function handleForgot(e){
+  e.preventDefault();
+  clearError();
+  const btn = document.getElementById('forgotBtn');
+  const email = document.getElementById('forgotEmail').value.trim().toLowerCase();
+  if(!email){ showError('Enter your email.'); return false; }
+  btn.disabled = true; btn.textContent = 'Sending...';
+  try {
+    await fetch('/api/auth/forgot-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    // Always show the generic success (server never reveals if the email exists).
+    document.getElementById('forgotForm').style.display = 'none';
+    document.getElementById('forgotSuccess').style.display = 'block';
+  } catch(err){
+    showError('Something went wrong. Please try again.');
+    btn.disabled = false; btn.textContent = 'Send reset link';
   }
   return false;
 }
