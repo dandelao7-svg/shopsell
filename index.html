@@ -732,7 +732,7 @@ let PRODUCTS = [];
 
 // ── STOREFRONT CONFIG ─────────────────────────────────────────
 // Slug comes from ?store=<slug> in the URL — required.
-const STORE_SLUG = new URLSearchParams(window.location.search).get('store') || '';
+let STORE_SLUG = new URLSearchParams(window.location.search).get('store') || '';
 let STORE_CONFIG = { publishableKey: '', storeName: '', storeSlug: STORE_SLUG };
 
 // ── STATE ──────────────────────────────────────────────────────
@@ -1786,6 +1786,15 @@ async function loadStorefront(){
   const shopGrid = document.getElementById('shopGrid');
   homeGrid.innerHTML = '<div style="color:var(--muted);grid-column:1/-1;text-align:center;padding:2rem">Loading products…</div>';
   shopGrid.innerHTML = homeGrid.innerHTML;
+
+  // No explicit ?store= slug → resolve the store from the hostname
+  // (a connected custom domain, or <slug>.nextlao.com).
+  if(!STORE_SLUG){
+    try {
+      const r = await fetch('/api/store/resolve');
+      if(r.ok){ const d = await r.json(); STORE_SLUG = d.slug || ''; }
+    } catch(e){ /* fall through to the no-store message */ }
+  }
 
   if(!STORE_SLUG){
     const msg = '<div style="color:var(--muted);grid-column:1/-1;text-align:center;padding:2rem">No store specified. Add <code>?store=YOUR-SLUG</code> to the URL.</div>';

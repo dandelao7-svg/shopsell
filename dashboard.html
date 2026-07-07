@@ -355,6 +355,10 @@ tr:hover td{background:#fafaf7}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
       Discounts
     </a>
+    <a class="nav-item" onclick="showDash('domain')" id="nav-domain">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      Domain
+    </a>
 
     <div class="nav-section-label">Payments</div>
     <a class="nav-item" onclick="showDash('stripe')" id="nav-stripe">
@@ -1118,6 +1122,61 @@ tr:hover td{background:#fafaf7}
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════
+       DOMAIN PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-domain">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Domain</div>
+        <div class="page-hd-sub">Your store's web address</div>
+      </div>
+    </div>
+    <div style="max-width:720px">
+      <div class="form-card">
+        <div class="form-section-hd">Your free store address</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <code id="domPreview" style="font-size:14px;background:var(--light);padding:8px 12px;border-radius:8px">…</code>
+          <a id="domPreviewLink" href="#" target="_blank" class="btn secondary sm">Open</a>
+        </div>
+        <div class="hint" style="margin-top:8px">Every store gets this address automatically. Use it as-is, or connect your own domain below.</div>
+      </div>
+
+      <div class="form-card">
+        <div class="form-section-hd">Connect your own domain</div>
+        <div id="domNotConnected">
+          <div class="field">
+            <label>Your domain</label>
+            <input type="text" id="domInput" placeholder="yourstore.com">
+            <div class="hint" style="margin-top:4px">Enter a domain you already own (e.g. yourstore.com). You'll add two DNS records to point it here.</div>
+          </div>
+          <button class="btn primary" id="domConnectBtn" onclick="saveDomain()">Connect domain</button>
+        </div>
+
+        <div id="domConnected" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <code id="domName" style="font-size:14px;font-weight:600"></code>
+            <span class="status-pill" id="domStatusPill"></span>
+          </div>
+          <div class="alert info" style="font-size:12px;margin-bottom:12px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Add these records at your domain registrar, then click Verify. DNS can take a few minutes to update.
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr style="text-align:left;color:var(--muted)"><th style="padding:8px">Type</th><th style="padding:8px">Name / Host</th><th style="padding:8px">Value</th></tr></thead>
+              <tbody id="domDnsRows"></tbody>
+            </table>
+          </div>
+          <div class="btn-row" style="margin-top:14px">
+            <button class="btn primary" id="domVerifyBtn" onclick="verifyDomain()">Verify</button>
+            <button class="btn secondary" onclick="removeDomain()">Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="page-content" id="dash-settings">
     <div class="page-hd">
       <div class="page-hd-title">Store settings</div>
@@ -1601,6 +1660,93 @@ function renderCustomers(list){
   }).join('');
 }
 
+// ── DOMAIN ──
+function escDom(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function loadDomain(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try {
+    const res = await fetch('/api/seller/domain', { headers:{ 'Authorization':'Bearer '+token } });
+    if(!res.ok) return;
+    renderDomain(await res.json());
+  } catch(e){ /* leave last state */ }
+}
+
+function renderDomain(d){
+  const prev = 'https://' + d.slug + '.' + d.platformDomain;
+  document.getElementById('domPreview').textContent = d.slug + '.' + d.platformDomain;
+  document.getElementById('domPreviewLink').href = prev;
+  const nc = document.getElementById('domNotConnected');
+  const cc = document.getElementById('domConnected');
+  if(d.customDomain){
+    nc.style.display = 'none'; cc.style.display = '';
+    document.getElementById('domName').textContent = d.customDomain;
+    const pill = document.getElementById('domStatusPill');
+    pill.textContent = d.verified ? 'Verified' : 'Pending verification';
+    pill.className = 'status-pill ' + (d.verified ? 'active' : 'pending');
+    const rows = d.dns ? [
+      ['CNAME', d.dns.cname.host, d.dns.cname.value],
+      ['TXT',   d.dns.txt.host,   d.dns.txt.value],
+    ] : [];
+    document.getElementById('domDnsRows').innerHTML = rows.map(r=>`<tr>
+      <td style="padding:8px;font-family:monospace">${r[0]}</td>
+      <td style="padding:8px;font-family:monospace;word-break:break-all">${escDom(r[1])}</td>
+      <td style="padding:8px;font-family:monospace;word-break:break-all">${escDom(r[2])}</td></tr>`).join('');
+    document.getElementById('domVerifyBtn').style.display = d.verified ? 'none' : '';
+  } else {
+    nc.style.display = ''; cc.style.display = 'none';
+    document.getElementById('domInput').value = '';
+  }
+}
+
+async function saveDomain(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+  const domain = document.getElementById('domInput').value.trim();
+  if(!domain){ toast('Enter your domain first'); return; }
+  const btn = document.getElementById('domConnectBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Connecting…';
+  try {
+    const res = await fetch('/api/seller/domain', {
+      method:'PUT', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ domain })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Could not connect that domain'); return; }
+    toast('Domain added — now add the DNS records below');
+    renderDomain(data);
+  } catch(e){ toast('Network error'); }
+  finally { btn.disabled = false; btn.textContent = o; }
+}
+
+async function verifyDomain(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  const btn = document.getElementById('domVerifyBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const res = await fetch('/api/seller/domain/verify', { method:'POST', headers:{ 'Authorization':'Bearer '+token } });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Not verified yet — check the records and try again'); return; }
+    toast('✓ Domain verified!');
+    renderDomain(data);
+  } catch(e){ toast('Network error'); }
+  finally { btn.disabled = false; btn.textContent = o; }
+}
+
+async function removeDomain(){
+  if(!confirm('Remove this custom domain? Your store stays available at its free address.')) return;
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try {
+    const res = await fetch('/api/seller/domain', { method:'DELETE', headers:{ 'Authorization':'Bearer '+token } });
+    if(!res.ok){ toast('Could not remove domain'); return; }
+    toast('Domain removed');
+    loadDomain();
+  } catch(e){ toast('Network error'); }
+}
+
 // ── DISCOUNT CODES ──
 function dcTypeChanged(){
   const t = document.getElementById('dcType').value;
@@ -1788,7 +1934,7 @@ function showDash(name){
   const titles = {
     overview:'Overview', orders:'Orders', products:'Products',
     'add-product':'Add product', customers:'Customers',
-    storefront:'Storefront pages', discounts:'Discount codes',
+    storefront:'Storefront pages', discounts:'Discount codes', domain:'Domain',
     stripe:'Stripe payment setup', payouts:'Payouts',
     modules:'Add-on modules', settings:'Settings', billing:'My subscription'
   };
@@ -1800,6 +1946,7 @@ function showDash(name){
   if(name === 'add-product') initVariantEditor(ADD_VAR_CTX);
   if(name === 'overview') loadAnalytics();
   if(name === 'customers') loadCustomers();
+  if(name === 'domain') loadDomain();
 }
 
 // ── MODE TOGGLE ──

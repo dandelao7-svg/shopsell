@@ -80,6 +80,13 @@ async function initSchema() {
     // JSONB so new fields can be added without a migration.
     await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS storefront_content JSONB;`);
 
+    // Custom domain (bring-your-own). Stored apex-normalized (no protocol/www).
+    // Only served once verified via the DNS TXT challenge (custom_domain_token).
+    await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS custom_domain TEXT;`);
+    await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS custom_domain_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE sellers ADD COLUMN IF NOT EXISTS custom_domain_token TEXT;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sellers_custom_domain ON sellers (custom_domain) WHERE custom_domain IS NOT NULL;`);
+
     // PRODUCTS
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
@@ -394,6 +401,40 @@ async function getSellerBySlug(slug) {
     `SELECT * FROM sellers WHERE store_slug = $1 LIMIT 1`, [slug]
   );
   return camelize(rows[0]);
+}
+
+// ── CUSTOM DOMAINS ───────────────────────────────────────────
+async function getSellerByCustomDomain(domain) {
+  const { rows } = await pool.query(
+    `SELECT * FROM sellers WHERE custom_domain = $1 LIMIT 1`, [domain]
+  );
+  return camelize(rows[0]);
+}
+
+// Set (or replace) a seller's pending custom domain with a fresh verify token.
+async function setSellerCustomDomain(sellerId, domain, token) {
+  const { rows } = await pool.query(
+    `UPDATE sellers
+        SET custom_domain = $1, custom_domain_token = $2, custom_domain_verified = FALSE, updated_at = NOW()
+      WHERE id = $3 RETURNING *`,
+    [domain, token, sellerId]
+  );
+  return camelize(rows[0]);
+}
+
+async function setCustomDomainVerified(sellerId, verified) {
+  const { rows } = await pool.query(
+    `UPDATE sellers SET custom_domain_verified = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+    [verified, sellerId]
+  );
+  return camelize(rows[0]);
+}
+
+async function clearSellerCustomDomain(sellerId) {
+  await pool.query(
+    `UPDATE sellers SET custom_domain = NULL, custom_domain_token = NULL, custom_domain_verified = FALSE, updated_at = NOW() WHERE id = $1`,
+    [sellerId]
+  );
 }
 
 async function getSellerByStripeCustomerId(stripeCustomerId) {
@@ -1087,6 +1128,10 @@ module.exports = {
   getSellerBySlug,
   getSellerByStripeCustomerId,
   updateSeller,
+  getSellerByCustomDomain,
+  setSellerCustomDomain,
+  setCustomDomainVerified,
+  clearSellerCustomDomain,
 
   // Products
   getActiveProducts,

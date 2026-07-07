@@ -38,6 +38,62 @@ const db           = require('./database');
 const carriers     = require('./carriers');
 const emailService = require('./email');
 const cryptoLib    = require('./lib/crypto');
+const crypto       = require('crypto');
+const dns          = require('dns').promises;
+
+// ── CUSTOM DOMAINS / STOREFRONT ROUTING ───────────────────────
+// Every seller gets <slug>.PLATFORM_DOMAIN for free; they can also connect
+// their own domain (served once verified via a DNS TXT challenge). Custom
+// domains are pointed at CUSTOM_DOMAIN_TARGET with a CNAME.
+const PLATFORM_DOMAIN       = (process.env.PLATFORM_DOMAIN || 'nextlao.com').toLowerCase();
+const CUSTOM_DOMAIN_TARGET  = process.env.CUSTOM_DOMAIN_TARGET || `shop.${PLATFORM_DOMAIN}`;
+const RESERVED_SUBDOMAINS   = new Set(['www', 'shop', 'app', 'api', 'admin', 'mail', 'dashboard', 'static', 'assets', 'cdn']);
+
+// Resolve which store a request belongs to, from its hostname. This is the
+// single mechanism behind both subdomains and bring-your-own custom domains.
+async function resolveStoreByHost(rawHost) {
+  if (!rawHost) return null;
+  const host = String(rawHost).toLowerCase().replace(/:\d+$/, '');
+
+  // 1) Verified custom domain (match the apex form; www.x.com → x.com).
+  const apex = host.replace(/^www\./, '');
+  const byDomain = await db.getSellerByCustomDomain(apex);
+  if (byDomain && byDomain.customDomainVerified && byDomain.storeActive) return byDomain;
+
+  // 2) Platform subdomain: <slug>.PLATFORM_DOMAIN
+  if (host.endsWith('.' + PLATFORM_DOMAIN)) {
+    const sub = host.slice(0, host.length - PLATFORM_DOMAIN.length - 1);
+    if (sub && !sub.includes('.') && !RESERVED_SUBDOMAINS.has(sub)) {
+      const bySlug = await db.getSellerBySlug(sub);
+      if (bySlug) return bySlug;
+    }
+  }
+  return null;
+}
+
+function normalizeDomain(input) {
+  return String(input || '').toLowerCase().trim()
+    .replace(/^https?:\/\//, '')   // strip protocol
+    .replace(/\/.*$/, '')          // strip path
+    .replace(/:\d+$/, '')          // strip port
+    .replace(/^www\./, '');        // store the apex form
+}
+const DOMAIN_RE = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+
+// Shape the seller-facing domain status + the DNS records they must add.
+function domainStatus(seller) {
+  return {
+    slug:           seller.storeSlug,
+    previewUrl:     `https://${seller.storeSlug}.${PLATFORM_DOMAIN}`,
+    platformDomain: PLATFORM_DOMAIN,
+    customDomain:   seller.customDomain || null,
+    verified:       !!seller.customDomainVerified,
+    dns: seller.customDomain ? {
+      cname: { host: 'www', type: 'CNAME', value: CUSTOM_DOMAIN_TARGET },
+      txt:   { host: `_nextlao-verify.${seller.customDomain}`, type: 'TXT', value: seller.customDomainToken || '' },
+    } : null,
+  };
+}
 
 // Fail loud at startup if secrets can't be encrypted — we never want to
 // silently store carrier/Stripe credentials in plaintext.
@@ -525,6 +581,19 @@ app.get('/api/buyer/orders', requireBuyerAuth, async (req, res) => {
    PUT    /api/seller/products/:id — seller: update product
    DELETE /api/seller/products/:id — seller: delete product
    ============================================================ */
+
+// Resolve the store for the current hostname (custom domain or subdomain).
+// The storefront calls this when there's no ?store= slug in the URL.
+app.get('/api/store/resolve', async (req, res) => {
+  try {
+    const seller = await resolveStoreByHost(req.hostname);
+    if (!seller) return res.status(404).json({ error: 'No store is set up for this address.' });
+    res.json({ slug: seller.storeSlug, storeName: seller.storeName });
+  } catch (err) {
+    console.error('Store resolve error:', err);
+    res.status(500).json({ error: 'Failed to resolve store.' });
+  }
+});
 
 app.get('/api/products', async (req, res) => {
   try {
@@ -1839,6 +1908,72 @@ app.put('/api/seller/storefront-content', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save storefront content error:', err);
     res.status(500).json({ error: 'Failed to save storefront content.' });
+  }
+});
+
+/* ============================================================
+   ── CUSTOM DOMAIN ROUTES (SELLER) ────────────────────────────
+   GET/PUT/DELETE /api/seller/domain · POST /api/seller/domain/verify
+   ============================================================ */
+
+app.get('/api/seller/domain', requireAuth, async (req, res) => {
+  try {
+    const seller = await db.getSellerById(req.seller.sellerId);
+    res.json(domainStatus(seller));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load domain settings.' });
+  }
+});
+
+app.put('/api/seller/domain', requireAuth, async (req, res) => {
+  const domain = normalizeDomain(req.body.domain);
+  if (!domain || !DOMAIN_RE.test(domain)) {
+    return res.status(400).json({ error: 'Enter a valid domain, like yourstore.com.' });
+  }
+  if (domain === PLATFORM_DOMAIN || domain.endsWith('.' + PLATFORM_DOMAIN)) {
+    return res.status(400).json({ error: `Connect your own domain — not a ${PLATFORM_DOMAIN} address.` });
+  }
+  try {
+    const token  = 'nextlao-verify-' + crypto.randomBytes(16).toString('hex');
+    const seller = await db.setSellerCustomDomain(req.seller.sellerId, domain, token);
+    res.json(domainStatus(seller));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'That domain is already connected to another store.' });
+    console.error('Set custom domain error:', err);
+    res.status(500).json({ error: 'Failed to save domain.' });
+  }
+});
+
+app.post('/api/seller/domain/verify', requireAuth, async (req, res) => {
+  try {
+    const seller = await db.getSellerById(req.seller.sellerId);
+    if (!seller.customDomain) return res.status(400).json({ error: 'Add a domain first.' });
+
+    // Ownership check: a TXT record at _nextlao-verify.<domain> holding our token.
+    let records = [];
+    try {
+      records = (await dns.resolveTxt('_nextlao-verify.' + seller.customDomain)).flat().map(s => String(s).trim());
+    } catch (dnsErr) {
+      return res.status(400).json({ verified: false, error: 'Couldn’t find the verification record yet. Add the TXT record, then try again in a few minutes.' });
+    }
+    if (!records.includes(seller.customDomainToken)) {
+      return res.status(400).json({ verified: false, error: 'The verification record doesn’t match yet. DNS can take a few minutes to propagate — try again shortly.' });
+    }
+
+    const updated = await db.setCustomDomainVerified(req.seller.sellerId, true);
+    res.json({ verified: true, message: 'Domain verified!', ...domainStatus(updated) });
+  } catch (err) {
+    console.error('Verify domain error:', err);
+    res.status(500).json({ error: 'Verification failed.' });
+  }
+});
+
+app.delete('/api/seller/domain', requireAuth, async (req, res) => {
+  try {
+    await db.clearSellerCustomDomain(req.seller.sellerId);
+    res.json({ message: 'Custom domain removed.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove domain.' });
   }
 });
 
