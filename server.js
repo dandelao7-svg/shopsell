@@ -38,6 +38,7 @@ const db           = require('./database');
 const carriers     = require('./carriers');
 const emailService = require('./email');
 const cryptoLib    = require('./lib/crypto');
+const { mergeLabels } = require('./lib/labelmerge');
 const crypto       = require('crypto');
 const dns          = require('dns').promises;
 
@@ -2544,6 +2545,44 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Batch labels error:', err);
     res.status(500).json({ error: 'Batch failed: ' + err.message });
+  }
+});
+
+// MERGE LABELS — combine many purchased labels into one printable PDF.
+// Takes tracking numbers, looks each label up in THIS seller's shipments
+// (tenant-scoped; never trusts client-supplied URLs → no SSRF), and merges
+// UPS GIFs + FedEx/USPS PDFs into a single 4×6-per-page document.
+app.post('/api/shipping/labels/merge', requireAuth, async (req, res) => {
+  try {
+    const { trackingNumbers } = req.body;
+    if (!Array.isArray(trackingNumbers) || trackingNumbers.length === 0) {
+      return res.status(400).json({ error: 'trackingNumbers (non-empty array) is required.' });
+    }
+
+    const sources = [];
+    for (const tn of trackingNumbers) {
+      const ship = await db.getShipmentByTracking(tn);
+      if (!ship || ship.sellerId !== req.seller.sellerId) continue; // skip unknown / other sellers
+      if (!ship.labelImage && !ship.labelUrl) continue;             // nothing to print
+      sources.push({ labelImage: ship.labelImage, labelUrl: ship.labelUrl, label: tn });
+    }
+
+    if (sources.length === 0) {
+      return res.status(404).json({ error: 'No printable labels found for those tracking numbers.' });
+    }
+
+    const { pdf, merged, errors } = await mergeLabels(sources);
+    if (merged === 0) {
+      return res.status(502).json({ error: 'Could not build any labels.', details: errors });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="labels.pdf"');
+    if (errors.length) res.setHeader('X-Merge-Warnings', String(errors.length));
+    res.send(pdf);
+  } catch (err) {
+    console.error('Label merge error:', err);
+    res.status(500).json({ error: 'Failed to merge labels: ' + err.message });
   }
 });
 
