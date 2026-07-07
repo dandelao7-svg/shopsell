@@ -347,6 +347,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
       Schedule pickup
     </a>
+    <a class="nav-item" onclick="showPage('automation')" id="nav-automation">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3"/></svg>
+      Automation rules
+    </a>
 
     <div class="nav-section">Marketplaces</div>
     <a class="nav-item active-channel" onclick="window.open('/','_blank')" id="nav-nextlao" style="cursor:pointer">
@@ -1284,6 +1288,20 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ AUTOMATION RULES PAGE ═══════════════ -->
+  <div class="page" id="page-automation">
+    <div style="max-width:880px;margin:0 auto">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:1.25rem">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text)">Shipping automation</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;max-width:520px">Rules run top-to-bottom when you batch-ship with <strong>Apply automation rules</strong>. The first rule an order matches decides its carrier, service, and box. Orders that match nothing fall back to the cheapest rate.</div>
+        </div>
+        <button class="topbar-btn primary" onclick="openRuleEditor()" style="flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New rule</button>
+      </div>
+      <div id="rulesList"><div style="text-align:center;padding:2rem;color:var(--muted);font-size:13px">Loading rules…</div></div>
     </div>
   </div>
 
@@ -2306,6 +2324,11 @@ function openBatchModal(){
             <select id="batch-service" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px"></select>
           </div></div>
         </label>
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-top:8px">
+          <input type="radio" name="batchStrategy" value="rules" onchange="toggleBatchFixed()" style="margin-top:2px;accent-color:var(--accent)">
+          <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">Apply automation rules</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Assign carrier + service per order from your <span style="color:var(--accent);cursor:pointer" onclick="closeBatchModal();showPage('automation')">automation rules →</span> Unmatched orders fall back to cheapest.</div></div>
+        </label>
 
         <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 4px">Package</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Weight is calculated per order from your product weights — the value below is the fallback when an order has none. Dimensions apply to all.</div>
@@ -2412,9 +2435,10 @@ function renderBatchResults(data){
       const wt = r.weight != null
         ? `<span style="color:var(--muted)">· ${(+r.weight).toFixed(1)} lb${r.weightSource==='default'?'*':''}</span>`
         : '';
+      const ruleTag = r.appliedRule ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">▸ ${escapeAttr(r.appliedRule)}</div>` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
         <span style="color:var(--green)">✓</span>
-        <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · ${(r.carrier||'').toUpperCase()} ${r.service||''} ${wt}</div>
+        <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · ${(r.carrier||'').toUpperCase()} ${r.service||''} ${wt}${ruleTag}</div>
         <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text)">$${(parseFloat(r.totalCharge)||0).toFixed(2)}</div>
       </div>`;
     }
@@ -2478,6 +2502,173 @@ async function printAllBatchLabels(){
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = label; }
   }
+}
+
+// ── AUTOMATION RULES ──────────────────────────────────────────
+let automationRules = [];
+const RULE_SERVICES = {
+  ups:  [['03','UPS Ground'],['12','UPS 3 Day Select'],['02','UPS 2nd Day Air'],['01','UPS Next Day Air'],['13','UPS Next Day Air Saver']],
+  fedex:[['FEDEX_GROUND','FedEx Ground'],['FEDEX_EXPRESS_SAVER','FedEx Express Saver'],['FEDEX_2_DAY','FedEx 2Day'],['STANDARD_OVERNIGHT','FedEx Standard Overnight'],['PRIORITY_OVERNIGHT','FedEx Priority Overnight']],
+  usps: [['usps_priority','USPS Priority'],['usps_ground_advantage','USPS Ground Advantage'],['usps_priority_express','USPS Priority Express']],
+};
+function ruleServiceName(carrier, code){ const f=(RULE_SERVICES[carrier]||[]).find(([v])=>v===code); return f?f[1]:code; }
+const authHeaders = () => ({ 'Content-Type':'application/json', 'Authorization':`Bearer ${localStorage.getItem('ss_token')||'demo_token'}` });
+
+async function loadAutomationRules(){
+  const box = document.getElementById('rulesList');
+  try {
+    const res = await fetch('/api/seller/automation-rules', { headers: authHeaders() });
+    const data = await res.json();
+    if(!res.ok){ box.innerHTML = `<div style="padding:14px;background:var(--red-bg);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Failed to load rules'}</div>`; return; }
+    automationRules = data.rules || [];
+    renderRulesList();
+  } catch(e){
+    box.innerHTML = `<div style="padding:14px;color:var(--muted);font-size:12px">Network error loading rules: ${e.message}</div>`;
+  }
+}
+
+function renderRulesList(){
+  const box = document.getElementById('rulesList');
+  if(!automationRules.length){
+    box.innerHTML = `<div style="text-align:center;padding:2.5rem 1rem;border:1px dashed var(--border);border-radius:12px">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">No automation rules yet</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Create a rule like “orders over 10 lb → UPS Ground” to auto-assign carriers when batch shipping.</div>
+      <button class="topbar-btn primary" onclick="openRuleEditor()" style="display:inline-flex">Create your first rule</button>
+    </div>`;
+    return;
+  }
+  const brand = { ups:'#ffb500', fedex:'#7b2fd4', usps:'#0050c8' };
+  box.innerHTML = automationRules.map(r => {
+    const c=r.conditions||{}, a=r.action||{};
+    const conds=[];
+    if(c.weightMin!=null||c.weightMax!=null) conds.push(`Weight ${c.weightMin??'0'}–${c.weightMax??'∞'} lb`);
+    if(c.valueMin!=null||c.valueMax!=null)   conds.push(`Value $${c.valueMin??'0'}–${c.valueMax??'∞'}`);
+    if(Array.isArray(c.states)&&c.states.length) conds.push(`To ${c.states.join(', ')}`);
+    if(c.destinationType&&c.destinationType!=='any') conds.push(c.destinationType==='domestic'?'Domestic only':'International only');
+    if(!conds.length) conds.push('Any order');
+    const col = brand[a.carrier]||'var(--muted)';
+    return `<div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--border);border-left:3px solid ${col};border-radius:11px;margin-bottom:9px;background:var(--card);${r.enabled?'':'opacity:.55'}">
+      <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);width:26px;text-align:center" title="Priority ${r.priority}">${r.priority}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">${escapeAttr(r.name)}</div>
+        <div style="font-size:11px;color:var(--muted)"><span style="color:var(--text2)">IF</span> ${conds.join(' · ')} <span style="color:var(--text2)">→</span> ${(a.carrier||'').toUpperCase()} ${ruleServiceName(a.carrier,a.service)}${a.boxSize?` · ${a.boxSize} box`:''}</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer" title="Enable / disable">
+        <input type="checkbox" ${r.enabled?'checked':''} onchange="toggleRule(${r.id}, this.checked)" style="width:15px;height:15px;accent-color:var(--green);cursor:pointer">
+      </label>
+      <button onclick="openRuleEditor(${r.id})" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:7px;cursor:pointer;font-size:12px">Edit</button>
+      <button onclick="deleteRule(${r.id})" title="Delete" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 9px;border-radius:7px;cursor:pointer;font-size:12px">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function escapeAttr(s){ return String(s||'').replace(/[<>&"]/g, ch=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch])); }
+
+function openRuleEditor(id){
+  const r = id!=null ? automationRules.find(x=>x.id===id) : null;
+  const c = r?.conditions||{}, a = r?.action||{};
+  const existing = document.getElementById('ruleModal'); if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id='ruleModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  const numVal = v => (v==null?'':v);
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow:auto">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">${r?'Edit rule':'New rule'}</div>
+        <button onclick="closeRuleModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:20px">
+        <div class="form-field"><label>Rule name</label><input type="text" id="rule-name" placeholder="e.g. Heavy orders → UPS Ground" value="${escapeAttr(r?.name||'')}"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-field"><label>Priority (lower runs first)</label><input type="number" id="rule-priority" value="${r?r.priority:100}"></div>
+          <div class="form-field"><label>Status</label><select id="rule-enabled" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="true" ${r&&!r.enabled?'':'selected'}>Enabled</option><option value="false" ${r&&!r.enabled?'selected':''}>Disabled</option></select></div>
+        </div>
+
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Conditions <span style="text-transform:none;letter-spacing:0">(leave blank = any)</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-field"><label>Weight min (lb)</label><input type="number" step="0.1" id="rule-wmin" value="${numVal(c.weightMin)}"></div>
+          <div class="form-field"><label>Weight max (lb)</label><input type="number" step="0.1" id="rule-wmax" value="${numVal(c.weightMax)}"></div>
+          <div class="form-field"><label>Order value min ($)</label><input type="number" step="0.01" id="rule-vmin" value="${numVal(c.valueMin)}"></div>
+          <div class="form-field"><label>Order value max ($)</label><input type="number" step="0.01" id="rule-vmax" value="${numVal(c.valueMax)}"></div>
+          <div class="form-field"><label>Ship-to states (comma sep)</label><input type="text" id="rule-states" placeholder="CA, NV, AZ" value="${escapeAttr((c.states||[]).join(', '))}"></div>
+          <div class="form-field"><label>Destination</label><select id="rule-dest" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="any" ${(!c.destinationType||c.destinationType==='any')?'selected':''}>Any</option><option value="domestic" ${c.destinationType==='domestic'?'selected':''}>Domestic (US)</option><option value="international" ${c.destinationType==='international'?'selected':''}>International</option></select></div>
+        </div>
+
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Then ship with</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <div class="form-field"><label>Carrier</label><select id="rule-carrier" onchange="ruleUpdateServices()" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="ups">UPS</option><option value="fedex">FedEx</option><option value="usps">USPS</option></select></div>
+          <div class="form-field"><label>Service</label><select id="rule-service" style="background:var(--bg3);color:var(--text);border-color:var(--border)"></select></div>
+          <div class="form-field"><label>Box (optional)</label><select id="rule-box" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="">Batch default</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xlarge">X-Large</option></select></div>
+        </div>
+      </div>
+      <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="closeRuleModal()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px 16px;border-radius:9px;cursor:pointer;font-size:13px">Cancel</button>
+        <button id="ruleSaveBtn" class="topbar-btn primary" onclick="saveRule(${r?r.id:'null'})" style="padding:9px 18px">${r?'Save changes':'Create rule'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('rule-carrier').value = a.carrier || 'ups';
+  ruleUpdateServices();
+  if(a.service) document.getElementById('rule-service').value = a.service;
+  if(a.boxSize) document.getElementById('rule-box').value = a.boxSize;
+}
+function closeRuleModal(){ document.getElementById('ruleModal')?.remove(); }
+function ruleUpdateServices(){
+  const carrier=document.getElementById('rule-carrier').value;
+  document.getElementById('rule-service').innerHTML=(RULE_SERVICES[carrier]||RULE_SERVICES.ups).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+}
+
+async function saveRule(id){
+  const num = elId => { const v=document.getElementById(elId).value.trim(); return v===''?null:Number(v); };
+  const payload = {
+    name:     document.getElementById('rule-name').value.trim(),
+    priority: parseInt(document.getElementById('rule-priority').value,10)||100,
+    enabled:  document.getElementById('rule-enabled').value==='true',
+    conditions: {
+      weightMin: num('rule-wmin'), weightMax: num('rule-wmax'),
+      valueMin:  num('rule-vmin'), valueMax:  num('rule-vmax'),
+      states: document.getElementById('rule-states').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean),
+      destinationType: document.getElementById('rule-dest').value,
+    },
+    action: {
+      carrier: document.getElementById('rule-carrier').value,
+      service: document.getElementById('rule-service').value,
+      boxSize: document.getElementById('rule-box').value || null,
+    },
+  };
+  if(!payload.name){ toast('Give the rule a name','error'); return; }
+  const btn=document.getElementById('ruleSaveBtn'); btn.disabled=true; btn.textContent='Saving…';
+  try {
+    const res = await fetch(id!=null?`/api/seller/automation-rules/${id}`:'/api/seller/automation-rules', {
+      method: id!=null?'PUT':'POST', headers: authHeaders(), body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if(!res.ok){ toast(data.error||'Could not save rule','error'); btn.disabled=false; btn.textContent='Save'; return; }
+    closeRuleModal();
+    toast('Rule saved','success');
+    loadAutomationRules();
+  } catch(e){ toast('Network error: '+e.message,'error'); btn.disabled=false; btn.textContent='Save'; }
+}
+
+async function toggleRule(id, enabled){
+  try {
+    const res = await fetch(`/api/seller/automation-rules/${id}`, { method:'PUT', headers: authHeaders(), body: JSON.stringify({ enabled }) });
+    if(!res.ok){ const d=await res.json().catch(()=>({})); toast(d.error||'Could not update rule','error'); loadAutomationRules(); return; }
+    const r = automationRules.find(x=>x.id===id); if(r) r.enabled=enabled;
+    renderRulesList();
+  } catch(e){ toast('Network error: '+e.message,'error'); }
+}
+
+async function deleteRule(id){
+  const r = automationRules.find(x=>x.id===id);
+  if(!confirm(`Delete rule “${r?r.name:''}”?`)) return;
+  try {
+    const res = await fetch(`/api/seller/automation-rules/${id}`, { method:'DELETE', headers: authHeaders() });
+    if(!res.ok){ const d=await res.json().catch(()=>({})); toast(d.error||'Could not delete','error'); return; }
+    toast('Rule deleted','info');
+    loadAutomationRules();
+  } catch(e){ toast('Network error: '+e.message,'error'); }
 }
 
 function printSelected(){
@@ -2937,7 +3128,7 @@ function toggleReveal(id, btn){
 const pageTitles = {
   orders:'Orders', quickship:'Quick Ship', returns:'Returns',
   tracking:'Tracking', history:'Shipping history', pickup:'Schedule UPS Pickup',
-  settings:'Carrier settings'
+  automation:'Automation rules', settings:'Carrier settings'
 };
 
 function showPage(name){
@@ -2964,6 +3155,9 @@ function showPage(name){
   if(name === 'settings'){
     // Load per-seller carrier connection status (server-backed, encrypted)
     loadCarrierStatus();
+  }
+  if(name === 'automation'){
+    loadAutomationRules();
   }
 }
 
