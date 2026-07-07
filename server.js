@@ -2440,6 +2440,26 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
       return credCache[c];
     };
 
+    // Per-order weight = sum of each line's product weight × qty (lbs). Products
+    // are cached across the whole batch since orders often share items. Returns
+    // 0 when no product has a weight set, so the caller can fall back to the
+    // batch default.
+    const productCache = {};
+    async function computeOrderWeight(order) {
+      const items = Array.isArray(order.items) ? order.items : [];
+      let total = 0;
+      for (const it of items) {
+        if (!it.productId) continue;
+        if (!(it.productId in productCache)) {
+          productCache[it.productId] = await db.getProductById(it.productId).catch(() => null);
+        }
+        const p = productCache[it.productId];
+        const w = p && p.weight != null ? Number(p.weight) : 0;
+        if (Number.isFinite(w)) total += w * (Number(it.qty) || 1);
+      }
+      return total;
+    }
+
     async function processOrder(orderId) {
       const result = { orderId, success: false };
       try {
@@ -2465,13 +2485,19 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
           throw new Error('Order is missing a complete shipping address');
         }
 
+        // Weigh this specific order from its line items; fall back to the batch
+        // default when no product weights are set. Dimensions stay the batch
+        // default (dims aren't tracked per product yet).
+        const orderWeight = await computeOrderWeight(order);
+        const pkgForOrder = { ...defaultPkg, weight: orderWeight > 0 ? orderWeight : defaultPkg.weight };
+
         // Pick carrier + service for this order.
         let chosenCarrier = carrier, chosenService = service;
         if (strategy === 'cheapest') {
           const rated = await Promise.allSettled(connected.map(async c => {
             const creds = await credsFor(c);
             if (!creds) throw new Error('credentials unavailable');
-            return carriers.getRates(c, { shipper, recipient, package: defaultPkg }, creds);
+            return carriers.getRates(c, { shipper, recipient, package: pkgForOrder }, creds);
           }));
           const all = rated.flatMap(r => r.status === 'fulfilled' ? r.value : []);
           all.sort((a, b) => a.totalCharge - b.totalCharge);
@@ -2484,7 +2510,7 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
         if (!creds) throw new Error(`${chosenCarrier.toUpperCase()} account not connected`);
 
         const label = await buyCarrierLabel(chosenCarrier, creds, {
-          shipper, recipient, package: defaultPkg, service: chosenService, orderId,
+          shipper, recipient, package: pkgForOrder, service: chosenService, orderId,
         });
 
         // Persist the shipment + mark the order shipped (best-effort).
@@ -2498,7 +2524,7 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
             toName: recipient.name, toCompany: recipient.company || '', toAddr: recipient.address1,
             toAddr2: recipient.address2 || '', toCity: recipient.city, toState: recipient.state,
             toZip: recipient.zip, toPhone: recipient.phone, toEmail: recipient.email,
-            residential: !!recipient.residential, weight: String(defaultPkg.weight || ''),
+            residential: !!recipient.residential, weight: String(pkgForOrder.weight || ''),
             totalCharge: label.totalCharge || null, currency: label.currency || 'USD',
             ref: String(orderId), labelImage: label.labelImage || null, labelUrl: label.labelUrl || null,
             transactionId: label.transactionId || null, status: 'created',
@@ -2511,6 +2537,8 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
         result.success       = true;
         result.carrier       = chosenCarrier;
         result.service       = label.serviceName || chosenService;
+        result.weight        = pkgForOrder.weight;
+        result.weightSource  = orderWeight > 0 ? 'items' : 'default';
         result.trackingNumber= label.trackingNumber;
         result.totalCharge   = label.totalCharge || null;
         result.currency      = label.currency || 'USD';
