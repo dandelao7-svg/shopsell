@@ -1442,6 +1442,94 @@ app.post('/api/seller/orders/:id/refund', requireAuth, async (req, res) => {
 });
 
 // PACKING SLIP PDF — 8.5x11 printable slip for the warehouse
+// Gather the data a packing slip needs for one order (SKUs live on products).
+async function loadPackingSlipData(order) {
+  const seller = await db.getSellerById(order.sellerId);
+  const items = Array.isArray(order.items) ? order.items : [];
+  const products = await Promise.all(
+    items.map(it => it.productId ? db.getProductById(it.productId).catch(() => null) : null)
+  );
+  const skuByIdx = products.map(p => p?.sku || '');
+  return { seller, items, skuByIdx };
+}
+
+// Draw one packing slip onto the current page of an open pdfkit doc. Does NOT
+// add pages or end the doc — the caller manages that (so batch slips can add a
+// page between orders). Assumes the cursor is at the top of a fresh page.
+function drawPackingSlipPage(doc, { order, seller, items, skuByIdx }) {
+  const ship = order.customerInfo || {};
+  const fullName = [ship.firstName, ship.lastName].filter(Boolean).join(' ')
+    || ship.name || order.customerEmail || '';
+
+  // ── Header ─────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(20).fillColor('#000').text(seller?.storeName || 'ShopSell', { continued: false });
+  doc.moveUp();
+  doc.font('Helvetica-Bold').fontSize(16).text('PACKING SLIP', { align: 'right' });
+  doc.font('Helvetica').fontSize(10).fillColor('#555');
+  doc.text(`Order #SS-${order.id}`, { align: 'right' });
+  const paid = order.paidAt ? new Date(order.paidAt) : new Date(order.createdAt);
+  doc.text(`Date: ${paid.toLocaleDateString('en-US')}`, { align: 'right' });
+  doc.fillColor('#000');
+
+  doc.moveDown(2);
+
+  // ── Ship-to block ──────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#888').text('SHIP TO');
+  doc.moveDown(0.3);
+  doc.font('Helvetica').fontSize(12).fillColor('#000');
+  if (fullName) doc.text(fullName);
+  if (ship.company) doc.text(ship.company);
+  if (ship.address1 || ship.address) doc.text(ship.address1 || ship.address);
+  if (ship.address2) doc.text(ship.address2);
+  const cityLine = [ship.city, ship.state].filter(Boolean).join(', ');
+  const cityZip  = [cityLine, ship.zip || ship.postalCode].filter(Boolean).join(' ');
+  if (cityZip) doc.text(cityZip);
+  if (ship.country && ship.country !== 'US') doc.text(ship.country);
+  if (order.customerEmail) {
+    doc.fontSize(10).fillColor('#555').text(order.customerEmail);
+    doc.fillColor('#000');
+  }
+
+  doc.moveDown(2);
+
+  // ── Items table ────────────────────────────────────────────
+  const tableTop = doc.y;
+  const col = { item: 54, sku: 360, qty: 500 };
+
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#888');
+  doc.text('ITEM',     col.item, tableTop);
+  doc.text('SKU',      col.sku,  tableTop);
+  doc.text('QTY',      col.qty,  tableTop, { width: 50, align: 'right' });
+  doc.fillColor('#000');
+
+  doc.moveTo(54, tableTop + 14).lineTo(558, tableTop + 14).strokeColor('#ccc').stroke();
+
+  let y = tableTop + 22;
+  doc.font('Helvetica').fontSize(11);
+  items.forEach((it, idx) => {
+    const name = it.name || `Product #${it.productId || ''}`;
+    const sku  = skuByIdx[idx] || '—';
+    const qty  = String(it.qty || it.quantity || 1);
+
+    const nameHeight = doc.heightOfString(name, { width: 290 });
+    doc.text(name, col.item, y, { width: 290 });
+    doc.text(sku,  col.sku,  y);
+    doc.text(qty,  col.qty,  y, { width: 50, align: 'right' });
+
+    y += Math.max(nameHeight, 16) + 6;
+  });
+
+  doc.moveTo(54, y).lineTo(558, y).strokeColor('#ccc').stroke();
+
+  const totalQty = items.reduce((s, it) => s + (parseInt(it.qty || it.quantity) || 0), 0);
+  doc.font('Helvetica-Bold').fontSize(11)
+     .text(`Total items: ${totalQty}`, 54, y + 12, { width: 504, align: 'right' });
+
+  // ── Footer ─────────────────────────────────────────────────
+  doc.font('Helvetica').fontSize(10).fillColor('#888')
+     .text('Thank you for your order!', 54, 720, { width: 504, align: 'center' });
+}
+
 app.get('/api/seller/orders/:id/packing-slip.pdf', requireAuth, async (req, res) => {
   try {
     const orderId = normalizeOrderId(req.params.id);
@@ -1452,108 +1540,138 @@ app.get('/api/seller/orders/:id/packing-slip.pdf', requireAuth, async (req, res)
       return res.status(403).json({ error: 'You do not own this order.' });
     }
 
-    const seller = await db.getSellerById(order.sellerId);
-
-    // Look up SKUs for each line item. Items in the DB only carry name+price;
-    // SKU lives on the product. Misses (deleted products) just render blank.
-    const items = Array.isArray(order.items) ? order.items : [];
-    const products = await Promise.all(
-      items.map(it => it.productId ? db.getProductById(it.productId).catch(() => null) : null)
-    );
-    const skuByIdx = products.map(p => p?.sku || '');
-
-    const ship = order.customerInfo || {};
-    const fullName = [ship.firstName, ship.lastName].filter(Boolean).join(' ')
-      || ship.name
-      || order.customerEmail
-      || '';
+    const { seller, items, skuByIdx } = await loadPackingSlipData(order);
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename="packing-slip-SS-${order.id}.pdf"`
-    );
+    res.setHeader('Content-Disposition', `inline; filename="packing-slip-SS-${order.id}.pdf"`);
 
-    const doc = new PDFDocument({ size: 'LETTER', margin: 54 }); // 0.75" margins
+    const doc = new PDFDocument({ size: 'LETTER', margin: 54 });
     doc.pipe(res);
-
-    // ── Header ─────────────────────────────────────────────────
-    doc.font('Helvetica-Bold').fontSize(20).text(seller?.storeName || 'ShopSell', { continued: false });
-    doc.moveUp();
-    doc.font('Helvetica-Bold').fontSize(16).text('PACKING SLIP', { align: 'right' });
-    doc.font('Helvetica').fontSize(10).fillColor('#555');
-    doc.text(`Order #SS-${order.id}`, { align: 'right' });
-    const paid = order.paidAt ? new Date(order.paidAt) : new Date(order.createdAt);
-    doc.text(`Date: ${paid.toLocaleDateString('en-US')}`, { align: 'right' });
-    doc.fillColor('#000');
-
-    doc.moveDown(2);
-
-    // ── Ship-to block ──────────────────────────────────────────
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#888').text('SHIP TO');
-    doc.moveDown(0.3);
-    doc.font('Helvetica').fontSize(12).fillColor('#000');
-    if (fullName) doc.text(fullName);
-    if (ship.company) doc.text(ship.company);
-    if (ship.address1 || ship.address) doc.text(ship.address1 || ship.address);
-    if (ship.address2) doc.text(ship.address2);
-    const cityLine = [ship.city, ship.state].filter(Boolean).join(', ');
-    const cityZip  = [cityLine, ship.zip || ship.postalCode].filter(Boolean).join(' ');
-    if (cityZip) doc.text(cityZip);
-    if (ship.country && ship.country !== 'US') doc.text(ship.country);
-    if (order.customerEmail) {
-      doc.fontSize(10).fillColor('#555').text(order.customerEmail);
-      doc.fillColor('#000');
-    }
-
-    doc.moveDown(2);
-
-    // ── Items table ────────────────────────────────────────────
-    const tableTop = doc.y;
-    const col = { item: 54, sku: 360, qty: 500 };
-
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#888');
-    doc.text('ITEM',     col.item, tableTop);
-    doc.text('SKU',      col.sku,  tableTop);
-    doc.text('QTY',      col.qty,  tableTop, { width: 50, align: 'right' });
-    doc.fillColor('#000');
-
-    doc.moveTo(54, tableTop + 14).lineTo(558, tableTop + 14).strokeColor('#ccc').stroke();
-
-    let y = tableTop + 22;
-    doc.font('Helvetica').fontSize(11);
-    items.forEach((it, idx) => {
-      const name = it.name || `Product #${it.productId || ''}`;
-      const sku  = skuByIdx[idx] || '—';
-      const qty  = String(it.qty || it.quantity || 1);
-
-      const nameHeight = doc.heightOfString(name, { width: 290 });
-      doc.text(name, col.item, y, { width: 290 });
-      doc.text(sku,  col.sku,  y);
-      doc.text(qty,  col.qty,  y, { width: 50, align: 'right' });
-
-      y += Math.max(nameHeight, 16) + 6;
-    });
-
-    doc.moveTo(54, y).lineTo(558, y).strokeColor('#ccc').stroke();
-
-    // ── Totals (item count only — packing slips traditionally omit prices) ─
-    const totalQty = items.reduce((s, it) => s + (parseInt(it.qty || it.quantity) || 0), 0);
-    doc.moveDown(1);
-    doc.font('Helvetica-Bold').fontSize(11)
-       .text(`Total items: ${totalQty}`, 54, y + 12, { width: 504, align: 'right' });
-
-    // ── Footer ─────────────────────────────────────────────────
-    doc.font('Helvetica').fontSize(10).fillColor('#888')
-       .text('Thank you for your order!', 54, 720, { width: 504, align: 'center' });
-
+    drawPackingSlipPage(doc, { order, seller, items, skuByIdx });
     doc.end();
 
   } catch (err) {
     console.error('Packing slip error:', err);
-    // If we already started streaming, we can't change headers — just end.
     if (res.headersSent) return res.end();
     res.status(500).json({ error: 'Failed to generate packing slip.' });
+  }
+});
+
+// BATCH PACKING SLIPS — one PDF, a slip per order (tenant-scoped).
+app.post('/api/seller/packing-slips.pdf', requireAuth, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.orderIds) ? req.body.orderIds : null;
+    if (!ids || !ids.length) return res.status(400).json({ error: 'orderIds (non-empty array) is required.' });
+
+    // Load + ownership-filter first so we can 404 cleanly before streaming.
+    const orders = [];
+    for (const raw of ids) {
+      const oid = normalizeOrderId(raw);
+      if (oid === null) continue;
+      const order = await db.getOrderById(oid);
+      if (order && order.sellerId === req.seller.sellerId) orders.push(order);
+    }
+    if (!orders.length) return res.status(404).json({ error: 'No matching orders found.' });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="packing-slips-${orders.length}.pdf"`);
+    const doc = new PDFDocument({ size: 'LETTER', margin: 54 });
+    doc.pipe(res);
+    for (let i = 0; i < orders.length; i++) {
+      if (i > 0) doc.addPage();
+      const { seller, items, skuByIdx } = await loadPackingSlipData(orders[i]);
+      drawPackingSlipPage(doc, { order: orders[i], seller, items, skuByIdx });
+    }
+    doc.end();
+  } catch (err) {
+    console.error('Batch packing slips error:', err);
+    if (res.headersSent) return res.end();
+    res.status(500).json({ error: 'Failed to generate packing slips.' });
+  }
+});
+
+// PICK LIST — aggregate every line item across the selected orders into one
+// SKU/name → total-qty sheet for warehouse picking.
+app.post('/api/seller/pick-list.pdf', requireAuth, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.orderIds) ? req.body.orderIds : null;
+    if (!ids || !ids.length) return res.status(400).json({ error: 'orderIds (non-empty array) is required.' });
+
+    const orders = [];
+    for (const raw of ids) {
+      const oid = normalizeOrderId(raw);
+      if (oid === null) continue;
+      const order = await db.getOrderById(oid);
+      if (order && order.sellerId === req.seller.sellerId) orders.push(order);
+    }
+    if (!orders.length) return res.status(404).json({ error: 'No matching orders found.' });
+
+    // Aggregate by product (fall back to name when there's no productId).
+    const agg = new Map();
+    for (const order of orders) {
+      const items = Array.isArray(order.items) ? order.items : [];
+      for (const it of items) {
+        const key = it.productId != null ? `p:${it.productId}` : `n:${it.name || 'Item'}`;
+        const qty = parseInt(it.qty || it.quantity) || 0;
+        if (!agg.has(key)) agg.set(key, { productId: it.productId ?? null, name: it.name || 'Item', qty: 0, sku: '' });
+        agg.get(key).qty += qty;
+      }
+    }
+    // Resolve SKUs once per distinct product.
+    await Promise.all([...agg.values()].map(async row => {
+      if (row.productId != null) {
+        const p = await db.getProductById(row.productId).catch(() => null);
+        if (p) row.sku = p.sku || '';
+      }
+    }));
+    const rows = [...agg.values()].sort((a, b) => (a.sku || a.name).localeCompare(b.sku || b.name));
+    const seller = await db.getSellerById(req.seller.sellerId);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="pick-list-${orders.length}-orders.pdf"`);
+    const doc = new PDFDocument({ size: 'LETTER', margin: 54 });
+    doc.pipe(res);
+
+    doc.font('Helvetica-Bold').fontSize(20).text(seller?.storeName || 'ShopSell');
+    doc.moveUp();
+    doc.font('Helvetica-Bold').fontSize(16).text('PICK LIST', { align: 'right' });
+    doc.font('Helvetica').fontSize(10).fillColor('#555')
+       .text(`${orders.length} order${orders.length === 1 ? '' : 's'}`, { align: 'right' });
+    doc.fillColor('#000').moveDown(2);
+
+    const tableTop = doc.y;
+    const col = { pick: 54, item: 96, sku: 400, qty: 500 };
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#888');
+    doc.text('✓', col.pick, tableTop);
+    doc.text('ITEM', col.item, tableTop);
+    doc.text('SKU', col.sku, tableTop);
+    doc.text('QTY', col.qty, tableTop, { width: 50, align: 'right' });
+    doc.fillColor('#000');
+    doc.moveTo(54, tableTop + 14).lineTo(558, tableTop + 14).strokeColor('#ccc').stroke();
+
+    let y = tableTop + 22;
+    doc.font('Helvetica').fontSize(11);
+    let totalUnits = 0;
+    for (const row of rows) {
+      if (y > 700) { doc.addPage(); y = 54; }
+      doc.rect(col.pick, y - 1, 12, 12).strokeColor('#999').stroke(); // pick checkbox
+      const nameHeight = doc.heightOfString(row.name, { width: 290 });
+      doc.fillColor('#000').text(row.name, col.item, y, { width: 290 });
+      doc.text(row.sku || '—', col.sku, y);
+      doc.font('Helvetica-Bold').text(String(row.qty), col.qty, y, { width: 50, align: 'right' });
+      doc.font('Helvetica');
+      totalUnits += row.qty;
+      y += Math.max(nameHeight, 16) + 8;
+    }
+    doc.moveTo(54, y).lineTo(558, y).strokeColor('#ccc').stroke();
+    doc.font('Helvetica-Bold').fontSize(11)
+       .text(`${rows.length} SKUs · ${totalUnits} units to pick`, 54, y + 12, { width: 504, align: 'right' });
+
+    doc.end();
+  } catch (err) {
+    console.error('Pick list error:', err);
+    if (res.headersSent) return res.end();
+    res.status(500).json({ error: 'Failed to generate pick list.' });
   }
 });
 
