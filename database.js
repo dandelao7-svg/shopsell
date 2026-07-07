@@ -330,6 +330,24 @@ async function initSchema() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_automation_rules_seller ON automation_rules (seller_id, priority);`);
 
+    // PACKAGE PRESETS — saved box profiles reused across Quick Ship / batch /
+    // automation. weight is an optional tare/typical weight (NULL = none).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS package_presets (
+        id          SERIAL PRIMARY KEY,
+        seller_id   INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        length      NUMERIC(10,2) NOT NULL DEFAULT 12,
+        width       NUMERIC(10,2) NOT NULL DEFAULT 9,
+        height      NUMERIC(10,2) NOT NULL DEFAULT 4,
+        weight      NUMERIC(10,3),
+        is_default  BOOLEAN NOT NULL DEFAULT FALSE,
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_package_presets_seller ON package_presets (seller_id, sort_order);`);
+
     // PRODUCT REVIEWS — one per buyer per product; feeds products.rating/review_count.
     await client.query(`
       CREATE TABLE IF NOT EXISTS reviews (
@@ -1111,6 +1129,41 @@ async function deleteAutomationRule(id) {
   await pool.query(`DELETE FROM automation_rules WHERE id = $1`, [id]);
 }
 
+// ── PACKAGE PRESETS ───────────────────────────────────────────
+async function getPackagePresets(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM package_presets WHERE seller_id = $1 ORDER BY sort_order ASC, id ASC`, [sellerId]);
+  return rows.map(r => camelize(r));
+}
+
+// Replace the seller's whole preset list in one transaction (matches the
+// list-edit-then-save UI). Returns the freshly-saved rows.
+async function savePackagePresets(sellerId, list) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM package_presets WHERE seller_id = $1`, [sellerId]);
+    let i = 0;
+    for (const b of (list || [])) {
+      await client.query(
+        `INSERT INTO package_presets (seller_id, name, length, width, height, weight, is_default, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [sellerId, String(b.name || 'Box').slice(0, 60),
+         Number(b.length ?? b.l) || 12, Number(b.width ?? b.w) || 9, Number(b.height ?? b.h) || 4,
+         (b.weight == null || b.weight === '') ? null : Number(b.weight),
+         !!b.isDefault, i++]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+  return getPackagePresets(sellerId);
+}
+
 // Atomically bump usage, respecting max_uses. Returns true if it incremented.
 async function incrementDiscountUse(sellerId, code) {
   const { rowCount } = await pool.query(
@@ -1238,6 +1291,10 @@ module.exports = {
   getAutomationRuleById,
   updateAutomationRule,
   deleteAutomationRule,
+
+  // Package presets
+  getPackagePresets,
+  savePackagePresets,
 
   // Stripe keys
   saveStripeKeys,

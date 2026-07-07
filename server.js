@@ -2364,7 +2364,7 @@ function normalizeRulePayload(body) {
     action: {
       carrier: a.carrier,
       service: String(a.service),
-      boxSize: ['small', 'medium', 'large', 'xlarge'].includes(a.boxSize) ? a.boxSize : null,
+      boxSize: a.boxSize ? String(a.boxSize).slice(0, 40) : null, // built-in key or preset id/name
     },
   };
 }
@@ -2416,6 +2416,34 @@ app.delete('/api/seller/automation-rules/:id', requireAuth, async (req, res) => 
   } catch (err) {
     console.error('Delete automation rule error:', err);
     res.status(500).json({ error: 'Failed to delete rule.' });
+  }
+});
+
+/* ============================================================
+   ── PACKAGE PRESETS ──────────────────────────────────────────
+   Saved box profiles reused across Quick Ship / batch / rules.
+   ============================================================ */
+app.get('/api/seller/packages', requireAuth, async (req, res) => {
+  try {
+    const packages = await db.getPackagePresets(req.seller.sellerId);
+    res.json({ packages });
+  } catch (err) {
+    console.error('List package presets error:', err);
+    res.status(500).json({ error: 'Failed to load package presets.' });
+  }
+});
+
+// Bulk replace (the settings UI edits a list then saves it all).
+app.put('/api/seller/packages', requireAuth, async (req, res) => {
+  try {
+    const list = Array.isArray(req.body.packages) ? req.body.packages : null;
+    if (!list) return res.status(400).json({ error: 'packages (array) is required.' });
+    if (list.length > 50) return res.status(400).json({ error: 'Too many presets (max 50).' });
+    const packages = await db.savePackagePresets(req.seller.sellerId, list);
+    res.json({ packages });
+  } catch (err) {
+    console.error('Save package presets error:', err);
+    res.status(500).json({ error: 'Failed to save package presets.' });
   }
 });
 
@@ -2540,6 +2568,16 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
       ? (await db.getAutomationRulesBySeller(sellerId)).filter(r => r.enabled !== false)
       : [];
 
+    // Resolve a rule's boxSize to [L,W,H]: a built-in size key, or a saved
+    // package preset (by id or name). Presets loaded once per batch.
+    const presets = strategy === 'rules' ? await db.getPackagePresets(sellerId) : [];
+    const resolveBoxDims = (boxSize) => {
+      if (!boxSize) return null;
+      if (BOX_DIMS[boxSize]) return BOX_DIMS[boxSize];
+      const p = presets.find(x => String(x.id) === String(boxSize) || x.name === boxSize);
+      return p ? [Number(p.length), Number(p.width), Number(p.height)] : null;
+    };
+
     // Which carriers are connected? (cheapest strategy rate-shops across these.)
     const accounts  = await db.getCarrierAccounts(sellerId);
     const connected = (accounts || []).map(a => a.carrier).filter(c => ['ups','fedex','usps'].includes(c));
@@ -2622,7 +2660,7 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
             chosenCarrier = rule.action?.carrier;
             chosenService = rule.action?.service;
             appliedRule   = rule.name;
-            const dims = BOX_DIMS[rule.action?.boxSize];
+            const dims = resolveBoxDims(rule.action?.boxSize);
             if (dims) { pkgForOrder.length = dims[0]; pkgForOrder.width = dims[1]; pkgForOrder.height = dims[2]; }
           }
         }

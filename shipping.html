@@ -1747,6 +1747,9 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       // Update topbar after page loads
       document.addEventListener('DOMContentLoaded', () => updateUserDisplay(seller));
       if(document.readyState !== 'loading') updateUserDisplay(seller);
+      // Preload package presets so the batch modal (opened from Orders) has them.
+      if(typeof loadPackagePresets === 'function') loadPackagePresets();
+      else document.addEventListener('DOMContentLoaded', () => loadPackagePresets());
     })
     .catch(() => {/* network blip — let other API calls handle it */});
 })();
@@ -2334,7 +2337,7 @@ function openBatchModal(){
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Weight is calculated per order from your product weights — the value below is the fallback when an order has none. Dimensions apply to all.</div>
         <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr;gap:8px">
           <select id="batch-box" onchange="batchSelectBox(this.value)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
-            <option value="small">Small 8×6×4</option><option value="medium" selected>Medium 12×9×6</option><option value="large">Large 18×14×10</option><option value="xlarge">XL 24×18×12</option>
+            ${userBoxes.map(b=>`<option value="${b.id}" ${b.isDefault?'selected':''}>${escapeAttr(b.name)} — ${b.l}×${b.w}×${b.h}</option>`).join('')}
           </select>
           <input type="number" id="batch-weight" value="2" step="0.1" min="0.1" title="Weight (lb)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
           <input type="number" id="batch-length" value="12" title="Length (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
@@ -2350,6 +2353,9 @@ function openBatchModal(){
     </div>`;
   document.body.appendChild(modal);
   batchUpdateServices();
+  // Sync dims to the pre-selected default preset.
+  const boxSel = document.getElementById('batch-box');
+  if(boxSel && boxSel.value) batchSelectBox(boxSel.value);
 }
 
 function closeBatchModal(){ document.getElementById('batchModal')?.remove(); }
@@ -2371,11 +2377,13 @@ function batchUpdateServices(){
   if(sel) sel.innerHTML = (services[carrier]||services.ups).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
 }
 
-function batchSelectBox(size){
-  const dims = { small:[8,6,4], medium:[12,9,6], large:[18,14,10], xlarge:[24,18,12] }[size] || [12,9,6];
-  document.getElementById('batch-length').value = dims[0];
-  document.getElementById('batch-width').value  = dims[1];
-  document.getElementById('batch-height').value = dims[2];
+function batchSelectBox(id){
+  const box = userBoxes.find(b=>String(b.id)===String(id));
+  if(!box) return;
+  document.getElementById('batch-length').value = box.l;
+  document.getElementById('batch-width').value  = box.w;
+  document.getElementById('batch-height').value = box.h;
+  if(box.weight!=null && box.weight>0) document.getElementById('batch-weight').value = box.weight;
 }
 
 async function runBatch(){
@@ -2599,7 +2607,7 @@ function openRuleEditor(id){
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
           <div class="form-field"><label>Carrier</label><select id="rule-carrier" onchange="ruleUpdateServices()" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="ups">UPS</option><option value="fedex">FedEx</option><option value="usps">USPS</option></select></div>
           <div class="form-field"><label>Service</label><select id="rule-service" style="background:var(--bg3);color:var(--text);border-color:var(--border)"></select></div>
-          <div class="form-field"><label>Box (optional)</label><select id="rule-box" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="">Batch default</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xlarge">X-Large</option></select></div>
+          <div class="form-field"><label>Box (optional)</label><select id="rule-box" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="">Batch default</option>${userBoxes.map(b=>`<option value="${b.id}">${escapeAttr(b.name)} — ${b.l}×${b.w}×${b.h}</option>`).join('')}</select></div>
         </div>
       </div>
       <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
@@ -2611,7 +2619,13 @@ function openRuleEditor(id){
   document.getElementById('rule-carrier').value = a.carrier || 'ups';
   ruleUpdateServices();
   if(a.service) document.getElementById('rule-service').value = a.service;
-  if(a.boxSize) document.getElementById('rule-box').value = a.boxSize;
+  if(a.boxSize){
+    const boxSel = document.getElementById('rule-box');
+    if(![...boxSel.options].some(o=>o.value===String(a.boxSize))){
+      boxSel.add(new Option(String(a.boxSize), a.boxSize)); // legacy built-in key or removed preset
+    }
+    boxSel.value = a.boxSize;
+  }
 }
 function closeRuleModal(){ document.getElementById('ruleModal')?.remove(); }
 function ruleUpdateServices(){
@@ -3155,6 +3169,10 @@ function showPage(name){
   if(name === 'settings'){
     // Load per-seller carrier connection status (server-backed, encrypted)
     loadCarrierStatus();
+    loadPackagePresets();
+  }
+  if(name === 'quickship'){
+    loadPackagePresets();
   }
   if(name === 'automation'){
     loadAutomationRules();
@@ -3972,7 +3990,31 @@ const DEFAULT_BOXES = [
   { id:'box6', name:'Tube',          l:36, w:6,  h:6,  isDefault:false },
 ];
 
-let userBoxes = JSON.parse(localStorage.getItem('userBoxes') || 'null') || DEFAULT_BOXES;
+// Presets are server-backed (per seller). DEFAULT_BOXES is the in-memory
+// fallback shown until they load / for sellers who haven't saved any yet.
+let userBoxes = DEFAULT_BOXES.slice();
+
+function mapPresetRows(rows){
+  return (rows||[]).map(p=>({
+    id:String(p.id), name:p.name,
+    l:Number(p.length), w:Number(p.width), h:Number(p.height),
+    weight: p.weight!=null ? Number(p.weight) : null,
+    isDefault: !!p.isDefault,
+  }));
+}
+
+async function loadPackagePresets(){
+  try {
+    const res = await fetch('/api/seller/packages', { headers: authHeaders() });
+    if(!res.ok) return;
+    const data = await res.json();
+    const list = mapPresetRows(data.packages);
+    if(list.length) userBoxes = list;
+    if(!userBoxes.some(b=>b.isDefault) && userBoxes[0]) userBoxes[0].isDefault = true;
+    updateBoxDropdown();
+    renderBoxSizesList();
+  } catch(e){ /* keep in-memory defaults */ }
+}
 let addrValidEnabled = localStorage.getItem('addrValid') !== 'false';
 let suggestedAddr = null;
 let addrValidOverridden = false;
@@ -3982,7 +4024,7 @@ function renderBoxSizesList(){
   if(!el) return;
   el.innerHTML = userBoxes.map((box,i) => `
     <div style="background:var(--bg2);border-radius:8px;border:1px solid ${box.isDefault?'var(--green)':'var(--border)'};padding:10px 12px">
-      <div style="display:grid;grid-template-columns:1fr 58px 58px 58px auto auto;gap:8px;align-items:center">
+      <div style="display:grid;grid-template-columns:1fr 52px 52px 52px 58px auto auto;gap:8px;align-items:center">
         <input type="text" value="${box.name}" onchange="updateBox(${i},'name',this.value)"
           style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-family:'Outfit',sans-serif;font-size:12px;color:var(--text);outline:none;font-weight:600">
         <div>
@@ -4000,6 +4042,11 @@ function renderBoxSizesList(){
           <input type="number" value="${box.h}" min="1" onchange="updateBox(${i},'h',this.value)"
             style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 4px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);outline:none;text-align:center">
         </div>
+        <div>
+          <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Wt (lb)</div>
+          <input type="number" value="${box.weight ?? ''}" min="0" step="0.1" placeholder="—" onchange="updateBox(${i},'weight',this.value)" title="Optional default weight"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 4px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);outline:none;text-align:center">
+        </div>
         <button onclick="setDefaultBoxIdx(${i})" style="background:${box.isDefault?'var(--green-bg)':'var(--bg3)'};border:1px solid ${box.isDefault?'var(--green)':'var(--border)'};color:${box.isDefault?'var(--green)':'var(--muted)'};padding:5px 8px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;white-space:nowrap">
           ${box.isDefault ? '✓ Default' : 'Set default'}
         </button>
@@ -4013,7 +4060,9 @@ function renderBoxSizesList(){
 }
 
 function updateBox(idx, field, val){
-  userBoxes[idx][field] = (field==='l'||field==='w'||field==='h') ? parseFloat(val)||1 : val;
+  if(field==='l'||field==='w'||field==='h') userBoxes[idx][field] = parseFloat(val)||1;
+  else if(field==='weight') userBoxes[idx].weight = (val==='' ? null : parseFloat(val));
+  else userBoxes[idx][field] = val;
 }
 
 function setDefaultBoxIdx(idx){
@@ -4035,10 +4084,19 @@ function addBoxSize(){
   document.getElementById('boxSizesList')?.lastElementChild?.scrollIntoView({behavior:'smooth'});
 }
 
-function saveBoxSizes(){
-  localStorage.setItem('userBoxes', JSON.stringify(userBoxes));
-  updateBoxDropdown();
-  toast('Box sizes saved ✓','success');
+async function saveBoxSizes(){
+  try {
+    const res = await fetch('/api/seller/packages', {
+      method:'PUT', headers: authHeaders(), body: JSON.stringify({ packages: userBoxes }),
+    });
+    const data = await res.json();
+    if(!res.ok){ toast(data.error || 'Could not save presets','error'); return; }
+    userBoxes = mapPresetRows(data.packages);
+    if(!userBoxes.some(b=>b.isDefault) && userBoxes[0]) userBoxes[0].isDefault = true;
+    updateBoxDropdown();
+    renderBoxSizesList();
+    toast('Package presets saved ✓','success');
+  } catch(e){ toast('Network error saving presets: '+e.message,'error'); }
 }
 
 function updateBoxDropdown(){
@@ -4050,11 +4108,12 @@ function updateBoxDropdown(){
 
 function selectBox(val){
   if(val==='custom') return;
-  const box = userBoxes.find(b=>b.id===val);
+  const box = userBoxes.find(b=>String(b.id)===String(val));
   if(!box) return;
   document.getElementById('qs-length').value = box.l;
   document.getElementById('qs-width').value  = box.w;
   document.getElementById('qs-height').value = box.h;
+  if(box.weight!=null && box.weight>0) document.getElementById('qs-weight').value = box.weight;
 }
 
 function setDefaultBox(name){ toast('Use the Set default button next to each box','info'); }
