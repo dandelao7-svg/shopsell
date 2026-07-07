@@ -2307,7 +2307,8 @@ function openBatchModal(){
           </div></div>
         </label>
 
-        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 10px">Package (applied to all)</div>
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 4px">Package</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Weight is calculated per order from your product weights — the value below is the fallback when an order has none. Dimensions apply to all.</div>
         <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr;gap:8px">
           <select id="batch-box" onchange="batchSelectBox(this.value)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
             <option value="small">Small 8×6×4</option><option value="medium" selected>Medium 12×9×6</option><option value="large">Large 18×14×10</option><option value="xlarge">XL 24×18×12</option>
@@ -2408,9 +2409,12 @@ function renderBatchResults(data){
 
   const rows = results.map(r=>{
     if(r.success){
+      const wt = r.weight != null
+        ? `<span style="color:var(--muted)">· ${(+r.weight).toFixed(1)} lb${r.weightSource==='default'?'*':''}</span>`
+        : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
         <span style="color:var(--green)">✓</span>
-        <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · ${(r.carrier||'').toUpperCase()} ${r.service||''}</div>
+        <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · ${(r.carrier||'').toUpperCase()} ${r.service||''} ${wt}</div>
         <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text)">$${(parseFloat(r.totalCharge)||0).toFixed(2)}</div>
       </div>`;
     }
@@ -2426,7 +2430,8 @@ function renderBatchResults(data){
       <div style="flex:1;background:var(--bg2);border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--text)">$${summary.totalSpend||'0.00'}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total spend</div></div>
       <div style="flex:1;background:${(summary.failed||0)?'var(--red-bg)':'var(--bg2)'};border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:${(summary.failed||0)?'var(--accent)':'var(--muted)'}">${summary.failed||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Failed</div></div>
     </div>
-    ${rows}`;
+    ${rows}
+    ${results.some(r=>r.success && r.weightSource==='default') ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">* weight fell back to the batch default (no product weight set)</div>' : ''}`;
 
   const footer = document.getElementById('batchRunBtn');
   if(lastBatchResults.length){
