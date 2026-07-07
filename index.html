@@ -455,6 +455,14 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
       </div>
       <div class="co-card">
         <div class="co-sec-hd">Payment <span style="float:right;font-size:11px;color:#635bff;font-weight:500;text-transform:none;letter-spacing:0">🔒 Secured by Stripe</span></div>
+        <div id="walletBtnWrap" style="display:none">
+          <div id="walletBtn"></div>
+          <div style="display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:12px">
+            <span style="flex:1;height:1px;background:var(--border)"></span>
+            or pay with card
+            <span style="flex:1;height:1px;background:var(--border)"></span>
+          </div>
+        </div>
         <div id="stripePaymentMount" style="min-height:60px;padding:12px 0"></div>
         <div id="stripePayMsg" style="color:var(--accent);font-size:13px;margin-top:8px;display:none"></div>
       </div>
@@ -734,7 +742,7 @@ let currentModal=null, mq=1, mobileNavOpen=false;
 // Uses the legacy CardElement (not PaymentElement) so Link is structurally
 // impossible — CardElement only renders card number / expiry / CVC, with no
 // email recognition, no saved-card autofill, no Link prompt.
-let stripe=null, stripeElements=null, stripeCardElement=null;
+let stripe=null, stripeElements=null, stripeCardElement=null, walletPR=null;
 let currentPaymentIntent=null;  // { clientSecret, orderId, subtotal, total }
 let currentTax=0;               // finalized sales tax (Stripe Tax), 0 until an address is entered
 let currentDiscount=0;          // dollars off from an applied discount code
@@ -1095,6 +1103,8 @@ function updateCheckoutUI(){
     if(disc>0){ dRow.style.display=''; dEl.textContent='−'+fmt(disc); }
     else { dRow.style.display='none'; }
   }
+  // Keep the Apple/Google Pay sheet total in sync with the cart.
+  if(walletPR){ try { walletPR.update({ total:{ label: STORE_CONFIG.storeName || 'Order', amount: walletAmountCents() }, shippingOptions: WALLET_SHIPPING }); } catch(e){} }
   const keys=Object.keys(cart);
   const itemsEl=document.getElementById('checkoutItems');
   if(itemsEl){
@@ -1261,10 +1271,119 @@ async function setupStripeCheckout(){
     stripeCardElement.mount('#stripePaymentMount');
 
     setPlaceBtn({label:'Place order', total:'$'+data.total, disabled:false});
+
+    // Offer Apple Pay / Google Pay if the buyer's device/browser supports it.
+    setupWalletButton().catch(()=>{});
   } catch(err){
     mountEl.innerHTML = `<div style="color:var(--accent);font-size:13px">${err.message}</div>`;
     setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()), disabled:true});
   }
+}
+
+// Current order total in cents (subtotal − discount + tax), for the wallet sheet.
+function walletAmountCents(){
+  const sub = cartTotal();
+  const disc = Math.min(currentDiscount, sub);
+  return Math.max(0, Math.round((Math.max(0, sub - disc) + currentTax) * 100));
+}
+const WALLET_SHIPPING = [{ id:'free', label:'Free shipping', detail:'Arrives in 3–5 business days', amount:0 }];
+
+// Apple Pay / Google Pay via Stripe's Payment Request Button. Only shows when
+// the device actually supports a wallet; otherwise the card form stands alone.
+// Deliberately separate from PaymentElement so Stripe Link is never introduced.
+async function setupWalletButton(){
+  const wrap = document.getElementById('walletBtnWrap');
+  const btnEl = document.getElementById('walletBtn');
+  if(!wrap || !btnEl || !stripe || !stripeElements) return;
+  wrap.style.display = 'none';
+  btnEl.innerHTML = '';
+
+  const pr = stripe.paymentRequest({
+    country: 'US',
+    currency: 'usd',
+    total: { label: STORE_CONFIG.storeName || 'Order', amount: walletAmountCents() },
+    requestPayerName: true,
+    requestPayerEmail: true,
+    requestPayerPhone: true,
+    requestShipping: true,
+    shippingOptions: WALLET_SHIPPING,
+  });
+  walletPR = pr;
+
+  const avail = await pr.canMakePayment();
+  if(!avail){ walletPR = null; return; }   // no Apple/Google Pay on this device
+
+  const prButton = stripeElements.create('paymentRequestButton', {
+    paymentRequest: pr,
+    style: { paymentRequestButton: { type: 'default', theme: 'dark', height: '46px' } },
+  });
+  prButton.mount('#walletBtn');
+  wrap.style.display = '';
+
+  // The wallet provides the shipping address — recalc sales tax on it and
+  // reflect the new total in the wallet sheet before the buyer authorizes.
+  pr.on('shippingaddresschange', async (ev)=>{
+    try {
+      const a = ev.shippingAddress || {};
+      if(currentPaymentIntent && currentPaymentIntent.orderId){
+        const res = await fetch('/api/checkout/calculate-tax', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ orderId: currentPaymentIntent.orderId, address: {
+            address1: (a.addressLine && a.addressLine[0]) || '',
+            city: a.city || '', state: a.region || '',
+            zip: a.postalCode || '', country: a.country || 'US',
+          }})
+        });
+        const d = await res.json();
+        if(res.ok){
+          currentTax = parseFloat(d.tax) || 0;
+          if(d.discount != null) currentDiscount = parseFloat(d.discount) || 0;
+          updateCheckoutUI();
+        }
+      }
+      ev.updateWith({ status:'success', total:{ label: STORE_CONFIG.storeName || 'Order', amount: walletAmountCents() }, shippingOptions: WALLET_SHIPPING });
+    } catch(e){
+      ev.updateWith({ status:'fail' });
+    }
+  });
+
+  // Buyer authorized in the wallet — confirm the PaymentIntent, then our order.
+  pr.on('paymentmethod', async (ev)=>{
+    try {
+      const { error: confErr, paymentIntent } = await stripe.confirmCardPayment(
+        currentPaymentIntent.clientSecret,
+        { payment_method: ev.paymentMethod.id },
+        { handleActions: false },
+      );
+      if(confErr){ ev.complete('fail'); showStripeMsg(confErr.message || 'Payment failed.'); return; }
+      ev.complete('success');
+
+      // Handle any required 3-D Secure step after closing the wallet sheet.
+      if(paymentIntent && paymentIntent.status === 'requires_action'){
+        const { error: actErr } = await stripe.confirmCardPayment(currentPaymentIntent.clientSecret);
+        if(actErr){ showStripeMsg(actErr.message || 'Authentication failed.'); return; }
+      }
+
+      const sp = ev.shippingAddress || {};
+      const nameParts = (ev.payerName || '').trim().split(' ');
+      const customerInfo = {
+        firstName: nameParts.shift() || '',
+        lastName:  nameParts.join(' ') || '',
+        email:     ev.payerEmail || '',
+        phone:     ev.payerPhone || '',
+        address1:  (sp.addressLine && sp.addressLine[0]) || '',
+        address2:  (sp.addressLine && sp.addressLine[1]) || '',
+        city:      sp.city || '',
+        state:     sp.region || '',
+        zip:       sp.postalCode || '',
+        country:   sp.country || 'US',
+      };
+      await finalizeOrder(paymentIntent.id, customerInfo);
+    } catch(e){
+      ev.complete('fail');
+      showStripeMsg('Payment failed. Please try again.');
+    }
+  });
 }
 
 async function placeOrder(){
@@ -1333,32 +1452,33 @@ async function placeOrder(){
       country:   countryCode,
     };
 
-    const res = await fetch('/api/checkout/confirm', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        orderId:         currentPaymentIntent.orderId,
-        paymentIntentId: paymentIntent.id,
-        customerInfo,
-      }),
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Order confirmation failed.');
-
-    // 3. Show success screen
-    document.getElementById('orderNum').textContent = currentPaymentIntent.orderId;
-    cart={};
-    currentPaymentIntent=null;
-    updateCartUI();
-    showPage('success');
-    // If the buyer is signed in, refresh their orders so the new one appears
-    // when they navigate to "My orders". Otherwise (guest checkout) the order
-    // will appear later if they sign up with the same email (auto-link).
-    if(BUYER) loadBuyerOrders();
+    await finalizeOrder(paymentIntent.id, customerInfo);
   } catch(err) {
     showStripeMsg(err.message || 'Something went wrong. Please try again.');
     setPlaceBtn({label:'Place order', total:'$'+(currentPaymentIntent?.total||cartTotal().toFixed(2)), disabled:false});
   }
+}
+
+// Confirm the paid order with our backend and show the success screen.
+// Shared by the card flow (placeOrder) and the wallet flow (Apple/Google Pay).
+async function finalizeOrder(paymentIntentId, customerInfo){
+  const orderId = currentPaymentIntent.orderId;
+  const res = await fetch('/api/checkout/confirm', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ orderId, paymentIntentId, customerInfo }),
+  });
+  const data = await res.json();
+  if(!res.ok) throw new Error(data.error || 'Order confirmation failed.');
+
+  document.getElementById('orderNum').textContent = orderId;
+  cart={};
+  currentPaymentIntent=null;
+  currentTax=0; currentDiscount=0;
+  updateCartUI();
+  showPage('success');
+  // If the buyer is signed in, refresh their orders so the new one appears.
+  if(BUYER) loadBuyerOrders();
 }
 
 // ── BUYER AUTH + ACCOUNT ──────────────────────────────────────
