@@ -1347,6 +1347,11 @@ async function setupStripeCheckout(){
     stripe = Stripe(STORE_CONFIG.publishableKey);
     stripeElements = stripe.elements();
     stripeCardElement = stripeElements.create('card', {
+      // Belt-and-suspenders: never surface Stripe Link / saved-card autofill on
+      // the card field, regardless of the account's Link default. (The card-only
+      // PaymentIntent already excludes Link as a payment method; this covers the
+      // element UI too.)
+      disableLink: true,
       style: {
         base: {
           fontFamily: 'Outfit, sans-serif',
