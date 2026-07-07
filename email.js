@@ -231,16 +231,17 @@ function renderReceiptRows(items) {
   }).join('');
 }
 
-function renderTotals(subtotal, tax, total) {
-  const row = (label, val, bold) => `
+function renderTotals(subtotal, tax, total, discount) {
+  const row = (label, val, { bold = false, neg = false } = {}) => `
     <tr>
       <td style="padding:4px 12px;text-align:right;font-size:${bold ? '15px;font-weight:700;color:#0f0f1a' : '13px;color:#6b7280'}">${esc(label)}</td>
-      <td style="padding:4px 12px;text-align:right;width:96px;font-variant-numeric:tabular-nums;font-size:${bold ? '15px;font-weight:700' : '13px'}">${money(val)}</td>
+      <td style="padding:4px 12px;text-align:right;width:96px;font-variant-numeric:tabular-nums;font-size:${bold ? '15px;font-weight:700' : '13px'}">${neg ? '−' : ''}${money(val)}</td>
     </tr>`;
   return `<table style="width:100%;border-collapse:collapse;margin-top:6px">
       ${subtotal != null ? row('Subtotal', subtotal) : ''}
+      ${Number(discount) > 0 ? row('Discount', discount, { neg: true }) : ''}
       ${tax != null ? row('Tax', tax) : ''}
-      ${row('Total', total, true)}
+      ${row('Total', total, { bold: true })}
     </table>`;
 }
 
@@ -282,7 +283,7 @@ async function _send(payload, who) {
 // BUYER EMAIL — "order confirmed" receipt
 // ============================================================
 async function sendOrderConfirmationToBuyer({
-  toEmail, orderNumber, storeName, items, subtotal, tax, total, shippingAddress,
+  toEmail, orderNumber, storeName, items, subtotal, discount, tax, total, shippingAddress,
 }) {
   if (!client) return { skipped: true };
   if (!toEmail) return { skipped: true, reason: 'no recipient' };
@@ -300,7 +301,7 @@ async function sendOrderConfirmationToBuyer({
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <tbody>${renderReceiptRows(items)}</tbody>
       </table>
-      ${renderTotals(subtotal, tax, total)}
+      ${renderTotals(subtotal, tax, total, discount)}
 
       ${renderAddressBlock(shippingAddress, 'Shipping to')}
 

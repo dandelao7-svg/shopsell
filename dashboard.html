@@ -351,6 +351,10 @@ tr:hover td{background:#fafaf7}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       Storefront
     </a>
+    <a class="nav-item" onclick="showDash('discounts')" id="nav-discounts">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+      Discounts
+    </a>
 
     <div class="nav-section-label">Payments</div>
     <a class="nav-item" onclick="showDash('stripe')" id="nav-stripe">
@@ -1069,6 +1073,55 @@ tr:hover td{background:#fafaf7}
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════
+       DISCOUNTS PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-discounts">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Discount codes</div>
+        <div class="page-hd-sub">Create codes buyers can apply at checkout</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:340px minmax(0,1fr);gap:1.5rem;align-items:start">
+      <div class="form-card">
+        <div style="font-weight:600;margin-bottom:1rem">New code</div>
+        <div class="field">
+          <label>Code *</label>
+          <input type="text" id="dcCode" placeholder="SAVE10" maxlength="40" style="text-transform:uppercase">
+        </div>
+        <div class="field">
+          <label>Type</label>
+          <select id="dcType" onchange="dcTypeChanged()">
+            <option value="percentage">Percentage off</option>
+            <option value="fixed">Fixed amount off</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="dcValueLabel">Percent off *</label>
+          <input type="number" id="dcValue" placeholder="10" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label>Minimum subtotal</label>
+          <input type="number" id="dcMin" placeholder="0.00" min="0" step="0.01">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Cart subtotal required to use the code. Leave blank for none.</div>
+        </div>
+        <div class="field">
+          <label>Usage limit</label>
+          <input type="number" id="dcMax" placeholder="Unlimited" min="1" step="1">
+        </div>
+        <div class="field">
+          <label>Expiry date</label>
+          <input type="date" id="dcExpires">
+        </div>
+        <button class="btn primary" id="dcCreateBtn" onclick="createDiscount()">Create code</button>
+      </div>
+      <div class="form-card" style="padding:0;overflow:hidden">
+        <div id="discountsList" style="min-height:120px"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="page-content" id="dash-settings">
     <div class="page-hd">
       <div class="page-hd-title">Store settings</div>
@@ -1503,6 +1556,98 @@ if(document.readyState === 'loading'){
   loadStorefrontContent();
 }
 
+// ── DISCOUNT CODES ──
+function dcTypeChanged(){
+  const t = document.getElementById('dcType').value;
+  document.getElementById('dcValueLabel').textContent = t === 'fixed' ? 'Amount off ($) *' : 'Percent off *';
+  document.getElementById('dcValue').placeholder = t === 'fixed' ? '5.00' : '10';
+}
+
+async function loadDiscounts(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  const list = document.getElementById('discountsList');
+  list.innerHTML = '<div style="padding:1.5rem;color:var(--muted);font-size:13px">Loading…</div>';
+  try {
+    const res = await fetch('/api/seller/discounts', { headers:{ 'Authorization':'Bearer '+token } });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ list.innerHTML = '<div style="padding:1.5rem;color:var(--muted);font-size:13px">Could not load discounts.</div>'; return; }
+    renderDiscounts(data.discounts || []);
+  } catch(e){
+    list.innerHTML = '<div style="padding:1.5rem;color:var(--muted);font-size:13px">Network error.</div>';
+  }
+}
+
+function renderDiscounts(codes){
+  const list = document.getElementById('discountsList');
+  if(!codes.length){
+    list.innerHTML = '<div style="padding:2.5rem 1.5rem;text-align:center;color:var(--muted);font-size:13px">No discount codes yet.<br>Create your first one on the left.</div>';
+    return;
+  }
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const td = 'padding:12px 16px;border-bottom:1px solid var(--border)';
+  list.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">
+        <th style="${td}">Code</th><th style="${td}">Discount</th><th style="${td}">Used</th><th style="${td}">Status</th><th style="${td}"></th>
+      </tr></thead>
+      <tbody>${codes.map(d => {
+        const expired  = d.expiresAt && new Date(d.expiresAt) < new Date();
+        const usedUp   = d.maxUses != null && d.usedCount >= d.maxUses;
+        const status   = !d.active ? 'Disabled' : expired ? 'Expired' : usedUp ? 'Used up' : 'Active';
+        const cls      = (!d.active || expired || usedUp) ? 'draft' : 'active';
+        const val      = d.type === 'fixed' ? '$'+Number(d.value).toFixed(2)+' off' : Number(d.value)+'% off';
+        const min      = Number(d.minSubtotal) > 0 ? ` · min $${Number(d.minSubtotal).toFixed(2)}` : '';
+        const exp      = d.expiresAt ? ` · ends ${new Date(d.expiresAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : '';
+        return `<tr>
+          <td style="${td};font-family:monospace;font-weight:600">${esc(d.code)}</td>
+          <td style="${td}">${val}<span style="color:var(--muted)">${min}${exp}</span></td>
+          <td style="${td}">${d.usedCount}${d.maxUses != null ? ' / '+d.maxUses : ''}</td>
+          <td style="${td}"><span class="status-pill ${cls}">${status}</span></td>
+          <td style="${td};text-align:right"><button class="btn secondary sm" onclick="deleteDiscount(${d.id}, '${esc(d.code)}')">Delete</button></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+async function createDiscount(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const payload = {
+    code:        document.getElementById('dcCode').value.trim(),
+    type:        document.getElementById('dcType').value,
+    value:       document.getElementById('dcValue').value,
+    minSubtotal: document.getElementById('dcMin').value,
+    maxUses:     document.getElementById('dcMax').value,
+    expiresAt:   document.getElementById('dcExpires').value,
+  };
+  const btn = document.getElementById('dcCreateBtn');
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const res = await fetch('/api/seller/discounts', {
+      method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Could not create code'); return; }
+    toast('✓ Code created');
+    ['dcCode','dcValue','dcMin','dcMax','dcExpires'].forEach(id => document.getElementById(id).value = '');
+    loadDiscounts();
+  } catch(e){ toast('Network error'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function deleteDiscount(id, code){
+  if(!confirm('Delete code '+code+'? Buyers will no longer be able to use it.')) return;
+  const token = localStorage.getItem('ss_token');
+  try {
+    const res = await fetch('/api/seller/discounts/'+id, { method:'DELETE', headers:{ 'Authorization':'Bearer '+token } });
+    if(!res.ok){ const d = await res.json().catch(()=>({})); toast(d.error || 'Could not delete'); return; }
+    toast('Code deleted');
+    loadDiscounts();
+  } catch(e){ toast('Network error'); }
+}
+
 // ── ORDERS DATA (loaded from /api/seller/orders on dashboard init) ──
 let ORDERS = [];
 
@@ -1598,7 +1743,7 @@ function showDash(name){
   const titles = {
     overview:'Overview', orders:'Orders', products:'Products',
     'add-product':'Add product', customers:'Customers',
-    storefront:'Storefront pages',
+    storefront:'Storefront pages', discounts:'Discount codes',
     stripe:'Stripe payment setup', payouts:'Payouts',
     modules:'Add-on modules', settings:'Settings', billing:'My subscription'
   };
@@ -1606,6 +1751,7 @@ function showDash(name){
   window.scrollTo(0,0);
 
   if(name === 'stripe') loadStripeConfig();
+  if(name === 'discounts') loadDiscounts();
 }
 
 // ── MODE TOGGLE ──

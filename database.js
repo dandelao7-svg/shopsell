@@ -274,6 +274,30 @@ async function initSchema() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_seller ON customers (seller_id);`);
 
+    // DISCOUNT CODES — seller-scoped coupons applied at checkout.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS discount_codes (
+        id            SERIAL PRIMARY KEY,
+        seller_id     INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        code          TEXT NOT NULL,
+        type          TEXT NOT NULL DEFAULT 'percentage',   -- 'percentage' | 'fixed'
+        value         NUMERIC(12,2) NOT NULL,               -- percent (0-100) or dollar amount
+        min_subtotal  NUMERIC(12,2) NOT NULL DEFAULT 0,     -- minimum cart subtotal to qualify
+        max_uses      INTEGER,                              -- NULL = unlimited
+        used_count    INTEGER NOT NULL DEFAULT 0,
+        expires_at    TIMESTAMPTZ,                          -- NULL = never expires
+        active        BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    // One code per seller, case-insensitive.
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_discount_seller_code ON discount_codes (seller_id, UPPER(code));`);
+
+    // Orders carry the applied code + dollars discounted (for receipts/reporting).
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_code TEXT;`);
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;`);
+
     await client.query('COMMIT');
     console.log('✓ Database schema ready');
   } catch (err) {
@@ -594,6 +618,8 @@ async function updateOrder(id, fields) {
     tax:              'tax',
     total:            'total',
     taxCalculationId: 'tax_calculation_id',
+    discountCode:     'discount_code',
+    discountAmount:   'discount_amount',
   };
   const sets = [];
   const vals = [];
@@ -874,6 +900,64 @@ setInterval(() => {
   purgeOldShipments(120).catch(err => console.error('Daily purge error:', err));
 }, 24 * 60 * 60 * 1000);
 
+// ── DISCOUNT CODES ───────────────────────────────────────────
+async function createDiscount(sellerId, d) {
+  const { rows } = await pool.query(
+    `INSERT INTO discount_codes (seller_id, code, type, value, min_subtotal, max_uses, expires_at, active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [sellerId, d.code, d.type, d.value, d.minSubtotal || 0,
+     (d.maxUses == null ? null : d.maxUses), d.expiresAt || null, d.active !== false]
+  );
+  return camelize(rows[0]);
+}
+
+async function getDiscountsBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM discount_codes WHERE seller_id = $1 ORDER BY created_at DESC`, [sellerId]);
+  return rows.map(r => camelize(r));
+}
+
+async function getDiscountByCode(sellerId, code) {
+  const { rows } = await pool.query(
+    `SELECT * FROM discount_codes WHERE seller_id = $1 AND UPPER(code) = UPPER($2) LIMIT 1`,
+    [sellerId, code]);
+  return camelize(rows[0]);
+}
+
+async function getDiscountById(id) {
+  const { rows } = await pool.query(`SELECT * FROM discount_codes WHERE id = $1 LIMIT 1`, [id]);
+  return camelize(rows[0]);
+}
+
+async function updateDiscount(id, fields) {
+  const map = { code:'code', type:'type', value:'value', minSubtotal:'min_subtotal',
+                maxUses:'max_uses', expiresAt:'expires_at', active:'active' };
+  const sets = [], vals = []; let i = 1;
+  for (const k of Object.keys(fields)) {
+    if (map[k] && fields[k] !== undefined) { sets.push(`${map[k]} = $${i++}`); vals.push(fields[k]); }
+  }
+  if (!sets.length) return getDiscountById(id);
+  sets.push(`updated_at = NOW()`); vals.push(id);
+  const { rows } = await pool.query(
+    `UPDATE discount_codes SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
+  return camelize(rows[0]);
+}
+
+async function deleteDiscount(id) {
+  await pool.query(`DELETE FROM discount_codes WHERE id = $1`, [id]);
+}
+
+// Atomically bump usage, respecting max_uses. Returns true if it incremented.
+async function incrementDiscountUse(sellerId, code) {
+  const { rowCount } = await pool.query(
+    `UPDATE discount_codes
+       SET used_count = used_count + 1, updated_at = NOW()
+     WHERE seller_id = $1 AND UPPER(code) = UPPER($2)
+       AND (max_uses IS NULL OR used_count < max_uses)`,
+    [sellerId, code]);
+  return rowCount > 0;
+}
+
 // ── EXPORTS ──────────────────────────────────────────────────
 module.exports = {
   // Sellers
@@ -904,6 +988,15 @@ module.exports = {
 
   // Customers
   getCustomersBySeller,
+
+  // Discount codes
+  createDiscount,
+  getDiscountsBySeller,
+  getDiscountByCode,
+  getDiscountById,
+  updateDiscount,
+  deleteDiscount,
+  incrementDiscountUse,
 
   // Stripe keys
   saveStripeKeys,

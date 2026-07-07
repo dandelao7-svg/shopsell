@@ -787,6 +787,59 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
   }
 });
 
+// Validate a discount code against an in-progress order and store it on the
+// order. The storefront then re-runs calculate-tax so tax + total reflect the
+// discount. Sending an empty code clears any applied discount.
+app.post('/api/checkout/apply-discount', async (req, res) => {
+  try {
+    const { orderId, code } = req.body;
+    if (!orderId) return res.status(400).json({ error: 'orderId is required.' });
+
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+    if (order.status !== 'pending') {
+      return res.status(400).json({ error: 'This order can no longer be modified.' });
+    }
+
+    const raw = String(code || '').trim();
+    if (!raw) {
+      await db.updateOrder(orderId, { discountCode: null, discountAmount: 0 });
+      return res.json({ applied: false, discountAmount: '0.00' });
+    }
+
+    const d = await db.getDiscountByCode(order.sellerId, raw);
+    if (!d || !d.active) return res.status(404).json({ error: 'That code isn’t valid.' });
+    if (d.expiresAt && new Date(d.expiresAt) < new Date()) {
+      return res.status(400).json({ error: 'That code has expired.' });
+    }
+    if (d.maxUses != null && d.usedCount >= d.maxUses) {
+      return res.status(400).json({ error: 'That code has reached its usage limit.' });
+    }
+
+    const subtotal = Number(order.subtotal) || 0;
+    const minSub   = Number(d.minSubtotal) || 0;
+    if (subtotal < minSub) {
+      return res.status(400).json({ error: `Spend at least $${minSub.toFixed(2)} to use this code.` });
+    }
+
+    let discount = d.type === 'fixed' ? Number(d.value) : subtotal * (Number(d.value) / 100);
+    discount = Math.min(subtotal, Math.round(discount * 100) / 100); // cap at subtotal, round to cents
+
+    await db.updateOrder(orderId, { discountCode: d.code, discountAmount: discount });
+
+    res.json({
+      applied:        true,
+      code:           d.code,
+      type:           d.type,
+      value:          Number(d.value),
+      discountAmount: discount.toFixed(2),
+    });
+  } catch (err) {
+    console.error('Apply discount error:', err);
+    res.status(500).json({ error: 'Failed to apply discount.' });
+  }
+});
+
 // Finalize sales tax for an in-progress order using Stripe Tax on the SELLER's
 // account, then bump the PaymentIntent amount to match. Called from checkout
 // once the buyer has entered a ship-to address, and again just before confirm.
@@ -812,18 +865,23 @@ app.post('/api/checkout/calculate-tax', async (req, res) => {
     const sellerStripe = require('stripe')(stripeConfig.secretKey);
 
     const subtotal    = Number(order.subtotal) || 0;
-    const subtotalC   = Math.round(subtotal * 100);
+    const discount    = Number(order.discountAmount) || 0;
+    const discounted  = Math.max(0, subtotal - discount);   // taxable goods total
+    const discountedC = Math.round(discounted * 100);
+    // Spread the discount across line items so Stripe Tax is computed on the
+    // amount the buyer actually pays for goods.
+    const factor      = subtotal > 0 ? discounted / subtotal : 1;
     const items       = Array.isArray(order.items) ? order.items : [];
 
     // Attempt a real Stripe Tax calculation. Any failure (Stripe Tax not
     // enabled, no origin address / registrations, unsupported region) falls
     // through to zero tax rather than blocking the sale.
-    let taxC = 0, totalC = subtotalC, calculationId = null, taxApplied = false, reason = null;
+    let taxC = 0, totalC = discountedC, calculationId = null, taxApplied = false, reason = null;
     try {
       const calc = await sellerStripe.tax.calculations.create({
         currency: 'usd',
         line_items: items.map((it, idx) => ({
-          amount:       Math.max(0, Math.round((Number(it.price) || 0) * (Number(it.qty) || 0) * 100)),
+          amount:       Math.max(0, Math.round((Number(it.price) || 0) * (Number(it.qty) || 0) * 100 * factor)),
           reference:    String(it.productId || it.name || ('item-' + idx)),
           tax_behavior: 'exclusive',
         })),
@@ -839,7 +897,7 @@ app.post('/api/checkout/calculate-tax', async (req, res) => {
         },
       });
       taxC          = calc.tax_amount_exclusive;
-      totalC        = calc.amount_total;
+      totalC        = discountedC + taxC;   // goods (after discount) + tax
       calculationId = calc.id;
       taxApplied    = true;
     } catch (taxErr) {
@@ -864,7 +922,8 @@ app.post('/api/checkout/calculate-tax', async (req, res) => {
     });
 
     res.json({
-      subtotal:   (subtotalC / 100).toFixed(2),
+      subtotal:   subtotal.toFixed(2),
+      discount:   discount.toFixed(2),
       tax:        (taxC / 100).toFixed(2),
       total:      (totalC / 100).toFixed(2),
       taxApplied,
@@ -933,6 +992,12 @@ app.post('/api/checkout/confirm', async (req, res) => {
       }).catch(txErr => console.error('Tax transaction record failed:', txErr.message));
     }
 
+    // Count the discount-code redemption now that the order is paid. Best-effort.
+    if (order.discountCode) {
+      db.incrementDiscountUse(order.sellerId, order.discountCode)
+        .catch(e => console.error('Discount usage increment failed:', e.message));
+    }
+
     // Fire confirmation emails without blocking the response — a mail failure
     // must never break a paid checkout. No-op if RESEND_API_KEY is unset.
     (async () => {
@@ -949,6 +1014,7 @@ app.post('/api/checkout/confirm', async (req, res) => {
             storeName,
             items:           order.items,
             subtotal:        order.subtotal,
+            discount:        order.discountAmount,
             tax:             order.tax,
             total:           order.total,
             shippingAddress: ship,
@@ -1566,6 +1632,96 @@ app.get('/api/seller/customers', requireAuth, async (req, res) => {
     res.json(customers);
   } catch (err) {
     res.status(500).json({ error: 'Failed to load customers.' });
+  }
+});
+
+/* ============================================================
+   ── DISCOUNT CODE ROUTES (SELLER) ────────────────────────────
+   GET/POST/PUT/DELETE /api/seller/discounts
+   ============================================================ */
+
+// Normalize + validate a discount payload. Returns { data } or { error }.
+function validateDiscountInput(body) {
+  const code = String(body.code || '').trim().toUpperCase();
+  if (!code) return { error: 'Code is required.' };
+  if (!/^[A-Z0-9_-]{2,40}$/.test(code)) {
+    return { error: 'Code must be 2–40 letters, numbers, dashes or underscores.' };
+  }
+  const type  = body.type === 'fixed' ? 'fixed' : 'percentage';
+  const value = Number(body.value);
+  if (!Number.isFinite(value) || value <= 0) return { error: 'Value must be a positive number.' };
+  if (type === 'percentage' && value > 100) return { error: 'A percentage discount can’t exceed 100%.' };
+
+  let minSubtotal = 0;
+  if (body.minSubtotal != null && body.minSubtotal !== '') {
+    minSubtotal = Number(body.minSubtotal);
+    if (!Number.isFinite(minSubtotal) || minSubtotal < 0) return { error: 'Minimum subtotal must be 0 or more.' };
+  }
+  let maxUses = null;
+  if (body.maxUses != null && body.maxUses !== '') {
+    maxUses = parseInt(body.maxUses, 10);
+    if (!Number.isInteger(maxUses) || maxUses < 1) return { error: 'Usage limit must be a positive whole number.' };
+  }
+  let expiresAt = null;
+  if (body.expiresAt) {
+    const d = new Date(body.expiresAt);
+    if (isNaN(d.getTime())) return { error: 'Expiry date is invalid.' };
+    expiresAt = d;
+  }
+  const active = body.active !== false && body.active !== 'false';
+  return { data: { code, type, value, minSubtotal, maxUses, expiresAt, active } };
+}
+
+app.get('/api/seller/discounts', requireAuth, async (req, res) => {
+  try {
+    const discounts = await db.getDiscountsBySeller(req.seller.sellerId);
+    res.json({ discounts });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load discounts.' });
+  }
+});
+
+app.post('/api/seller/discounts', requireAuth, async (req, res) => {
+  const v = validateDiscountInput(req.body);
+  if (v.error) return res.status(400).json({ error: v.error });
+  try {
+    const discount = await db.createDiscount(req.seller.sellerId, v.data);
+    res.status(201).json({ discount });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'You already have a code with that name.' });
+    console.error('Create discount error:', err);
+    res.status(500).json({ error: 'Failed to create discount.' });
+  }
+});
+
+app.put('/api/seller/discounts/:id', requireAuth, async (req, res) => {
+  try {
+    const existing = await db.getDiscountById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Discount not found.' });
+    if (existing.sellerId !== req.seller.sellerId) {
+      return res.status(403).json({ error: 'You do not own this discount.' });
+    }
+    const v = validateDiscountInput(req.body);
+    if (v.error) return res.status(400).json({ error: v.error });
+    const discount = await db.updateDiscount(existing.id, v.data);
+    res.json({ discount });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'You already have a code with that name.' });
+    res.status(500).json({ error: 'Failed to update discount.' });
+  }
+});
+
+app.delete('/api/seller/discounts/:id', requireAuth, async (req, res) => {
+  try {
+    const existing = await db.getDiscountById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Discount not found.' });
+    if (existing.sellerId !== req.seller.sellerId) {
+      return res.status(403).json({ error: 'You do not own this discount.' });
+    }
+    await db.deleteDiscount(existing.id);
+    res.json({ message: 'Discount deleted.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete discount.' });
   }
 });
 

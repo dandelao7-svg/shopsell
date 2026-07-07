@@ -474,6 +474,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
             <button class="coupon-apply" onclick="applyCoupon()">Apply</button>
           </div>
           <div class="os-row"><span>Subtotal</span><span id="coSubtotal">$0.00</span></div>
+          <div class="os-row" id="coDiscountRow" style="display:none"><span id="coDiscountLabel" style="color:var(--green)">Discount</span><span id="coDiscount" style="color:var(--green)">−$0.00</span></div>
           <div class="os-row"><span>Shipping</span><span><span class="free-badge">Free</span></span></div>
           <div class="os-row"><span id="coTaxLabel">Sales tax</span><span id="coTax">$0.00</span></div>
           <div class="os-row os-total"><span>Total</span><span id="coTotal" style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--accent)">$0.00</span></div>
@@ -736,6 +737,7 @@ let currentModal=null, mq=1, mobileNavOpen=false;
 let stripe=null, stripeElements=null, stripeCardElement=null;
 let currentPaymentIntent=null;  // { clientSecret, orderId, subtotal, total }
 let currentTax=0;               // finalized sales tax (Stripe Tax), 0 until an address is entered
+let currentDiscount=0;          // dollars off from an applied discount code
 let taxCalcInFlight=false;      // guards against overlapping calculate-tax calls
 
 // ── CATEGORY EMOJI FALLBACK ───────────────────────────────────
@@ -1001,12 +1003,21 @@ function closeCart(){
 
 // ── CHECKOUT ──────────────────────────────────────────────────
 function updateCheckoutUI(){
-  const sub=cartTotal(),tax=currentTax,total=sub+tax;
+  const sub=cartTotal();
+  const disc=Math.min(currentDiscount, sub);
+  const tax=currentTax;
+  const total=Math.max(0, sub - disc) + tax;
+  const set=(id,v)=>{const el=document.getElementById(id); if(el) el.textContent=v;};
+  set('coSubtotal', fmt(sub));
+  set('coTax', fmt(tax));
+  set('coTotal', fmt(total));
+  set('coTotalBtn', fmt(total));
+  const dRow=document.getElementById('coDiscountRow'), dEl=document.getElementById('coDiscount');
+  if(dRow && dEl){
+    if(disc>0){ dRow.style.display=''; dEl.textContent='−'+fmt(disc); }
+    else { dRow.style.display='none'; }
+  }
   const keys=Object.keys(cart);
-  ['coSubtotal','coTax','coTotal','coTotalBtn'].forEach((id,i)=>{
-    const el=document.getElementById(id);
-    if(el) el.textContent=fmt(i===1?tax:i===0?sub:total);
-  });
   const itemsEl=document.getElementById('checkoutItems');
   if(itemsEl){
     itemsEl.innerHTML=keys.map(key=>{
@@ -1034,10 +1045,12 @@ function readCheckoutAddress(){
 // Ask the server to finalize sales tax (Stripe Tax) from the ship-to address
 // and sync the PaymentIntent amount. Reflects the new tax + total in the UI.
 // No-op until we have an order and at least a US state + ZIP.
-async function doCalcTax(){
+async function doCalcTax(force){
   if(!currentPaymentIntent || !currentPaymentIntent.orderId) return null;
   const addr = readCheckoutAddress();
-  if(!addr.state || !addr.zip) return null;
+  // Skip auto-runs until we have enough address to compute tax; forced runs
+  // (applying a code, placing the order) always go so the discount syncs.
+  if(!force && (!addr.state || !addr.zip)) return null;
   const res = await fetch('/api/checkout/calculate-tax', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -1046,6 +1059,7 @@ async function doCalcTax(){
   const data = await res.json();
   if(res.ok){
     currentTax = parseFloat(data.tax) || 0;
+    if(data.discount != null) currentDiscount = parseFloat(data.discount) || 0;
     currentPaymentIntent.total = data.total;
     updateCheckoutUI();
     setPlaceBtn({label:'Place order', total:'$'+data.total, disabled:false});
@@ -1065,12 +1079,41 @@ async function goCheckout(){
   if(!cartCount()){toast('Your cart is empty!');return}
   closeCart();
   currentTax=0;
+  currentDiscount=0;
   updateCheckoutUI();
   showPage('checkout');
   await setupStripeCheckout();
 }
 
-function applyCoupon(){const c=document.getElementById('couponInput').value.trim().toUpperCase();if(c==='SAVE10')toast('🎉 10% off applied!');else if(c)toast('Invalid coupon code')}
+async function applyCoupon(){
+  if(!currentPaymentIntent || !currentPaymentIntent.orderId){ toast('Payment is still loading — please wait a moment.'); return; }
+  const code = document.getElementById('couponInput').value.trim();
+  const btn = document.querySelector('.coupon-apply');
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled=true; btn.textContent='…'; }
+  try {
+    const res = await fetch('/api/checkout/apply-discount', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ orderId: currentPaymentIntent.orderId, code })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ currentDiscount = 0; updateCheckoutUI(); toast(data.error || 'Could not apply that code'); return; }
+    if(data.applied){
+      currentDiscount = parseFloat(data.discountAmount) || 0;
+      toast('🎉 Code '+data.code+' applied');
+    } else {
+      currentDiscount = 0;
+      toast('Discount removed');
+    }
+    // Re-run tax on the discounted amount and sync the payment total.
+    await doCalcTax(true);
+    updateCheckoutUI();
+  } catch(err){
+    toast('Network error — could not apply code');
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent=orig||'Apply'; }
+  }
+}
 
 // Set Place Order button label + disabled state in one place.
 function setPlaceBtn({label, total, disabled}){
@@ -1159,9 +1202,9 @@ async function placeOrder(){
   showStripeMsg('', false);
 
   try {
-    // Finalize sales tax against the entered address before charging, so the
-    // PaymentIntent amount matches the total the buyer is agreeing to pay.
-    try { await doCalcTax(); } catch(e){ /* proceed with last-known total */ }
+    // Finalize discount + sales tax against the entered address before charging,
+    // so the PaymentIntent amount matches the total the buyer is agreeing to pay.
+    try { await doCalcTax(true); } catch(e){ /* proceed with last-known total */ }
 
     const billingName = (document.getElementById('co-fname').value.trim() + ' ' +
                         document.getElementById('co-lname').value.trim()).trim();
