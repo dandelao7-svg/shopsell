@@ -2447,6 +2447,33 @@ app.put('/api/seller/packages', requireAuth, async (req, res) => {
   }
 });
 
+/* ============================================================
+   ── SHIP-FROM PROFILES ───────────────────────────────────────
+   Named warehouse/ship-from addresses.
+   ============================================================ */
+app.get('/api/seller/ship-from', requireAuth, async (req, res) => {
+  try {
+    const profiles = await db.getShipFromProfiles(req.seller.sellerId);
+    res.json({ profiles });
+  } catch (err) {
+    console.error('List ship-from profiles error:', err);
+    res.status(500).json({ error: 'Failed to load ship-from profiles.' });
+  }
+});
+
+app.put('/api/seller/ship-from', requireAuth, async (req, res) => {
+  try {
+    const list = Array.isArray(req.body.profiles) ? req.body.profiles : null;
+    if (!list) return res.status(400).json({ error: 'profiles (array) is required.' });
+    if (list.length > 50) return res.status(400).json({ error: 'Too many profiles (max 50).' });
+    const profiles = await db.saveShipFromProfiles(req.seller.sellerId, list);
+    res.json({ profiles });
+  } catch (err) {
+    console.error('Save ship-from profiles error:', err);
+    res.status(500).json({ error: 'Failed to save ship-from profiles.' });
+  }
+});
+
 // RATE SHOPPING — compare live rates across ALL of the seller's connected
 // carriers for one package/route. Queries each connected carrier in parallel
 // (Promise.allSettled) so one carrier erroring never sinks the others; returns

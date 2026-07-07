@@ -1747,9 +1747,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       // Update topbar after page loads
       document.addEventListener('DOMContentLoaded', () => updateUserDisplay(seller));
       if(document.readyState !== 'loading') updateUserDisplay(seller);
-      // Preload package presets so the batch modal (opened from Orders) has them.
-      if(typeof loadPackagePresets === 'function') loadPackagePresets();
-      else document.addEventListener('DOMContentLoaded', () => loadPackagePresets());
+      // Preload presets + ship-from profiles so the batch modal (opened from
+      // Orders) and Quick Ship have them ready.
+      if(typeof loadPackagePresets === 'function'){ loadPackagePresets(); loadShipFromProfiles(); }
+      else document.addEventListener('DOMContentLoaded', () => { loadPackagePresets(); loadShipFromProfiles(); });
     })
     .catch(() => {/* network blip — let other API calls handle it */});
 })();
@@ -2292,6 +2293,20 @@ function defaultShipper(){
   };
 }
 
+// The ship-from the batch modal will use: the profile picked in its selector,
+// falling back to the default profile, then the Quick Ship form.
+function batchShipper(){
+  const sel = document.getElementById('batch-shipfrom');
+  const idx = sel ? parseInt(sel.value, 10) : NaN;
+  const a = Number.isInteger(idx) ? shipperAccounts[idx]
+          : (shipperAccounts.find(x=>x.isDefault) || shipperAccounts[0]);
+  if(a){
+    return { name:a.name, phone:a.phone||'5550000000', address1:a.address1||'',
+             city:a.city||'', state:a.state||'', zip:a.zip||'', country:'US' };
+  }
+  return defaultShipper();
+}
+
 function bulkPrint(){ openBatchModal(); }
 
 function openBatchModal(){
@@ -2344,7 +2359,11 @@ function openBatchModal(){
           <input type="number" id="batch-width" value="9" title="Width (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
           <input type="number" id="batch-height" value="6" title="Height (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:8px">Ships from <strong>${defaultShipper().name}</strong> · ${defaultShipper().city}, ${defaultShipper().state}. Labels are real and bill your carrier account.</div>
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Ship from</div>
+        <select id="batch-shipfrom" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px">
+          ${shipperAccounts.map((a,i)=>`<option value="${i}" ${a.isDefault?'selected':''}>${escapeAttr(a.name)} — ${escapeAttr(a.city||'')}${a.state?', '+escapeAttr(a.state):''}</option>`).join('')}
+        </select>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Labels are real and bill your carrier account.</div>
       </div>
       <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
         <button onclick="closeBatchModal()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px 16px;border-radius:9px;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif">Cancel</button>
@@ -2399,7 +2418,7 @@ async function runBatch(){
   const payload = {
     orderIds,
     strategy,
-    shipper: defaultShipper(),
+    shipper: batchShipper(),
     package: {
       weight: parseFloat(document.getElementById('batch-weight').value) || 1,
       length: parseFloat(document.getElementById('batch-length').value) || 12,
@@ -3170,9 +3189,11 @@ function showPage(name){
     // Load per-seller carrier connection status (server-backed, encrypted)
     loadCarrierStatus();
     loadPackagePresets();
+    loadShipFromProfiles();
   }
   if(name === 'quickship'){
     loadPackagePresets();
+    loadShipFromProfiles();
   }
   if(name === 'automation'){
     loadAutomationRules();
@@ -3195,9 +3216,33 @@ const DEFAULT_SHIPPER = {
   verified:  true,
 };
 
-let shipperAccounts = JSON.parse(localStorage.getItem('shipperAccounts') || 'null') || [DEFAULT_SHIPPER];
+// Ship-from profiles are server-backed (per seller). DEFAULT_SHIPPER is the
+// in-memory fallback until they load / for sellers who haven't saved any.
+let shipperAccounts = [DEFAULT_SHIPPER];
 let activeShipperIdx = 0;
 let previousShipperIdx = 0;
+
+function mapShipFromRows(rows){
+  return (rows||[]).map(p=>({
+    id:String(p.id), name:p.name, company:p.company||'', acct:p.accountNumber||'',
+    carrier:'UPS', address1:p.address1||'', city:p.city||'', state:p.state||'',
+    zip:p.zip||'', phone:p.phone||'', isDefault:!!p.isDefault, verified:!!p.verified,
+  }));
+}
+
+async function loadShipFromProfiles(){
+  try {
+    const res = await fetch('/api/seller/ship-from', { headers: authHeaders() });
+    if(!res.ok) return;
+    const data = await res.json();
+    const list = mapShipFromRows(data.profiles);
+    if(list.length) shipperAccounts = list;
+    if(!shipperAccounts.some(a=>a.isDefault) && shipperAccounts[0]) shipperAccounts[0].isDefault = true;
+    if(activeShipperIdx >= shipperAccounts.length) activeShipperIdx = 0;
+    renderShipperAccountsList();
+    updateActiveShipperDisplay();
+  } catch(e){ /* keep in-memory default */ }
+}
 
 function renderShipperAccountsList(){
   const el = document.getElementById('shipperAccountsList');
@@ -3330,10 +3375,20 @@ async function verifyShipperAccount(idx){
   }
 }
 
-function saveShipperAccounts(){
-  localStorage.setItem('shipperAccounts', JSON.stringify(shipperAccounts));
-  renderShipperDropdown();
-  toast('Shipper accounts saved ✓','success');
+async function saveShipperAccounts(){
+  try {
+    const res = await fetch('/api/seller/ship-from', {
+      method:'PUT', headers: authHeaders(), body: JSON.stringify({ profiles: shipperAccounts }),
+    });
+    const data = await res.json();
+    if(!res.ok){ toast(data.error || 'Could not save ship-from profiles','error'); return; }
+    shipperAccounts = mapShipFromRows(data.profiles);
+    if(!shipperAccounts.some(a=>a.isDefault) && shipperAccounts[0]) shipperAccounts[0].isDefault = true;
+    if(activeShipperIdx >= shipperAccounts.length) activeShipperIdx = 0;
+    renderShipperAccountsList();
+    updateActiveShipperDisplay();
+    toast('Ship-from profiles saved ✓','success');
+  } catch(e){ toast('Network error saving profiles: '+e.message,'error'); }
 }
 
 /* ── CARRIER CREDENTIALS (bring-your-own-account) ──────────────
