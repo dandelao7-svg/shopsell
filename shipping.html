@@ -517,7 +517,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           Print all labels
         </button>
-        <button class="action-btn" onclick="toast('Packing slips printing...','info')">Print packing slips</button>
+        <button class="action-btn" onclick="bulkPackingSlips()">Print packing slips</button>
+        <button class="action-btn" onclick="bulkPickList()">Pick list</button>
         <button class="action-btn" onclick="toast('Orders marked as shipped','success')">Mark as shipped</button>
         <button class="action-btn" style="color:var(--muted)" onclick="clearSelection()">Clear</button>
       </div>
@@ -2308,6 +2309,36 @@ function batchShipper(){
 }
 
 function bulkPrint(){ openBatchModal(); }
+
+// Selected display IDs ("SS-123") → DB ids (_dbId) for the shipping APIs.
+function selectedDbIds(){
+  return [...selectedOrders]
+    .map(id => ordersData.find(x => String(x.id) === String(id))?._dbId)
+    .filter(v => v != null);
+}
+
+// POST selected order ids to a PDF endpoint and open the result (auth header
+// means we fetch the blob rather than navigating).
+async function openOrdersPdf(endpoint, label){
+  const orderIds = selectedDbIds();
+  if(!orderIds.length){ toast('No orders selected','info'); return; }
+  toast(`Building ${label}…`,'info');
+  try {
+    const res = await fetch(endpoint, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${localStorage.getItem('ss_token')||'demo_token'}` },
+      body: JSON.stringify({ orderIds }),
+    });
+    if(!res.ok){ const e = await res.json().catch(()=>({})); toast(e.error || `Could not build ${label}`,'error'); return; }
+    const url = URL.createObjectURL(await res.blob());
+    const w = window.open(url,'_blank');
+    if(!w) toast('Allow popups to open the PDF','info');
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  } catch(err){ toast('Network error: '+err.message,'error'); }
+}
+
+function bulkPackingSlips(){ openOrdersPdf('/api/seller/packing-slips.pdf', `${selectedOrders.size} packing slips`); }
+function bulkPickList(){ openOrdersPdf('/api/seller/pick-list.pdf', 'pick list'); }
 
 function openBatchModal(){
   if(!selectedOrders.size){ toast('No orders selected','info'); return; }
