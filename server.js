@@ -39,6 +39,7 @@ const carriers     = require('./carriers');
 const emailService = require('./email');
 const cryptoLib    = require('./lib/crypto');
 const { mergeLabels } = require('./lib/labelmerge');
+const shopify      = require('./lib/shopify');
 const crypto       = require('crypto');
 const dns          = require('dns').promises;
 
@@ -134,6 +135,40 @@ function carrierNotConnected(res, carrier, verb = 'shipping') {
     carrierSetupRequired: true,
     carrier,
   });
+}
+
+// Load + decrypt a seller's stored credentials for a sales channel, merged
+// with the non-secret shop domain. Returns null if not connected.
+async function loadChannelCreds(sellerId, channel) {
+  const row = await db.getChannelConnection(sellerId, channel);
+  if (!row) return null;
+  try {
+    const secrets = cryptoLib.decrypt(row.credentials);
+    return { ...secrets, shopDomain: row.shopDomain || secrets.shopDomain };
+  } catch (e) {
+    console.error(`Failed to decrypt ${channel} creds for seller ${sellerId}:`, e.message);
+    return null;
+  }
+}
+
+const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
+
+// Push tracking back to the source channel as a fulfillment. Best-effort: a
+// channel failure must never break a label purchase. No-op for non-channel
+// orders or when the channel isn't connected.
+async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier }) {
+  if (!order || order.channel !== 'shopify' || !order.externalId || !trackingNumber) return;
+  try {
+    const creds = await loadChannelCreds(sellerId, 'shopify');
+    if (!creds) return;
+    await shopify.createFulfillment(creds, order.externalId, {
+      trackingNumber,
+      carrierName: CARRIER_DISPLAY[carrier] || carrier,
+    });
+    console.log(`Shopify fulfillment pushed for order ${order.id} (${trackingNumber}).`);
+  } catch (e) {
+    console.error(`Shopify fulfillment push failed for order ${order.id}:`, e.message);
+  }
 }
 
 // ── STRIPE KEYS (encrypted at rest) ──────────────────────────
@@ -1458,7 +1493,8 @@ async function loadPackingSlipData(order) {
   const products = await Promise.all(
     items.map(it => it.productId ? db.getProductById(it.productId).catch(() => null) : null)
   );
-  const skuByIdx = products.map(p => p?.sku || '');
+  // Prefer the product SKU; fall back to the item's own SKU (imported orders).
+  const skuByIdx = products.map((p, i) => p?.sku || items[i]?.sku || '');
   return { seller, items, skuByIdx };
 }
 
@@ -1620,9 +1656,9 @@ app.post('/api/seller/pick-list.pdf', requireAuth, async (req, res) => {
     for (const order of orders) {
       const items = Array.isArray(order.items) ? order.items : [];
       for (const it of items) {
-        const key = it.productId != null ? `p:${it.productId}` : `n:${it.name || 'Item'}`;
+        const key = it.productId != null ? `p:${it.productId}` : `n:${it.sku || it.name || 'Item'}`;
         const qty = parseInt(it.qty || it.quantity) || 0;
-        if (!agg.has(key)) agg.set(key, { productId: it.productId ?? null, name: it.name || 'Item', qty: 0, sku: '' });
+        if (!agg.has(key)) agg.set(key, { productId: it.productId ?? null, name: it.name || 'Item', qty: 0, sku: it.sku || '' });
         agg.get(key).qty += qty;
       }
     }
@@ -2601,6 +2637,91 @@ app.put('/api/seller/ship-from', requireAuth, async (req, res) => {
   }
 });
 
+/* ============================================================
+   ── SALES CHANNELS (multi-channel order import) ──────────────
+   Shopify: seller connects a custom-app Admin API token (BYOA,
+   encrypted). Orders sync into the Orders page; tracking pushes
+   back as a Shopify fulfillment when a label is bought.
+   ============================================================ */
+
+// List the seller's channel connections (never returns secrets).
+app.get('/api/seller/channels', requireAuth, async (req, res) => {
+  try {
+    const rows = await db.getChannelConnections(req.seller.sellerId);
+    res.json({
+      channels: rows.map(r => ({
+        channel: r.channel, shopDomain: r.shopDomain, status: r.status, lastSyncedAt: r.lastSyncedAt,
+      })),
+    });
+  } catch (err) {
+    console.error('List channels error:', err);
+    res.status(500).json({ error: 'Failed to load channels.' });
+  }
+});
+
+// Connect (or update) a Shopify store: verify the token, then store encrypted.
+app.post('/api/seller/channels/shopify', requireAuth, async (req, res) => {
+  try {
+    if (!cryptoLib.isConfigured()) {
+      return res.status(500).json({ error: 'Server encryption is not configured; cannot store credentials.' });
+    }
+    const { shopDomain, accessToken } = req.body;
+    const verified = await shopify.verifyConnection({ shopDomain, accessToken }); // throws on bad creds
+    const credentials = cryptoLib.encrypt({ accessToken, shopDomain: verified.domain });
+    await db.saveChannelConnection(req.seller.sellerId, 'shopify', {
+      shopDomain: verified.domain, credentials, status: 'verified',
+    });
+    res.json({ message: `Connected to ${verified.shopName}.`, shopName: verified.shopName, shopDomain: verified.domain });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Pull unfulfilled orders and upsert them (idempotent by external id).
+app.post('/api/seller/channels/shopify/sync', requireAuth, async (req, res) => {
+  try {
+    const creds = await loadChannelCreds(req.seller.sellerId, 'shopify');
+    if (!creds) return res.status(400).json({ error: 'Connect a Shopify store first.', channelSetupRequired: true });
+
+    const shopifyOrders = await shopify.fetchUnfulfilledOrders(creds);
+    let imported = 0, skipped = 0;
+    for (const so of shopifyOrders) {
+      const mapped = shopify.mapShopifyOrder(so);
+      const existing = await db.getOrderByExternalId(req.seller.sellerId, 'shopify', mapped.externalId);
+      if (existing) { skipped++; continue; }
+      await db.createOrder({
+        sellerId:            req.seller.sellerId,
+        channel:             'shopify',
+        externalId:          mapped.externalId,
+        externalOrderNumber: mapped.externalOrderNumber,
+        customerEmail:       mapped.customerEmail,
+        customerInfo:        mapped.customerInfo,
+        items:               mapped.items,
+        subtotal:            mapped.subtotal,
+        tax:                 mapped.tax,
+        total:               mapped.total,
+        status:              'processing', // paid on Shopify → ready to ship
+      });
+      imported++;
+    }
+    await db.touchChannelSync(req.seller.sellerId, 'shopify');
+    res.json({ imported, skipped, total: shopifyOrders.length });
+  } catch (err) {
+    console.error('Shopify sync error:', err);
+    res.status(502).json({ error: 'Sync failed: ' + err.message });
+  }
+});
+
+app.delete('/api/seller/channels/shopify', requireAuth, async (req, res) => {
+  try {
+    await db.deleteChannelConnection(req.seller.sellerId, 'shopify');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Disconnect channel error:', err);
+    res.status(500).json({ error: 'Failed to disconnect.' });
+  }
+});
+
 // RATE SHOPPING — compare live rates across ALL of the seller's connected
 // carriers for one package/route. Queries each connected carrier in parallel
 // (Promise.allSettled) so one carrier erroring never sinks the others; returns
@@ -2757,12 +2878,17 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
       const items = Array.isArray(order.items) ? order.items : [];
       let totalOz = 0;
       for (const it of items) {
-        if (!it.productId) continue;
-        if (!(it.productId in productCache)) {
-          productCache[it.productId] = await db.getProductById(it.productId).catch(() => null);
+        let oz = 0;
+        if (it.weight != null && Number.isFinite(Number(it.weight))) {
+          // Imported orders (e.g. Shopify) carry per-item weight (oz) directly.
+          oz = Number(it.weight);
+        } else if (it.productId) {
+          if (!(it.productId in productCache)) {
+            productCache[it.productId] = await db.getProductById(it.productId).catch(() => null);
+          }
+          const p = productCache[it.productId];
+          oz = p && p.weight != null ? Number(p.weight) : 0;
         }
-        const p = productCache[it.productId];
-        const oz = p && p.weight != null ? Number(p.weight) : 0;
         if (Number.isFinite(oz)) totalOz += oz * (Number(it.qty) || 1);
       }
       return totalOz / OZ_PER_LB;
@@ -2883,6 +3009,9 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
         } catch (dbErr) {
           console.error(`Batch: DB write failed for order ${orderId} (label still valid):`, dbErr.message);
         }
+
+        // Push tracking back to the source channel (e.g. Shopify) — best-effort.
+        await pushChannelFulfillment(sellerId, order, { trackingNumber: label.trackingNumber, carrier: chosenCarrier });
 
         result.success       = true;
         result.carrier       = chosenCarrier;
@@ -3066,6 +3195,17 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
       // Don't fail the whole request if the DB write fails — the label is real.
       console.error('Shipment DB write failed (label still valid):', dbErr.message);
     }
+
+    // If this label is for an imported channel order, push tracking back.
+    try {
+      const oid = normalizeOrderId(orderId);
+      if (oid !== null) {
+        const ord = await db.getOrderById(oid);
+        if (ord && ord.sellerId === req.seller.sellerId) {
+          await pushChannelFulfillment(req.seller.sellerId, ord, { trackingNumber: label.trackingNumber, carrier });
+        }
+      }
+    } catch (e) { /* best-effort */ }
 
     console.log(`Label created: ${carrier.toUpperCase()} ${label.trackingNumber} for order ${orderId}`);
     res.json({ success: true, label });

@@ -176,6 +176,13 @@ async function initSchema() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_payment_intent ON orders (payment_intent_id);`);
 
+    // Multi-channel: which sales channel an order came from + its id there, so
+    // imported orders (e.g. Shopify) dedupe on re-sync and can push tracking back.
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'nextlao';`);
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS external_id TEXT;`);
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS external_order_number TEXT;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_channel_external ON orders (seller_id, channel, external_id) WHERE external_id IS NOT NULL;`);
+
     // Forward-compat: existing orders tables won't have buyer_id until ALTER'd in.
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_id INTEGER REFERENCES buyers(id) ON DELETE SET NULL;`);
     // Stripe Tax calculation id — kept so we can create a tax Transaction (for
@@ -374,6 +381,22 @@ async function initSchema() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_ship_from_seller ON ship_from_profiles (seller_id, sort_order);`);
+
+    // SALES-CHANNEL CONNECTIONS — encrypted per-seller marketplace creds
+    // (e.g. Shopify shop domain + Admin API token). Mirrors carrier_accounts.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS channel_connections (
+        seller_id      INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        channel        TEXT NOT NULL,                        -- 'shopify' | ...
+        shop_domain    TEXT,                                 -- non-secret display (e.g. store.myshopify.com)
+        credentials    TEXT NOT NULL,                        -- encrypted secrets JSON
+        status         TEXT NOT NULL DEFAULT 'unverified',   -- unverified | verified | invalid
+        last_synced_at TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (seller_id, channel)
+      );
+    `);
 
     // PRODUCT REVIEWS — one per buyer per product; feeds products.rating/review_count.
     await client.query(`
@@ -734,15 +757,26 @@ async function decrementVariantStock(productId, variantId, qty) {
 async function createOrder(data) {
   const { rows } = await pool.query(
     `INSERT INTO orders
-       (seller_id, store_slug, customer_email, items, subtotal, tax, total, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       (seller_id, store_slug, customer_email, customer_info, items, subtotal, tax, total, status,
+        channel, external_id, external_order_number)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      RETURNING *`,
     [
       data.sellerId, data.storeSlug, data.customerEmail,
+      data.customerInfo ? JSON.stringify(data.customerInfo) : null,
       JSON.stringify(data.items || []),
       data.subtotal, data.tax, data.total,
       data.status || 'pending',
+      data.channel || 'nextlao', data.externalId || null, data.externalOrderNumber || null,
     ]
+  );
+  return camelize(rows[0]);
+}
+
+async function getOrderByExternalId(sellerId, channel, externalId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM orders WHERE seller_id = $1 AND channel = $2 AND external_id = $3 LIMIT 1`,
+    [sellerId, channel, externalId]
   );
   return camelize(rows[0]);
 }
@@ -1231,6 +1265,46 @@ async function saveShipFromProfiles(sellerId, list) {
   return getShipFromProfiles(sellerId);
 }
 
+// ── SALES-CHANNEL CONNECTIONS ─────────────────────────────────
+async function saveChannelConnection(sellerId, channel, { shopDomain, credentials, status }) {
+  const { rows } = await pool.query(
+    `INSERT INTO channel_connections (seller_id, channel, shop_domain, credentials, status)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (seller_id, channel) DO UPDATE
+       SET shop_domain = EXCLUDED.shop_domain,
+           credentials = EXCLUDED.credentials,
+           status      = EXCLUDED.status,
+           updated_at  = NOW()
+     RETURNING *`,
+    [sellerId, channel, shopDomain || null, credentials, status || 'unverified']
+  );
+  return camelize(rows[0]);
+}
+
+async function getChannelConnection(sellerId, channel) {
+  const { rows } = await pool.query(
+    `SELECT * FROM channel_connections WHERE seller_id = $1 AND channel = $2 LIMIT 1`,
+    [sellerId, channel]
+  );
+  return camelize(rows[0]);
+}
+
+async function getChannelConnections(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM channel_connections WHERE seller_id = $1 ORDER BY channel ASC`, [sellerId]);
+  return rows.map(r => camelize(r));
+}
+
+async function deleteChannelConnection(sellerId, channel) {
+  await pool.query(`DELETE FROM channel_connections WHERE seller_id = $1 AND channel = $2`, [sellerId, channel]);
+}
+
+async function touchChannelSync(sellerId, channel) {
+  await pool.query(
+    `UPDATE channel_connections SET last_synced_at = NOW(), updated_at = NOW()
+       WHERE seller_id = $1 AND channel = $2`, [sellerId, channel]);
+}
+
 // Atomically bump usage, respecting max_uses. Returns true if it incremented.
 async function incrementDiscountUse(sellerId, code) {
   const { rowCount } = await pool.query(
@@ -1366,6 +1440,14 @@ module.exports = {
   // Ship-from profiles
   getShipFromProfiles,
   saveShipFromProfiles,
+
+  // Sales-channel connections + imported orders
+  saveChannelConnection,
+  getChannelConnection,
+  getChannelConnections,
+  deleteChannelConnection,
+  touchChannelSync,
+  getOrderByExternalId,
 
   // Stripe keys
   saveStripeKeys,

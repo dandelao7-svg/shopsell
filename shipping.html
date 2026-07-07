@@ -358,6 +358,11 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       NextLao Store
       <span class="nav-badge green">Live</span>
     </a>
+    <a class="nav-item" onclick="openShopifyModal()" id="nav-shopify" style="cursor:pointer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+      Shopify
+      <span class="nav-badge" id="shopifyNavBadge" style="background:rgba(149,191,64,0.2);color:#5e8e3e;display:none">•</span>
+    </a>
     <a class="nav-item locked" title="OMS module — coming soon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
       Amazon
@@ -1750,8 +1755,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       if(document.readyState !== 'loading') updateUserDisplay(seller);
       // Preload presets + ship-from profiles so the batch modal (opened from
       // Orders) and Quick Ship have them ready.
-      if(typeof loadPackagePresets === 'function'){ loadPackagePresets(); loadShipFromProfiles(); }
-      else document.addEventListener('DOMContentLoaded', () => { loadPackagePresets(); loadShipFromProfiles(); });
+      if(typeof loadPackagePresets === 'function'){ loadPackagePresets(); loadShipFromProfiles(); refreshChannels(); }
+      else document.addEventListener('DOMContentLoaded', () => { loadPackagePresets(); loadShipFromProfiles(); refreshChannels(); });
     })
     .catch(() => {/* network blip — let other API calls handle it */});
 })();
@@ -1872,7 +1877,7 @@ function mapDbOrderToUI(o){
   return {
     _dbId:    o.id,
     id:       `SS-${o.id}`,                              // display ID
-    channel:  'nextlao',                                 // we only have one channel for now
+    channel:  o.channel || 'nextlao',                    // sales channel the order came from
     customer: customerInfo.firstName || customerInfo.lastName
                 ? `${customerInfo.firstName||''} ${customerInfo.lastName||''}`.trim()
                 : (o.customerEmail || 'Customer'),
@@ -2201,6 +2206,7 @@ async function renderOrders(){
 function channelBadge(ch){
   const map={
     nextlao:`<span class="channel-badge nextlao">NextLao</span>`,
+    shopify:`<span class="channel-badge" style="background:rgba(149,191,64,0.15);color:#5e8e3e">Shopify</span>`,
     amazon:`<span class="channel-badge amazon">Amazon</span>`,
     ebay:`<span class="channel-badge ebay">eBay</span>`,
     etsy:`<span class="channel-badge etsy">Etsy</span>`,
@@ -2339,6 +2345,110 @@ async function openOrdersPdf(endpoint, label){
 
 function bulkPackingSlips(){ openOrdersPdf('/api/seller/packing-slips.pdf', `${selectedOrders.size} packing slips`); }
 function bulkPickList(){ openOrdersPdf('/api/seller/pick-list.pdf', 'pick list'); }
+
+// ── SHOPIFY CHANNEL ───────────────────────────────────────────
+let shopifyConn = null; // { shopDomain, status, lastSyncedAt } or null
+
+async function refreshChannels(){
+  try {
+    const res = await fetch('/api/seller/channels', { headers: authHeaders() });
+    if(!res.ok) return;
+    const data = await res.json();
+    shopifyConn = (data.channels||[]).find(c=>c.channel==='shopify') || null;
+    const badge = document.getElementById('shopifyNavBadge');
+    if(badge) badge.style.display = shopifyConn ? 'inline-block' : 'none';
+  } catch(e){ /* ignore */ }
+}
+
+function openShopifyModal(){
+  const existing = document.getElementById('shopifyModal'); if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id='shopifyModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow:auto">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Shopify</div>
+        <button onclick="closeShopifyModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div id="shopifyBody" style="padding:20px"><div style="text-align:center;color:var(--muted);font-size:13px;padding:20px">Loading…</div></div>
+    </div>`;
+  document.body.appendChild(modal);
+  renderShopifyBody();
+}
+function closeShopifyModal(){ document.getElementById('shopifyModal')?.remove(); }
+
+async function renderShopifyBody(){
+  await refreshChannels();
+  const body = document.getElementById('shopifyBody');
+  if(!body) return;
+  if(shopifyConn){
+    const last = shopifyConn.lastSyncedAt ? new Date(shopifyConn.lastSyncedAt).toLocaleString() : 'never';
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--green-bg);border:1px solid rgba(0,200,150,0.25);border-radius:10px;margin-bottom:16px">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">${escapeAttr(shopifyConn.shopDomain||'Connected')}</div>
+        <div style="font-size:11px;color:var(--muted)">Last synced: ${last}</div></div>
+      </div>
+      <button class="topbar-btn primary" id="shopifySyncBtn" onclick="syncShopify()" style="width:100%;justify-content:center;padding:12px;margin-bottom:10px">Sync unfulfilled orders now</button>
+      <button onclick="disconnectShopify()" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Disconnect store</button>
+      <div id="shopifySyncMsg" style="font-size:12px;margin-top:12px"></div>`;
+  } else {
+    body.innerHTML = `
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+        Import unfulfilled Shopify orders here to rate-shop, batch, and print. When you buy a label, the order is marked fulfilled in Shopify with tracking.
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
+          <strong style="color:var(--text)">Get an access token:</strong> Shopify admin → Settings → Apps and sales channels → Develop apps → Create an app → Admin API scopes: enable <code>read_orders</code> and <code>write_merchant_managed_fulfillment_orders</code> → Install → copy the Admin API access token.
+        </div>
+      </div>
+      <div class="form-field"><label>Store domain</label><input type="text" id="shopify-domain" placeholder="your-store.myshopify.com"></div>
+      <div class="form-field"><label>Admin API access token</label><input type="password" id="shopify-token" placeholder="shpat_…"></div>
+      <button class="topbar-btn primary" id="shopifyConnectBtn" onclick="connectShopify()" style="width:100%;justify-content:center;padding:12px;margin-top:6px">Connect & verify</button>
+      <div id="shopifyConnectMsg" style="font-size:12px;margin-top:12px"></div>`;
+  }
+}
+
+async function connectShopify(){
+  const shopDomain = document.getElementById('shopify-domain').value.trim();
+  const accessToken = document.getElementById('shopify-token').value.trim();
+  const msg = document.getElementById('shopifyConnectMsg');
+  if(!shopDomain || !accessToken){ msg.style.color='var(--accent)'; msg.textContent='Enter your store domain and access token.'; return; }
+  const btn = document.getElementById('shopifyConnectBtn'); btn.disabled=true; btn.textContent='Verifying…';
+  try {
+    const res = await fetch('/api/seller/channels/shopify', { method:'POST', headers:authHeaders(), body:JSON.stringify({ shopDomain, accessToken }) });
+    const data = await res.json();
+    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
+    toast(data.message || 'Shopify connected','success');
+    await renderShopifyBody();
+  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
+}
+
+async function syncShopify(){
+  const btn = document.getElementById('shopifySyncBtn'); const msg = document.getElementById('shopifySyncMsg');
+  btn.disabled=true; btn.textContent='Syncing…'; msg.textContent='';
+  try {
+    const res = await fetch('/api/seller/channels/shopify/sync', { method:'POST', headers:authHeaders() });
+    const data = await res.json();
+    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    else {
+      msg.style.color='var(--green)';
+      msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unfulfilled on Shopify).`;
+      if(data.imported>0){ ordersLoaded=false; renderOrders(); }
+      await refreshChannels();
+    }
+  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  finally { if(btn){ btn.disabled=false; btn.textContent='Sync unfulfilled orders now'; } }
+}
+
+async function disconnectShopify(){
+  if(!confirm('Disconnect this Shopify store? Imported orders stay; new ones won’t sync.')) return;
+  try {
+    const res = await fetch('/api/seller/channels/shopify', { method:'DELETE', headers:authHeaders() });
+    if(!res.ok){ const d=await res.json().catch(()=>({})); toast(d.error||'Could not disconnect','error'); return; }
+    toast('Shopify disconnected','info');
+    shopifyConn=null; await renderShopifyBody(); await refreshChannels();
+  } catch(e){ toast('Network error: '+e.message,'error'); }
+}
 
 function openBatchModal(){
   if(!selectedOrders.size){ toast('No orders selected','info'); return; }
