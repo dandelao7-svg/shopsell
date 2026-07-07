@@ -841,15 +841,8 @@ tr:hover td{background:#fafaf7}
         Use test keys while setting up. Switch to live keys only when you're ready to accept real payments.
       </div>
 
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:8px">
-          Publishable key (safe for frontend)
-          <span class="key-status empty" id="pkStatus">Not set</span>
-        </label>
-        <input type="text" id="pkInput" placeholder="pk_test_..." style="font-family:monospace;font-size:12px" oninput="validateStripeKey('pkInput','pkStatus','pk_test_','pk_live_')">
-        <div class="hint">This key is safe to use in your storefront code.</div>
-      </div>
-
+      <!-- Ordered to match the Stripe dashboard (secret key first, publishable below)
+           so copying top-to-bottom lands each key in the right field. -->
       <div class="key-input-row">
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px">
@@ -857,9 +850,18 @@ tr:hover td{background:#fafaf7}
             <span class="key-status empty" id="skStatus">Not set</span>
           </label>
           <input type="password" id="skInput" placeholder="sk_test_..." style="font-family:monospace;font-size:12px" oninput="validateStripeKey('skInput','skStatus','sk_test_','sk_live_')">
-          <div class="hint">Stored as an environment variable on your server. Never put this in your frontend code.</div>
+          <div class="hint">Stored encrypted on your server. Never put this in your frontend code.</div>
         </div>
         <button class="reveal-btn" onclick="toggleReveal('skInput',this)">Show</button>
+      </div>
+
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px">
+          Publishable key (safe for frontend)
+          <span class="key-status empty" id="pkStatus">Not set</span>
+        </label>
+        <input type="text" id="pkInput" placeholder="pk_test_..." style="font-family:monospace;font-size:12px" oninput="validateStripeKey('pkInput','pkStatus','pk_test_','pk_live_')">
+        <div class="hint">This key is safe to use in your storefront code.</div>
       </div>
 
       <div class="field">
@@ -2264,7 +2266,16 @@ function validateStripeKey(inputId,statusId,testPrefix,livePrefix){
   if(!val){el.textContent='Not set';el.className='key-status empty';return}
   if((val.startsWith(testPrefix)||val.startsWith(livePrefix))&&val.length>20){
     el.textContent='Valid ✓';el.className='key-status valid';
-  } else {el.textContent='Invalid format';el.className='key-status invalid'}
+  } else {
+    // Detect the common swap (publishable in the secret field or vice versa)
+    // and say so, instead of a vague "Invalid format".
+    const wantsSecret = testPrefix.startsWith('sk_');
+    const swapped = wantsSecret ? /^pk_(test|live)_/.test(val) : /^sk_(test|live)_/.test(val);
+    el.textContent = swapped
+      ? (wantsSecret ? 'That’s your publishable key' : 'That’s your secret key')
+      : 'Invalid format';
+    el.className='key-status invalid';
+  }
 }
 
 function toggleReveal(id,btn){
