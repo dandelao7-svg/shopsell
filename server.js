@@ -1834,34 +1834,47 @@ app.get('/api/seller/analytics', requireAuth, async (req, res) => {
     const since = new Date();
     since.setDate(since.getDate() - days);
 
-    const orders = await db.getOrdersBySeller(req.seller.sellerId, since);
+    // Count only paid orders as revenue — not pending (unpaid) or cancelled.
+    // NUMERIC columns come back as strings, so coerce with Number() throughout.
+    const PAID = ['processing', 'shipped', 'delivered'];
+    const orders = (await db.getOrdersBySeller(req.seller.sellerId, since))
+      .filter(o => PAID.includes(o.status));
 
-    const revenue    = orders.reduce((s,o) => s + o.total, 0);
+    const revenue    = orders.reduce((s, o) => s + Number(o.total || 0), 0);
     const orderCount = orders.length;
     const avgOrder   = orderCount ? revenue / orderCount : 0;
+    const customers  = new Set(orders.map(o => (o.customerEmail || '').toLowerCase()).filter(Boolean)).size;
+
+    // Revenue by product category (for the donut) — map productId → category.
+    const catByProduct = {};
+    (await db.getProductsBySeller(req.seller.sellerId)).forEach(pr => { catByProduct[pr.id] = pr.category || 'other'; });
+    const byCategory = {};
+    orders.forEach(o => (o.items || []).forEach(item => {
+      const cat = catByProduct[item.productId] || 'other';
+      byCategory[cat] = (byCategory[cat] || 0) + (Number(item.price) || 0) * (Number(item.qty) || 0);
+    }));
 
     const byDay = {};
     orders.forEach(o => {
-      const day = new Date(o.createdAt).toISOString().slice(0,10);
-      byDay[day] = (byDay[day] || 0) + o.total;
+      const day = new Date(o.createdAt).toISOString().slice(0, 10);
+      byDay[day] = (byDay[day] || 0) + Number(o.total || 0);
     });
 
     const productTotals = {};
     orders.forEach(o => {
-      o.items.forEach(item => {
-        if (!productTotals[item.productId]) {
-          productTotals[item.productId] = { name: item.name, qty: 0, revenue: 0 };
-        }
-        productTotals[item.productId].qty     += item.qty;
-        productTotals[item.productId].revenue += item.price * item.qty;
+      (o.items || []).forEach(item => {
+        const key = item.productId == null ? item.name : item.productId;
+        if (!productTotals[key]) productTotals[key] = { name: item.name, qty: 0, revenue: 0 };
+        productTotals[key].qty     += Number(item.qty) || 0;
+        productTotals[key].revenue += (Number(item.price) || 0) * (Number(item.qty) || 0);
       });
     });
 
     const topProducts = Object.values(productTotals)
-      .sort((a,b) => b.revenue - a.revenue)
-      .slice(0,5);
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
 
-    res.json({ revenue, orderCount, avgOrder, byDay, topProducts });
+    res.json({ period, days, revenue, orderCount, avgOrder, customers, byDay, byCategory, topProducts });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load analytics.' });
   }
