@@ -2440,20 +2440,39 @@ function renderBatchResults(data){
   renderOrders();
 }
 
-// Open each purchased label in its own tab for printing. UPS returns a base64
-// GIF (labelImage), FedEx/USPS return a labelUrl.
-function printAllBatchLabels(){
-  if(!lastBatchResults.length){ toast('No labels to print','info'); return; }
-  lastBatchResults.forEach((r,i)=>{
-    setTimeout(()=>{
-      if(r.labelUrl){ window.open(r.labelUrl,'_blank'); }
-      else if(r.labelImage){
-        const w = window.open('','_blank');
-        if(w) w.document.write(`<img src="data:image/gif;base64,${r.labelImage}" style="max-width:100%">`);
-      }
-    }, i*300); // stagger so the browser doesn't block the popups
-  });
-  toast(`Opening ${lastBatchResults.length} labels to print`,'success');
+// Fetch all purchased labels merged into ONE printable PDF (UPS GIFs + FedEx/
+// USPS PDFs combined server-side, 4×6 per page) and open it to print.
+async function printAllBatchLabels(){
+  const tns = lastBatchResults.map(r=>r.trackingNumber).filter(Boolean);
+  if(!tns.length){ toast('No labels to print','info'); return; }
+
+  const btn = document.getElementById('batchRunBtn');
+  const label = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Building label sheet…'; }
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/labels/merge', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token||'demo_token'}` },
+      body: JSON.stringify({ trackingNumbers: tns }),
+    });
+    if(!res.ok){
+      const e = await res.json().catch(()=>({}));
+      toast(e.error || 'Could not build the label sheet','error');
+      return;
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const w = window.open(url,'_blank');
+    if(!w){ toast('Allow popups to open the label sheet','info'); }
+    else  { toast(`Opened ${tns.length} labels as one PDF`,'success'); }
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  } catch(err){
+    toast('Network error building label sheet: '+err.message,'error');
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = label; }
+  }
 }
 
 function printSelected(){
