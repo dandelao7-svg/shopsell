@@ -2386,6 +2386,167 @@ app.post('/api/shipping/rates', requireAuth, async (req, res) => {
   }
 });
 
+// Buy a single label from a normalized service string, mapping to each
+// carrier's own createShipment signature. Shared by the batch flow.
+// TODO: migrate the single-label /api/shipping/label route onto this helper too.
+async function buyCarrierLabel(carrier, creds, { shipper, recipient, package: pkg, service, orderId }) {
+  const client = carriers.buildCarrier(carrier, creds);
+  if (carrier === 'ups') {
+    return client.createShipment({ shipper, recipient, package: pkg, serviceCode: service || '03', labelFormat: 'GIF', reference: orderId });
+  }
+  if (carrier === 'fedex') {
+    return client.createShipment({ shipper, recipient, package: pkg, serviceType: service || 'FEDEX_GROUND', labelFormat: 'PDF', reference: orderId });
+  }
+  // usps (Shippo)
+  return client.createShipment({ shipper, recipient, package: pkg, serviceToken: service || 'usps_priority', reference: orderId });
+}
+
+// BATCH LABELS — buy labels for many orders in one pass. This is the
+// ShipStation batch workflow, built on the rate-shopping engine.
+//   strategy 'cheapest' → rate-shop each order across all connected carriers,
+//                         buy the cheapest service.
+//   strategy 'fixed'    → buy the same carrier + service for every order.
+// Orders are processed with limited concurrency; each order succeeds or fails
+// independently and reports its own result.
+app.post('/api/shipping/batch', requireAuth, async (req, res) => {
+  try {
+    const { orderIds, strategy = 'cheapest', carrier, service, shipper, package: pkg } = req.body;
+
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ error: 'orderIds (non-empty array) is required.' });
+    }
+    if (!shipper) {
+      return res.status(400).json({ error: 'shipper (ship-from address) is required.' });
+    }
+    if (strategy === 'fixed' && (!carrier || !service)) {
+      return res.status(400).json({ error: 'carrier and service are required for the fixed-service strategy.' });
+    }
+
+    const sellerId = req.seller.sellerId;
+    const defaultPkg = pkg || { weight: 1, length: 12, width: 9, height: 4 };
+
+    // Which carriers are connected? (cheapest strategy rate-shops across these.)
+    const accounts  = await db.getCarrierAccounts(sellerId);
+    const connected = (accounts || []).map(a => a.carrier).filter(c => ['ups','fedex','usps'].includes(c));
+    if (connected.length === 0) {
+      return res.status(400).json({ error: 'Connect at least one carrier account before buying labels.', carrierSetupRequired: true });
+    }
+
+    // Cache decrypted creds per carrier for the whole batch.
+    const credCache = {};
+    const credsFor = async (c) => {
+      if (!(c in credCache)) credCache[c] = await loadSellerCarrierCreds(sellerId, c);
+      return credCache[c];
+    };
+
+    async function processOrder(orderId) {
+      const result = { orderId, success: false };
+      try {
+        const order = await db.getOrderById(orderId);
+        if (!order)                       throw new Error('Order not found');
+        if (order.sellerId !== sellerId)  throw new Error('Order does not belong to this seller');
+
+        const ci = order.customerInfo || {};
+        const recipient = {
+          name:        [ci.firstName, ci.lastName].filter(Boolean).join(' ') || ci.name || order.customerEmail || 'Recipient',
+          company:     ci.company || undefined,
+          phone:       ci.phone || '5550000000',
+          address1:    ci.address1,
+          address2:    ci.address2 || undefined,
+          city:        ci.city,
+          state:       ci.state,
+          zip:         ci.zip,
+          country:     ci.country || 'US',
+          email:       ci.email || order.customerEmail || '',
+          residential: ci.residential !== false, // buyer addresses are residential by default
+        };
+        if (!recipient.address1 || !recipient.city || !recipient.zip) {
+          throw new Error('Order is missing a complete shipping address');
+        }
+
+        // Pick carrier + service for this order.
+        let chosenCarrier = carrier, chosenService = service;
+        if (strategy === 'cheapest') {
+          const rated = await Promise.allSettled(connected.map(async c => {
+            const creds = await credsFor(c);
+            if (!creds) throw new Error('credentials unavailable');
+            return carriers.getRates(c, { shipper, recipient, package: defaultPkg }, creds);
+          }));
+          const all = rated.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+          all.sort((a, b) => a.totalCharge - b.totalCharge);
+          if (!all.length) throw new Error('No rates returned from any carrier');
+          chosenCarrier = all[0].carrier;
+          chosenService = all[0].serviceCode;
+        }
+
+        const creds = await credsFor(chosenCarrier);
+        if (!creds) throw new Error(`${chosenCarrier.toUpperCase()} account not connected`);
+
+        const label = await buyCarrierLabel(chosenCarrier, creds, {
+          shipper, recipient, package: defaultPkg, service: chosenService, orderId,
+        });
+
+        // Persist the shipment + mark the order shipped (best-effort).
+        try {
+          await db.createShipment({
+            sellerId, orderId: Number.isFinite(parseInt(orderId)) ? parseInt(orderId) : null,
+            trackingNumber: label.trackingNumber, carrier: chosenCarrier,
+            serviceCode: label.serviceCode || chosenService || null, serviceName: label.serviceName || null,
+            fromName: shipper.name || '', fromAddr: shipper.address1 || '', fromCity: shipper.city || '',
+            fromState: shipper.state || '', fromZip: shipper.zip || '',
+            toName: recipient.name, toCompany: recipient.company || '', toAddr: recipient.address1,
+            toAddr2: recipient.address2 || '', toCity: recipient.city, toState: recipient.state,
+            toZip: recipient.zip, toPhone: recipient.phone, toEmail: recipient.email,
+            residential: !!recipient.residential, weight: String(defaultPkg.weight || ''),
+            totalCharge: label.totalCharge || null, currency: label.currency || 'USD',
+            ref: String(orderId), labelImage: label.labelImage || null, labelUrl: label.labelUrl || null,
+            transactionId: label.transactionId || null, status: 'created',
+          });
+          await db.updateOrder(orderId, { status: 'shipped', trackingNumber: label.trackingNumber, trackingCarrier: chosenCarrier });
+        } catch (dbErr) {
+          console.error(`Batch: DB write failed for order ${orderId} (label still valid):`, dbErr.message);
+        }
+
+        result.success       = true;
+        result.carrier       = chosenCarrier;
+        result.service       = label.serviceName || chosenService;
+        result.trackingNumber= label.trackingNumber;
+        result.totalCharge   = label.totalCharge || null;
+        result.currency      = label.currency || 'USD';
+        result.labelImage    = label.labelImage || null;
+        result.labelUrl      = label.labelUrl || null;
+      } catch (err) {
+        result.error = err.message;
+      }
+      return result;
+    }
+
+    // Limited concurrency so we don't hammer the carrier APIs.
+    const CONCURRENCY = 3;
+    const results = [];
+    for (let i = 0; i < orderIds.length; i += CONCURRENCY) {
+      const slice = orderIds.slice(i, i + CONCURRENCY);
+      results.push(...await Promise.all(slice.map(processOrder)));
+    }
+
+    const succeeded = results.filter(r => r.success);
+    const totalSpend = succeeded.reduce((sum, r) => sum + (parseFloat(r.totalCharge) || 0), 0);
+
+    res.json({
+      results,
+      summary: {
+        total:     results.length,
+        succeeded: succeeded.length,
+        failed:    results.length - succeeded.length,
+        totalSpend: totalSpend.toFixed(2),
+      },
+    });
+  } catch (err) {
+    console.error('Batch labels error:', err);
+    res.status(500).json({ error: 'Batch failed: ' + err.message });
+  }
+});
+
 // CREATE SHIPPING LABEL
 app.post('/api/shipping/label', requireAuth, async (req, res) => {
   try {

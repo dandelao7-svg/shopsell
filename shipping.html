@@ -2256,17 +2256,204 @@ function clearSelection(){
   updateBulkBar();
 }
 
-function bulkPrint(){
-  if(!selectedOrders.size){toast('No orders selected','info');return}
-  toast(`Printing ${selectedOrders.size} labels... 🖨️`,'success');
-  setTimeout(()=>{
-    selectedOrders.forEach(id=>{
-      const o = ordersData.find(x=>x.id===id);
-      if(o) o.status='printed';
+// ── BATCH LABELS ──────────────────────────────────────────────
+// Read the default ship-from from the Quick Ship form (always in the DOM).
+function defaultShipper(){
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  return {
+    name:     val('qs-from-name')  || 'NextLao Store',
+    phone:    val('qs-from-phone') || '5550000000',
+    address1: val('qs-from-addr')  || '123 Main Street',
+    city:     val('qs-from-city')  || 'Los Angeles',
+    state:    val('qs-from-state') || 'CA',
+    zip:      val('qs-from-zip')   || '90001',
+    country:  'US',
+  };
+}
+
+function bulkPrint(){ openBatchModal(); }
+
+function openBatchModal(){
+  if(!selectedOrders.size){ toast('No orders selected','info'); return; }
+  const n = selectedOrders.size;
+  const existing = document.getElementById('batchModal');
+  if(existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'batchModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:520px;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Buy labels for ${n} order${n===1?'':'s'}</div>
+        <button onclick="closeBatchModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div id="batchBody" style="padding:20px">
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Rate strategy</div>
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:8px">
+          <input type="radio" name="batchStrategy" value="cheapest" checked onchange="toggleBatchFixed()" style="margin-top:2px;accent-color:var(--accent)">
+          <div><div style="font-size:13px;font-weight:600;color:var(--text)">Cheapest rate per order</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Rate-shops every connected carrier for each order and buys the lowest price.</div></div>
+        </label>
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer">
+          <input type="radio" name="batchStrategy" value="fixed" onchange="toggleBatchFixed()" style="margin-top:2px;accent-color:var(--accent)">
+          <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">Same service for all</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Buy one specific carrier + service for every order.</div>
+          <div id="batchFixedFields" style="display:none;margin-top:10px;gap:8px;grid-template-columns:1fr 1fr;display:none">
+            <select id="batch-carrier" onchange="batchUpdateServices()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px">
+              <option value="ups">UPS</option><option value="fedex">FedEx</option><option value="usps">USPS</option>
+            </select>
+            <select id="batch-service" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px"></select>
+          </div></div>
+        </label>
+
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 10px">Package (applied to all)</div>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr;gap:8px">
+          <select id="batch-box" onchange="batchSelectBox(this.value)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+            <option value="small">Small 8×6×4</option><option value="medium" selected>Medium 12×9×6</option><option value="large">Large 18×14×10</option><option value="xlarge">XL 24×18×12</option>
+          </select>
+          <input type="number" id="batch-weight" value="2" step="0.1" min="0.1" title="Weight (lb)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+          <input type="number" id="batch-length" value="12" title="Length (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+          <input type="number" id="batch-width" value="9" title="Width (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+          <input type="number" id="batch-height" value="6" title="Height (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Ships from <strong>${defaultShipper().name}</strong> · ${defaultShipper().city}, ${defaultShipper().state}. Labels are real and bill your carrier account.</div>
+      </div>
+      <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="closeBatchModal()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px 16px;border-radius:9px;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif">Cancel</button>
+        <button id="batchRunBtn" onclick="runBatch()" class="topbar-btn primary" style="padding:9px 18px">Buy ${n} label${n===1?'':'s'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  batchUpdateServices();
+}
+
+function closeBatchModal(){ document.getElementById('batchModal')?.remove(); }
+
+function toggleBatchFixed(){
+  const fixed = document.querySelector('input[name="batchStrategy"]:checked')?.value === 'fixed';
+  const f = document.getElementById('batchFixedFields');
+  if(f) f.style.display = fixed ? 'grid' : 'none';
+}
+
+function batchUpdateServices(){
+  const carrier = document.getElementById('batch-carrier')?.value || 'ups';
+  const services = {
+    ups:  [['03','UPS Ground'],['12','UPS 3 Day Select'],['02','UPS 2nd Day Air'],['01','UPS Next Day Air']],
+    fedex:[['FEDEX_GROUND','FedEx Ground'],['FEDEX_2_DAY','FedEx 2Day'],['STANDARD_OVERNIGHT','FedEx Standard Overnight']],
+    usps: [['usps_priority','USPS Priority'],['usps_ground_advantage','USPS Ground Advantage'],['usps_priority_express','USPS Priority Express']],
+  };
+  const sel = document.getElementById('batch-service');
+  if(sel) sel.innerHTML = (services[carrier]||services.ups).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+}
+
+function batchSelectBox(size){
+  const dims = { small:[8,6,4], medium:[12,9,6], large:[18,14,10], xlarge:[24,18,12] }[size] || [12,9,6];
+  document.getElementById('batch-length').value = dims[0];
+  document.getElementById('batch-width').value  = dims[1];
+  document.getElementById('batch-height').value = dims[2];
+}
+
+async function runBatch(){
+  const strategy = document.querySelector('input[name="batchStrategy"]:checked')?.value || 'cheapest';
+  // selectedOrders holds display IDs ("SS-123"); the API needs the DB id (_dbId).
+  const orderIds = [...selectedOrders]
+    .map(id => ordersData.find(x => String(x.id) === String(id))?._dbId)
+    .filter(v => v != null);
+  const btn = document.getElementById('batchRunBtn');
+  btn.disabled = true;
+  btn.textContent = 'Buying labels…';
+
+  const payload = {
+    orderIds,
+    strategy,
+    shipper: defaultShipper(),
+    package: {
+      weight: parseFloat(document.getElementById('batch-weight').value) || 1,
+      length: parseFloat(document.getElementById('batch-length').value) || 12,
+      width:  parseFloat(document.getElementById('batch-width').value)  || 9,
+      height: parseFloat(document.getElementById('batch-height').value) || 6,
+    },
+  };
+  if(strategy === 'fixed'){
+    payload.carrier = document.getElementById('batch-carrier').value;
+    payload.service = document.getElementById('batch-service').value;
+  }
+
+  const body = document.getElementById('batchBody');
+  body.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">Buying ${orderIds.length} label${orderIds.length===1?'':'s'}… this can take a moment while each carrier responds.</div>`;
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/batch', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token||'demo_token'}` },
+      body: JSON.stringify(payload),
     });
-    clearSelection();
-    renderOrders();
-  },1500);
+    const data = await res.json();
+    if(!res.ok){ body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Batch failed.'}</div>`; btn.style.display='none'; return; }
+    renderBatchResults(data);
+  } catch(err){
+    body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border-radius:9px;color:var(--accent);font-size:12px">Network error: ${err.message}</div>`;
+  }
+}
+
+let lastBatchResults = [];
+function renderBatchResults(data){
+  const { results = [], summary = {} } = data;
+  lastBatchResults = results.filter(r=>r.success);
+
+  // Update order rows locally for successes (r.orderId is the DB id → match _dbId).
+  results.forEach(r=>{ if(r.success){ const o = ordersData.find(x=>String(x._dbId)===String(r.orderId)); if(o){ o.status='shipped'; o.tracking=r.trackingNumber; o.carrier=r.carrier; } } });
+
+  const rows = results.map(r=>{
+    if(r.success){
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <span style="color:var(--green)">✓</span>
+        <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · ${(r.carrier||'').toUpperCase()} ${r.service||''}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text)">$${(parseFloat(r.totalCharge)||0).toFixed(2)}</div>
+      </div>`;
+    }
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid rgba(230,57,70,0.25);border-radius:8px;margin-bottom:6px;background:var(--red-bg)">
+      <span style="color:var(--accent)">✗</span>
+      <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · <span style="color:var(--accent)">${r.error||'Failed'}</span></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('batchBody').innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:14px">
+      <div style="flex:1;background:var(--green-bg);border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--green)">${summary.succeeded||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Bought</div></div>
+      <div style="flex:1;background:var(--bg2);border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--text)">$${summary.totalSpend||'0.00'}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total spend</div></div>
+      <div style="flex:1;background:${(summary.failed||0)?'var(--red-bg)':'var(--bg2)'};border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:${(summary.failed||0)?'var(--accent)':'var(--muted)'}">${summary.failed||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Failed</div></div>
+    </div>
+    ${rows}`;
+
+  const footer = document.getElementById('batchRunBtn');
+  if(lastBatchResults.length){
+    footer.disabled = false;
+    footer.textContent = `🖨 Print ${lastBatchResults.length} label${lastBatchResults.length===1?'':'s'}`;
+    footer.setAttribute('onclick','printAllBatchLabels()');
+  } else {
+    footer.style.display = 'none';
+  }
+  clearSelection();
+  renderOrders();
+}
+
+// Open each purchased label in its own tab for printing. UPS returns a base64
+// GIF (labelImage), FedEx/USPS return a labelUrl.
+function printAllBatchLabels(){
+  if(!lastBatchResults.length){ toast('No labels to print','info'); return; }
+  lastBatchResults.forEach((r,i)=>{
+    setTimeout(()=>{
+      if(r.labelUrl){ window.open(r.labelUrl,'_blank'); }
+      else if(r.labelImage){
+        const w = window.open('','_blank');
+        if(w) w.document.write(`<img src="data:image/gif;base64,${r.labelImage}" style="max-width:100%">`);
+      }
+    }, i*300); // stagger so the browser doesn't block the popups
+  });
+  toast(`Opening ${lastBatchResults.length} labels to print`,'success');
 }
 
 function printSelected(){
