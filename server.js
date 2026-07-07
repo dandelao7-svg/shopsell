@@ -2196,14 +2196,25 @@ app.use((err, req, res, next) => {
    ── START SERVER ─────────────────────────────────────────────
    ============================================================ */
 
-app.listen(PORT, () => {
-  console.log(`
+// Wait for the schema to be created/migrated before accepting traffic, so a
+// cold boot against a fresh Postgres never serves requests against missing
+// tables. If schema init fails, exit non-zero and let the platform restart us
+// with backoff rather than run in a broken state.
+db.schemaReady
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`
 ╔══════════════════════════════════════════╗
 ║   ShopSell Server running on port ${PORT}   ║
 ║   ENV: ${(process.env.NODE_ENV||'development').padEnd(34)}║
 ║   Stripe: ${process.env.STRIPE_SECRET_KEY ? 'Connected ✓' : 'NOT CONNECTED ✗'.padEnd(30)}║
 ╚══════════════════════════════════════════╝
   `);
-});
+    });
+  })
+  .catch(err => {
+    console.error('Fatal: schema initialization failed, not starting server.', err);
+    process.exit(1);
+  });
 
 module.exports = app;
