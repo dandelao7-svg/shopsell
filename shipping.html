@@ -1755,8 +1755,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       if(document.readyState !== 'loading') updateUserDisplay(seller);
       // Preload presets + ship-from profiles so the batch modal (opened from
       // Orders) and Quick Ship have them ready.
-      if(typeof loadPackagePresets === 'function'){ loadPackagePresets(); loadShipFromProfiles(); refreshChannels(); }
-      else document.addEventListener('DOMContentLoaded', () => { loadPackagePresets(); loadShipFromProfiles(); refreshChannels(); });
+      if(typeof loadPackagePresets === 'function'){ loadPackagePresets(); loadShipFromProfiles(); refreshChannels(); handleChannelReturn(); }
+      else document.addEventListener('DOMContentLoaded', () => { loadPackagePresets(); loadShipFromProfiles(); refreshChannels(); handleChannelReturn(); });
     })
     .catch(() => {/* network blip — let other API calls handle it */});
 })();
@@ -2364,6 +2364,17 @@ async function refreshChannels(){
   } catch(e){ /* ignore */ }
 }
 
+// After the Shopify OAuth redirect lands back on /shipping?shopify=connected.
+function handleChannelReturn(){
+  const p = new URLSearchParams(location.search);
+  const s = p.get('shopify');
+  if(!s) return;
+  if(s === 'connected'){ toast('Shopify connected — real-time sync on','success'); refreshChannels().then(()=>openShopifyModal()); }
+  else if(s === 'error'){ toast('Shopify connection failed or was cancelled','error'); }
+  // Clean the URL so a refresh doesn't re-trigger.
+  history.replaceState(null, '', location.pathname);
+}
+
 let amazonConn = null;
 function openAmazonModal(){
   const existing = document.getElementById('amazonModal'); if(existing) existing.remove();
@@ -2515,33 +2526,33 @@ async function renderShopifyBody(forceForm){
   } else {
     body.innerHTML = `
       <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px">
-        Import unfulfilled Shopify orders here to rate-shop, batch, and print. When you buy a label, the order is marked fulfilled in Shopify with tracking.
+        Import unfulfilled Shopify orders here to rate-shop, batch, and print. When you buy a label, the order is marked fulfilled in Shopify with tracking — automatically, in real time.
         <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
-          <strong style="color:var(--text)">In Shopify admin:</strong> Settings → Apps and sales channels → Develop apps → Create an app → Admin API scopes: enable <code>read_orders</code> and <code>write_merchant_managed_fulfillment_orders</code> → Install. Copy the <strong>Admin API access token</strong>, and (for real-time sync) the <strong>API secret key</strong> from the app's API credentials.
+          Enter your store domain and click <strong>Connect</strong>. You'll approve access on Shopify, then land back here — no tokens to copy.
         </div>
       </div>
       <div class="form-field"><label>Store domain</label><input type="text" id="shopify-domain" placeholder="your-store.myshopify.com" value="${escapeAttr(shopifyConn?.shopDomain||'')}"></div>
-      <div class="form-field"><label>Admin API access token</label><input type="password" id="shopify-token" placeholder="shpat_…"></div>
-      <div class="form-field"><label>API secret key <span style="color:var(--muted);font-weight:400">— optional, enables real-time sync</span></label><input type="password" id="shopify-secret" placeholder="shpss_…"></div>
-      <button class="topbar-btn primary" id="shopifyConnectBtn" onclick="connectShopify()" style="width:100%;justify-content:center;padding:12px;margin-top:6px">Connect & verify</button>
+      <button class="topbar-btn primary" id="shopifyConnectBtn" onclick="installShopify()" style="width:100%;justify-content:center;padding:12px;margin-top:6px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14L21 3M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/></svg>
+        Connect Shopify
+      </button>
       <div id="shopifyConnectMsg" style="font-size:12px;margin-top:12px"></div>`;
   }
 }
 
-async function connectShopify(){
+// Start the OAuth install: get the consent URL, then redirect the browser to
+// Shopify. On approval, Shopify bounces back to /shipping?shopify=connected.
+async function installShopify(){
   const shopDomain = document.getElementById('shopify-domain').value.trim();
-  const accessToken = document.getElementById('shopify-token').value.trim();
-  const apiSecret = document.getElementById('shopify-secret').value.trim();
   const msg = document.getElementById('shopifyConnectMsg');
-  if(!shopDomain || !accessToken){ msg.style.color='var(--accent)'; msg.textContent='Enter your store domain and access token.'; return; }
-  const btn = document.getElementById('shopifyConnectBtn'); btn.disabled=true; btn.textContent='Verifying…';
+  if(!shopDomain){ msg.style.color='var(--accent)'; msg.textContent='Enter your store domain.'; return; }
+  const btn = document.getElementById('shopifyConnectBtn'); btn.disabled=true; btn.textContent='Redirecting to Shopify…';
   try {
-    const res = await fetch('/api/seller/channels/shopify', { method:'POST', headers:authHeaders(), body:JSON.stringify({ shopDomain, accessToken, apiSecret }) });
+    const res = await fetch('/api/seller/channels/shopify/install', { method:'POST', headers:authHeaders(), body:JSON.stringify({ shopDomain }) });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
-    toast((data.message || 'Shopify connected') + (data.realtime ? ' — real-time sync on' : ''),'success');
-    await renderShopifyBody();
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
+    if(!res.ok || !data.url){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect Shopify'; return; }
+    window.location.href = data.url;
+  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect Shopify'; }
 }
 
 async function syncShopify(){

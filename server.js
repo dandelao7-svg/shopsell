@@ -205,6 +205,16 @@ function channelWebhookUrl(sellerId) {
   return `${base}/api/webhooks/shopify/${sellerId}`;
 }
 
+// Shopify public-app OAuth config (your one set of app creds, server-side).
+const SHOPIFY_SCOPES = 'read_orders,write_merchant_managed_fulfillment_orders';
+function shopifyAppConfig() {
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
+  const redirectUri = /^https:\/\//.test(base) ? `${base}/api/channels/shopify/callback` : null;
+  return { apiKey, apiSecret, redirectUri, configured: !!(apiKey && apiSecret && redirectUri) };
+}
+
 // ── STRIPE KEYS (encrypted at rest) ──────────────────────────
 async function persistStripeKeys(sellerId, { publishableKey, secretKey, webhookSecret }) {
   await db.saveStripeKeys(sellerId, {
@@ -2685,8 +2695,9 @@ app.get('/api/seller/channels', requireAuth, async (req, res) => {
   try {
     const rows = await db.getChannelConnections(req.seller.sellerId);
     const channels = rows.map(r => {
-      let realtime = false;
-      try { realtime = !!cryptoLib.decrypt(r.credentials).apiSecret; } catch (e) { /* leave false */ }
+      // Shopify OAuth connections get real-time webhooks (verified with the
+      // app secret) whenever the app is configured with a public https origin.
+      const realtime = r.channel === 'shopify' && shopifyAppConfig().configured;
       return { channel: r.channel, shopDomain: r.shopDomain, status: r.status, lastSyncedAt: r.lastSyncedAt, realtime };
     });
     res.json({ channels });
@@ -2696,37 +2707,69 @@ app.get('/api/seller/channels', requireAuth, async (req, res) => {
   }
 });
 
-// Connect (or update) a Shopify store: verify the token, then store encrypted.
-app.post('/api/seller/channels/shopify', requireAuth, async (req, res) => {
+// Begin the Shopify OAuth install. Returns the consent URL for the browser to
+// redirect to. The seller's identity + a nonce ride in a signed `state` (JWT)
+// so the (unauthenticated) callback can map the install back to this account.
+app.post('/api/seller/channels/shopify/install', requireAuth, async (req, res) => {
   try {
-    if (!cryptoLib.isConfigured()) {
-      return res.status(500).json({ error: 'Server encryption is not configured; cannot store credentials.' });
+    const cfg = shopifyAppConfig();
+    if (!cfg.configured) {
+      return res.status(500).json({ error: 'Shopify app is not configured on this server (SHOPIFY_API_KEY / SHOPIFY_API_SECRET / ALLOWED_ORIGIN).' });
     }
-    const { shopDomain, accessToken, apiSecret } = req.body;
-    const verified = await shopify.verifyConnection({ shopDomain, accessToken }); // throws on bad creds
-    const credentials = cryptoLib.encrypt({ accessToken, apiSecret: apiSecret || null, shopDomain: verified.domain });
-    await db.saveChannelConnection(req.seller.sellerId, 'shopify', {
-      shopDomain: verified.domain, credentials, status: 'verified',
+    const shopDomain = shopify.normalizeShopDomain(req.body.shopDomain);
+    if (!/\.myshopify\.com$/.test(shopDomain)) {
+      return res.status(400).json({ error: 'Enter your <store>.myshopify.com domain.' });
+    }
+    const state = jwt.sign(
+      { sellerId: req.seller.sellerId, shop: shopDomain, purpose: 'shopify_oauth', nonce: crypto.randomBytes(8).toString('hex') },
+      process.env.JWT_SECRET, { expiresIn: '10m' }
+    );
+    const url = shopify.buildInstallUrl(shopDomain, {
+      apiKey: cfg.apiKey, scopes: SHOPIFY_SCOPES, redirectUri: cfg.redirectUri, state,
+    });
+    res.json({ url });
+  } catch (err) {
+    console.error('Shopify install error:', err);
+    res.status(500).json({ error: 'Could not start Shopify install.' });
+  }
+});
+
+// OAuth callback (top-level browser redirect — NOT XHR, so no requireAuth; the
+// seller is identified from the signed state). Verify → exchange → store →
+// register webhook → bounce back to the app.
+app.get('/api/channels/shopify/callback', async (req, res) => {
+  const back = (ok) => res.redirect(`${(process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '')}/shipping?shopify=${ok ? 'connected' : 'error'}`);
+  try {
+    const cfg = shopifyAppConfig();
+    if (!cfg.configured) return back(false);
+
+    const { code, shop, state, hmac } = req.query;
+    if (!code || !shop || !state || !hmac) return back(false);
+    if (!shopify.verifyOAuthHmac(req.query, cfg.apiSecret)) return back(false);
+
+    // Decode + validate state (signature, purpose, and shop match).
+    let claims;
+    try { claims = jwt.verify(state, process.env.JWT_SECRET); } catch (e) { return back(false); }
+    const shopDomain = shopify.normalizeShopDomain(shop);
+    if (claims.purpose !== 'shopify_oauth' || claims.shop !== shopDomain) return back(false);
+
+    const { accessToken } = await shopify.exchangeCodeForToken(shopDomain, {
+      apiKey: cfg.apiKey, apiSecret: cfg.apiSecret, code,
     });
 
-    // Register the real-time orders/create webhook when we have the API secret
-    // (needed to verify inbound webhooks) and a public https origin. Best-effort.
-    let realtime = false;
-    const callbackUrl = channelWebhookUrl(req.seller.sellerId);
-    if (apiSecret && callbackUrl) {
-      try {
-        await shopify.ensureOrderWebhook({ shopDomain: verified.domain, accessToken }, callbackUrl);
-        realtime = true;
-      } catch (e) {
-        console.error('Shopify webhook registration failed:', e.message);
-      }
+    const credentials = cryptoLib.encrypt({ accessToken, shopDomain });
+    await db.saveChannelConnection(claims.sellerId, 'shopify', { shopDomain, credentials, status: 'verified' });
+
+    // Register the orders/create webhook (verified later with the app secret).
+    const callbackUrl = channelWebhookUrl(claims.sellerId);
+    if (callbackUrl) {
+      await shopify.ensureOrderWebhook({ shopDomain, accessToken }, callbackUrl).catch(e =>
+        console.error('Shopify webhook registration failed:', e.message));
     }
-    res.json({
-      message: `Connected to ${verified.shopName}.`,
-      shopName: verified.shopName, shopDomain: verified.domain, realtime,
-    });
+    back(true);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error('Shopify callback error:', err.message);
+    back(false);
   }
 });
 
@@ -2821,21 +2864,23 @@ app.delete('/api/seller/channels/amazon', requireAuth, async (req, res) => {
 });
 
 // SHOPIFY WEBHOOK RECEIVER — Shopify POSTs orders/create here. Raw body is
-// preserved by the express.raw middleware on /api/webhooks/shopify. We verify
-// the HMAC with the seller's stored API secret, then import the order.
+// preserved by the express.raw middleware on /api/webhooks/shopify. Public-app
+// webhooks are signed with the app's single API secret, so we verify with that.
 app.post('/api/webhooks/shopify/:sellerId', async (req, res) => {
   try {
     const sellerId = parseInt(req.params.sellerId, 10);
     if (!Number.isInteger(sellerId)) return res.status(404).end();
 
-    const creds = await loadChannelCreds(sellerId, 'shopify');
-    if (!creds || !creds.apiSecret) return res.status(401).end();
+    const appSecret = process.env.SHOPIFY_API_SECRET;
+    if (!appSecret) return res.status(401).end();
 
     // req.body is a Buffer here (raw). Verify before trusting anything.
     const hmac = req.headers['x-shopify-hmac-sha256'];
-    if (!shopify.verifyWebhookHmac(req.body, hmac, creds.apiSecret)) {
+    if (!shopify.verifyWebhookHmac(req.body, hmac, appSecret)) {
       return res.status(401).end();
     }
+    const creds = await loadChannelCreds(sellerId, 'shopify');
+    if (!creds) return res.status(401).end();
     // Defense-in-depth: the shop domain must match the connected store.
     const shopHeader = String(req.headers['x-shopify-shop-domain'] || '').toLowerCase();
     if (creds.shopDomain && shopHeader && shopHeader !== creds.shopDomain) {
