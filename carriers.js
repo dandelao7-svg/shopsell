@@ -230,6 +230,85 @@ class UPS {
     };
   }
 
+  // Rate shopping: ask UPS for ALL available services + prices for this
+  // package/route in one call (the "Shop" request option). Returns the
+  // normalized rate shape used across every carrier.
+  async getRates({ shipper, recipient, package: pkg }) {
+    const token = await this.getAccessToken();
+
+    const addr = a => ({
+      AddressLine:       [a.address1, a.address2].filter(Boolean),
+      City:              a.city,
+      StateProvinceCode: a.state,
+      PostalCode:        a.zip,
+      CountryCode:       a.country || 'US',
+    });
+
+    const payload = {
+      RateRequest: {
+        Request: {
+          RequestOption: 'Shop', // Shop = return every available service
+          TransactionReference: { CustomerContext: 'NextLao Rating' },
+        },
+        Shipment: {
+          Shipper:  { Name: shipper.name || 'Shipper', ShipperNumber: this.accountNumber, Address: addr(shipper) },
+          ShipTo:   { Name: recipient.name || 'Recipient', Address: {
+            ...addr(recipient),
+            ...(recipient.residential === true ? { ResidentialAddressIndicator: '' } : {}),
+          } },
+          ShipFrom: { Name: shipper.name || 'Shipper', Address: addr(shipper) },
+          Package: {
+            PackagingType: { Code: '02', Description: 'Customer Supplied Package' },
+            Dimensions: {
+              UnitOfMeasurement: { Code: 'IN', Description: 'Inches' },
+              Length: String(pkg.length || 12),
+              Width:  String(pkg.width  || 9),
+              Height: String(pkg.height || 4),
+            },
+            PackageWeight: {
+              UnitOfMeasurement: { Code: 'LBS', Description: 'Pounds' },
+              Weight:            String(pkg.weight || 1),
+            },
+          },
+        },
+      },
+    };
+
+    const res = await nodeFetch(`${this.apiUrl}/api/rating/v2409/Shop`, {
+      method: 'POST',
+      headers: {
+        'Authorization':  `Bearer ${token}`,
+        'Content-Type':   'application/json',
+        'transId':        `nextlao-rate-${Date.now()}`,
+        'transactionSrc': 'nextlao',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.RateResponse) {
+      const errMsg = data?.response?.errors?.[0]?.message || JSON.stringify(data).slice(0, 300);
+      throw new Error(`UPS Rating API error: ${errMsg}`);
+    }
+
+    const rated = data.RateResponse.RatedShipment || [];
+    const list  = Array.isArray(rated) ? rated : [rated];
+
+    return list.map(r => {
+      const code = r.Service?.Code;
+      return {
+        carrier:       'ups',
+        serviceCode:   code,
+        serviceName:   this.getServiceName(code),
+        totalCharge:   parseFloat(r.TotalCharges?.MonetaryValue ?? r.NegotiatedRateCharges?.TotalCharge?.MonetaryValue ?? 'NaN'),
+        currency:      r.TotalCharges?.CurrencyCode || 'USD',
+        estimatedDays: r.GuaranteedDelivery?.BusinessDaysInTransit
+          ? parseInt(r.GuaranteedDelivery.BusinessDaysInTransit, 10)
+          : null,
+      };
+    }).filter(r => Number.isFinite(r.totalCharge));
+  }
+
   getServiceName(code) {
     const names = {
       '01': 'UPS Next Day Air',
@@ -514,6 +593,83 @@ class FedEx {
     };
   }
 
+  // Rate shopping: ask FedEx for all available services + prices for this
+  // package/route. Omitting serviceType makes the Rate API return every
+  // eligible service. Returns the normalized rate shape.
+  async getRates({ shipper, recipient, package: pkg }) {
+    const token = await this.getAccessToken();
+
+    const payload = {
+      accountNumber: { value: this.accountNumber },
+      requestedShipment: {
+        shipper: {
+          address: {
+            streetLines:  [shipper.address1, shipper.address2].filter(Boolean),
+            city:         shipper.city,
+            stateOrProvinceCode: shipper.state,
+            postalCode:   shipper.zip,
+            countryCode:  shipper.country || 'US',
+          },
+        },
+        recipient: {
+          address: {
+            streetLines:  [recipient.address1, recipient.address2].filter(Boolean),
+            city:         recipient.city,
+            stateOrProvinceCode: recipient.state,
+            postalCode:   recipient.zip,
+            countryCode:  recipient.country || 'US',
+            residential:  recipient.residential === true,
+          },
+        },
+        pickupType:      'USE_SCHEDULED_PICKUP',
+        packagingType:   'YOUR_PACKAGING',
+        rateRequestType: ['ACCOUNT', 'LIST'],
+        requestedPackageLineItems: [{
+          weight: { units: 'LB', value: pkg.weight || 1 },
+          dimensions: {
+            length: pkg.length || 12,
+            width:  pkg.width  || 9,
+            height: pkg.height || 4,
+            units:  'IN',
+          },
+        }],
+      },
+    };
+
+    const res = await nodeFetch(`${this.apiUrl}/rate/v1/rates/quotes`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+        'X-locale':      'en_US',
+        'x-customer-transaction-id': `nextlao-rate-${Date.now()}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.output) {
+      const errMsg = data?.errors?.[0]?.message || JSON.stringify(data).slice(0, 300);
+      throw new Error(`FedEx Rate API error: ${errMsg}`);
+    }
+
+    return (data.output.rateReplyDetails || []).map(d => {
+      // Prefer the account (negotiated) rate, fall back to list.
+      const details = d.ratedShipmentDetails || [];
+      const account = details.find(x => x.rateType === 'ACCOUNT') || details[0] || {};
+      const transit = d.commit?.transitDays?.maximumTransitTime || d.commit?.daysInTransit;
+      const daysMap = { ONE_DAY:1, TWO_DAYS:2, THREE_DAYS:3, FOUR_DAYS:4, FIVE_DAYS:5, SIX_DAYS:6, SEVEN_DAYS:7 };
+      return {
+        carrier:       'fedex',
+        serviceCode:   d.serviceType,
+        serviceName:   d.serviceName || this.getServiceName(d.serviceType),
+        totalCharge:   parseFloat(account.totalNetCharge ?? 'NaN'),
+        currency:      account.currency || 'USD',
+        estimatedDays: typeof transit === 'string' ? (daysMap[transit] ?? null) : (transit ?? null),
+      };
+    }).filter(r => Number.isFinite(r.totalCharge));
+  }
+
   getServiceName(type) {
     const names = {
       FEDEX_GROUND:        'FedEx Ground',
@@ -687,6 +843,58 @@ class USPS {
     };
   }
 
+  // Rate shopping: create a Shippo shipment and return every USPS rate it
+  // offers, normalized to the shared shape. serviceCode is the Shippo
+  // servicelevel token (e.g. usps_priority) that /label passes back as serviceType.
+  async getRates({ shipper, recipient, package: pkg }) {
+    if (!this.apiKey) {
+      throw new Error('Shippo token not configured. Connect your USPS/Shippo account in Settings.');
+    }
+
+    const res = await nodeFetch(`${this.baseUrl}/shipments/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `ShippoToken ${this.apiKey}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        address_from: {
+          name: shipper.name, street1: shipper.address1, city: shipper.city,
+          state: shipper.state, zip: shipper.zip, country: shipper.country || 'US',
+          phone: shipper.phone || '5550000000',
+        },
+        address_to: {
+          name: recipient.name, street1: recipient.address1, street2: recipient.address2 || '',
+          city: recipient.city, state: recipient.state, zip: recipient.zip,
+          country: recipient.country || 'US', phone: recipient.phone || '5550000000',
+        },
+        parcels: [{
+          length: String(pkg.length || 12), width: String(pkg.width || 9),
+          height: String(pkg.height || 4), distance_unit: 'in',
+          weight: String(pkg.weight || 1), mass_unit: 'lb',
+        }],
+        async: false,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.rates) {
+      throw new Error(`Shippo rating error: ${data.detail || 'Unknown'}`);
+    }
+
+    return data.rates
+      .filter(r => r.provider === 'USPS')
+      .map(r => ({
+        carrier:       'usps',
+        serviceCode:   r.servicelevel?.token,
+        serviceName:   r.servicelevel?.name || 'USPS',
+        totalCharge:   parseFloat(r.amount ?? 'NaN'),
+        currency:      r.currency || 'USD',
+        estimatedDays: r.estimated_days ?? null,
+      }))
+      .filter(r => Number.isFinite(r.totalCharge));
+  }
+
   async refundLabel(transactionId) {
     if (!this.apiKey) {
       throw new Error('Shippo token not configured. Connect your USPS/Shippo account in Settings.');
@@ -773,6 +981,12 @@ async function createReturnLabel(carrier, params, creds) {
   return buildCarrier(carrier, creds).createShipment(params);
 }
 
+// Rate shopping for a single carrier. Returns an array of normalized rates:
+//   { carrier, serviceCode, serviceName, totalCharge, currency, estimatedDays }
+async function getRates(carrier, params, creds) {
+  return buildCarrier(carrier, creds).getRates(params);
+}
+
 // Live auth/connectivity check for a single seller's credentials.
 // Returns { ok: true } or { ok: false, error }.
 async function testCarrierCreds(carrier, creds = {}) {
@@ -800,5 +1014,6 @@ module.exports = {
   buildCarrier,
   track,
   createReturnLabel,
+  getRates,
   testCarrierCreds,
 };

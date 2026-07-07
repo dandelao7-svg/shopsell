@@ -869,6 +869,14 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
               </select>
             </div>
           </div>
+          <!-- RATE SHOPPING -->
+          <div style="margin-bottom:1.25rem">
+            <button type="button" id="qsRatesBtn" onclick="compareRates()" style="width:100%;justify-content:center;padding:11px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 7l10-5 10 5M4 7v6a8 8 0 0016 0V7"/><path d="M2 13h4M18 13h4"/></svg>
+              Compare live rates across your carriers
+            </button>
+            <div id="rateResults" style="display:none;margin-top:12px"></div>
+          </div>
           <div class="form-field" style="margin-bottom:1.25rem">
             <label>Package description (optional)</label>
             <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
@@ -2248,17 +2256,204 @@ function clearSelection(){
   updateBulkBar();
 }
 
-function bulkPrint(){
-  if(!selectedOrders.size){toast('No orders selected','info');return}
-  toast(`Printing ${selectedOrders.size} labels... 🖨️`,'success');
-  setTimeout(()=>{
-    selectedOrders.forEach(id=>{
-      const o = ordersData.find(x=>x.id===id);
-      if(o) o.status='printed';
+// ── BATCH LABELS ──────────────────────────────────────────────
+// Read the default ship-from from the Quick Ship form (always in the DOM).
+function defaultShipper(){
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  return {
+    name:     val('qs-from-name')  || 'NextLao Store',
+    phone:    val('qs-from-phone') || '5550000000',
+    address1: val('qs-from-addr')  || '123 Main Street',
+    city:     val('qs-from-city')  || 'Los Angeles',
+    state:    val('qs-from-state') || 'CA',
+    zip:      val('qs-from-zip')   || '90001',
+    country:  'US',
+  };
+}
+
+function bulkPrint(){ openBatchModal(); }
+
+function openBatchModal(){
+  if(!selectedOrders.size){ toast('No orders selected','info'); return; }
+  const n = selectedOrders.size;
+  const existing = document.getElementById('batchModal');
+  if(existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'batchModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:520px;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Buy labels for ${n} order${n===1?'':'s'}</div>
+        <button onclick="closeBatchModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div id="batchBody" style="padding:20px">
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Rate strategy</div>
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:8px">
+          <input type="radio" name="batchStrategy" value="cheapest" checked onchange="toggleBatchFixed()" style="margin-top:2px;accent-color:var(--accent)">
+          <div><div style="font-size:13px;font-weight:600;color:var(--text)">Cheapest rate per order</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Rate-shops every connected carrier for each order and buys the lowest price.</div></div>
+        </label>
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer">
+          <input type="radio" name="batchStrategy" value="fixed" onchange="toggleBatchFixed()" style="margin-top:2px;accent-color:var(--accent)">
+          <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">Same service for all</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Buy one specific carrier + service for every order.</div>
+          <div id="batchFixedFields" style="display:none;margin-top:10px;gap:8px;grid-template-columns:1fr 1fr;display:none">
+            <select id="batch-carrier" onchange="batchUpdateServices()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px">
+              <option value="ups">UPS</option><option value="fedex">FedEx</option><option value="usps">USPS</option>
+            </select>
+            <select id="batch-service" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:13px"></select>
+          </div></div>
+        </label>
+
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 10px">Package (applied to all)</div>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr;gap:8px">
+          <select id="batch-box" onchange="batchSelectBox(this.value)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+            <option value="small">Small 8×6×4</option><option value="medium" selected>Medium 12×9×6</option><option value="large">Large 18×14×10</option><option value="xlarge">XL 24×18×12</option>
+          </select>
+          <input type="number" id="batch-weight" value="2" step="0.1" min="0.1" title="Weight (lb)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+          <input type="number" id="batch-length" value="12" title="Length (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+          <input type="number" id="batch-width" value="9" title="Width (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+          <input type="number" id="batch-height" value="6" title="Height (in)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Ships from <strong>${defaultShipper().name}</strong> · ${defaultShipper().city}, ${defaultShipper().state}. Labels are real and bill your carrier account.</div>
+      </div>
+      <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="closeBatchModal()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px 16px;border-radius:9px;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif">Cancel</button>
+        <button id="batchRunBtn" onclick="runBatch()" class="topbar-btn primary" style="padding:9px 18px">Buy ${n} label${n===1?'':'s'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  batchUpdateServices();
+}
+
+function closeBatchModal(){ document.getElementById('batchModal')?.remove(); }
+
+function toggleBatchFixed(){
+  const fixed = document.querySelector('input[name="batchStrategy"]:checked')?.value === 'fixed';
+  const f = document.getElementById('batchFixedFields');
+  if(f) f.style.display = fixed ? 'grid' : 'none';
+}
+
+function batchUpdateServices(){
+  const carrier = document.getElementById('batch-carrier')?.value || 'ups';
+  const services = {
+    ups:  [['03','UPS Ground'],['12','UPS 3 Day Select'],['02','UPS 2nd Day Air'],['01','UPS Next Day Air']],
+    fedex:[['FEDEX_GROUND','FedEx Ground'],['FEDEX_2_DAY','FedEx 2Day'],['STANDARD_OVERNIGHT','FedEx Standard Overnight']],
+    usps: [['usps_priority','USPS Priority'],['usps_ground_advantage','USPS Ground Advantage'],['usps_priority_express','USPS Priority Express']],
+  };
+  const sel = document.getElementById('batch-service');
+  if(sel) sel.innerHTML = (services[carrier]||services.ups).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+}
+
+function batchSelectBox(size){
+  const dims = { small:[8,6,4], medium:[12,9,6], large:[18,14,10], xlarge:[24,18,12] }[size] || [12,9,6];
+  document.getElementById('batch-length').value = dims[0];
+  document.getElementById('batch-width').value  = dims[1];
+  document.getElementById('batch-height').value = dims[2];
+}
+
+async function runBatch(){
+  const strategy = document.querySelector('input[name="batchStrategy"]:checked')?.value || 'cheapest';
+  // selectedOrders holds display IDs ("SS-123"); the API needs the DB id (_dbId).
+  const orderIds = [...selectedOrders]
+    .map(id => ordersData.find(x => String(x.id) === String(id))?._dbId)
+    .filter(v => v != null);
+  const btn = document.getElementById('batchRunBtn');
+  btn.disabled = true;
+  btn.textContent = 'Buying labels…';
+
+  const payload = {
+    orderIds,
+    strategy,
+    shipper: defaultShipper(),
+    package: {
+      weight: parseFloat(document.getElementById('batch-weight').value) || 1,
+      length: parseFloat(document.getElementById('batch-length').value) || 12,
+      width:  parseFloat(document.getElementById('batch-width').value)  || 9,
+      height: parseFloat(document.getElementById('batch-height').value) || 6,
+    },
+  };
+  if(strategy === 'fixed'){
+    payload.carrier = document.getElementById('batch-carrier').value;
+    payload.service = document.getElementById('batch-service').value;
+  }
+
+  const body = document.getElementById('batchBody');
+  body.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">Buying ${orderIds.length} label${orderIds.length===1?'':'s'}… this can take a moment while each carrier responds.</div>`;
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/batch', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token||'demo_token'}` },
+      body: JSON.stringify(payload),
     });
-    clearSelection();
-    renderOrders();
-  },1500);
+    const data = await res.json();
+    if(!res.ok){ body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Batch failed.'}</div>`; btn.style.display='none'; return; }
+    renderBatchResults(data);
+  } catch(err){
+    body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border-radius:9px;color:var(--accent);font-size:12px">Network error: ${err.message}</div>`;
+  }
+}
+
+let lastBatchResults = [];
+function renderBatchResults(data){
+  const { results = [], summary = {} } = data;
+  lastBatchResults = results.filter(r=>r.success);
+
+  // Update order rows locally for successes (r.orderId is the DB id → match _dbId).
+  results.forEach(r=>{ if(r.success){ const o = ordersData.find(x=>String(x._dbId)===String(r.orderId)); if(o){ o.status='shipped'; o.tracking=r.trackingNumber; o.carrier=r.carrier; } } });
+
+  const rows = results.map(r=>{
+    if(r.success){
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <span style="color:var(--green)">✓</span>
+        <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · ${(r.carrier||'').toUpperCase()} ${r.service||''}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text)">$${(parseFloat(r.totalCharge)||0).toFixed(2)}</div>
+      </div>`;
+    }
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid rgba(230,57,70,0.25);border-radius:8px;margin-bottom:6px;background:var(--red-bg)">
+      <span style="color:var(--accent)">✗</span>
+      <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · <span style="color:var(--accent)">${r.error||'Failed'}</span></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('batchBody').innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:14px">
+      <div style="flex:1;background:var(--green-bg);border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--green)">${summary.succeeded||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Bought</div></div>
+      <div style="flex:1;background:var(--bg2);border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--text)">$${summary.totalSpend||'0.00'}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total spend</div></div>
+      <div style="flex:1;background:${(summary.failed||0)?'var(--red-bg)':'var(--bg2)'};border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:${(summary.failed||0)?'var(--accent)':'var(--muted)'}">${summary.failed||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Failed</div></div>
+    </div>
+    ${rows}`;
+
+  const footer = document.getElementById('batchRunBtn');
+  if(lastBatchResults.length){
+    footer.disabled = false;
+    footer.textContent = `🖨 Print ${lastBatchResults.length} label${lastBatchResults.length===1?'':'s'}`;
+    footer.setAttribute('onclick','printAllBatchLabels()');
+  } else {
+    footer.style.display = 'none';
+  }
+  clearSelection();
+  renderOrders();
+}
+
+// Open each purchased label in its own tab for printing. UPS returns a base64
+// GIF (labelImage), FedEx/USPS return a labelUrl.
+function printAllBatchLabels(){
+  if(!lastBatchResults.length){ toast('No labels to print','info'); return; }
+  lastBatchResults.forEach((r,i)=>{
+    setTimeout(()=>{
+      if(r.labelUrl){ window.open(r.labelUrl,'_blank'); }
+      else if(r.labelImage){
+        const w = window.open('','_blank');
+        if(w) w.document.write(`<img src="data:image/gif;base64,${r.labelImage}" style="max-width:100%">`);
+      }
+    }, i*300); // stagger so the browser doesn't block the popups
+  });
+  toast(`Opening ${lastBatchResults.length} labels to print`,'success');
 }
 
 function printSelected(){
@@ -3840,6 +4035,149 @@ function updateServiceOptions(){
     .map(s=>`<option value="${s.v}">${s.l}</option>`).join('');
 }
 
+// ── RATE SHOPPING ─────────────────────────────────────────────
+// Build the shipper/recipient/package object from the Quick Ship form —
+// shared by both the rate lookup and the label purchase.
+function collectShipmentForm(){
+  return {
+    shipper: {
+      name:     document.getElementById('qs-from-name').value,
+      phone:    document.getElementById('qs-from-phone').value || '5550000000',
+      address1: document.getElementById('qs-from-addr').value,
+      city:     document.getElementById('qs-from-city').value,
+      state:    document.getElementById('qs-from-state').value,
+      zip:      document.getElementById('qs-from-zip').value,
+      country:  'US',
+    },
+    recipient: {
+      name:        document.getElementById('qs-to-name').value.trim(),
+      company:     document.getElementById('qs-to-company').value.trim() || undefined,
+      phone:       document.getElementById('qs-to-phone').value || '5550000000',
+      address1:    document.getElementById('qs-to-addr').value.trim(),
+      address2:    document.getElementById('qs-to-addr2').value.trim() || undefined,
+      city:        document.getElementById('qs-to-city').value.trim(),
+      state:       document.getElementById('qs-to-state').value,
+      zip:         document.getElementById('qs-to-zip').value.trim(),
+      country:     'US',
+      residential: document.getElementById('qs-residential').checked,
+    },
+    package: {
+      weight: parseFloat(document.getElementById('qs-weight').value) || 1,
+      length: parseFloat(document.getElementById('qs-length').value) || 12,
+      width:  parseFloat(document.getElementById('qs-width').value)  || 9,
+      height: parseFloat(document.getElementById('qs-height').value) || 4,
+    },
+  };
+}
+
+const CARRIER_BRAND = {
+  ups:   { name:'UPS',   color:'#ffb500' },
+  fedex: { name:'FedEx', color:'#7b2fd4' },
+  usps:  { name:'USPS',  color:'#0050c8' },
+};
+
+async function compareRates(){
+  const form = collectShipmentForm();
+  if(!form.recipient.name || !form.recipient.address1 || !form.recipient.city || !form.recipient.zip){
+    toast('Fill in the recipient address first','error');
+    return;
+  }
+
+  const btn = document.getElementById('qsRatesBtn');
+  const box = document.getElementById('rateResults');
+  btn.disabled = true;
+  const btnHtml = btn.innerHTML;
+  btn.innerHTML = 'Fetching live rates…';
+  box.style.display = 'block';
+  box.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Asking your connected carriers for rates…</div>';
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/rates', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${token||'demo_token'}` },
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+
+    if(!res.ok){
+      box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Could not fetch rates.'}</div>`;
+      return;
+    }
+    renderRates(data);
+  } catch(err){
+    box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">Network error: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = btnHtml;
+  }
+}
+
+function renderRates({ rates = [], errors = [] }){
+  const box = document.getElementById('rateResults');
+  if(!rates.length){
+    box.innerHTML = `<div style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;color:var(--muted);font-size:12px">No rates returned${errors.length?': '+errors.map(e=>`${e.carrier.toUpperCase()} — ${e.error}`).join('; '):'.'}</div>`;
+    return;
+  }
+
+  const cheapest = rates[0].totalCharge;
+  const fastest  = rates.filter(r=>r.estimatedDays!=null).sort((a,b)=>a.estimatedDays-b.estimatedDays)[0];
+
+  const cards = rates.map((r,i) => {
+    const brand = CARRIER_BRAND[r.carrier] || { name:r.carrier.toUpperCase(), color:'var(--muted)' };
+    const isCheapest = r.totalCharge === cheapest;
+    const isFastest  = fastest && r.serviceCode===fastest.serviceCode && r.carrier===fastest.carrier && !isCheapest;
+    const eta = r.estimatedDays!=null ? `${r.estimatedDays} business day${r.estimatedDays===1?'':'s'}` : 'Transit varies';
+    return `
+      <div onclick='selectRate(this, ${JSON.stringify(r).replace(/'/g,"&#39;")})' data-rate-idx="${i}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-left:3px solid ${brand.color};border-radius:9px;margin-bottom:8px;cursor:pointer;background:var(--card);transition:border-color .15s,background .15s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='var(--card)'">
+        <div style="width:52px;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${brand.color}">${brand.name}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${r.serviceName}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">${eta}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+          ${isCheapest?'<span style="font-size:9px;font-weight:700;color:var(--green);background:var(--green-bg);padding:2px 7px;border-radius:5px;letter-spacing:.5px">CHEAPEST</span>':''}
+          ${isFastest?'<span style="font-size:9px;font-weight:700;color:#3b82f6;background:rgba(59,130,246,0.1);padding:2px 7px;border-radius:5px;letter-spacing:.5px">FASTEST</span>':''}
+          <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--text)">$${r.totalCharge.toFixed(2)}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const errNote = errors.length
+    ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Couldn’t reach: ${errors.map(e=>e.carrier.toUpperCase()).join(', ')}</div>`
+    : '';
+
+  box.innerHTML = `
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${rates.length} rate${rates.length===1?'':'s'} · tap one to select</div>
+    ${cards}${errNote}`;
+}
+
+// A rate was chosen — point the carrier + service selectors at it so the
+// existing Generate-label flow buys exactly this service.
+function selectRate(cardEl, rate){
+  const carrierSel = document.getElementById('qs-carrier');
+  const serviceSel = document.getElementById('qs-service');
+  carrierSel.value = rate.carrier;
+  updateServiceOptions(); // rebuild service list + recolor the card for this carrier
+
+  // Ensure the exact service exists as an option (rate serviceCodes can be
+  // more specific than the preset list), then select it.
+  if(![...serviceSel.options].some(o=>o.value===String(rate.serviceCode))){
+    serviceSel.add(new Option(rate.serviceName, rate.serviceCode));
+  }
+  serviceSel.value = rate.serviceCode;
+
+  // Highlight the chosen card.
+  document.querySelectorAll('#rateResults [data-rate-idx]').forEach(el=>{
+    el.style.outline = '';
+  });
+  if(cardEl) cardEl.style.outline = '2px solid var(--green)';
+
+  const btn = document.getElementById('qsSubmitBtn');
+  if(btn) btn.innerHTML = `Generate label · ${(CARRIER_BRAND[rate.carrier]||{}).name} ${rate.serviceName} — $${rate.totalCharge.toFixed(2)}`;
+  toast(`Selected ${rate.serviceName} — $${rate.totalCharge.toFixed(2)}`,'success');
+}
+
 async function generateQuickShipLabel(){
   const toName = document.getElementById('qs-to-name').value.trim();
   const toAddr = document.getElementById('qs-to-addr').value.trim();
@@ -3887,7 +4225,7 @@ async function generateQuickShipLabel(){
     carrier,
     orderId:     qsLabelData.ref || `QS-${Date.now()}`,
     serviceCode: carrier==='ups'   ? service : undefined,
-    serviceType: carrier==='fedex' ? service : undefined,
+    serviceType: (carrier==='fedex'||carrier==='usps') ? service : undefined,
     shipper: {
       name:     qsLabelData.fromName,
       phone:    document.getElementById('qs-from-phone').value||'5550000000',
