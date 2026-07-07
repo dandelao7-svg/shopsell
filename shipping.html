@@ -2378,31 +2378,41 @@ function openShopifyModal(){
 }
 function closeShopifyModal(){ document.getElementById('shopifyModal')?.remove(); }
 
-async function renderShopifyBody(){
+async function renderShopifyBody(forceForm){
   await refreshChannels();
   const body = document.getElementById('shopifyBody');
   if(!body) return;
-  if(shopifyConn){
+  if(shopifyConn && !forceForm){
     const last = shopifyConn.lastSyncedAt ? new Date(shopifyConn.lastSyncedAt).toLocaleString() : 'never';
     body.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--green-bg);border:1px solid rgba(0,200,150,0.25);border-radius:10px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--green-bg);border:1px solid rgba(0,200,150,0.25);border-radius:10px;margin-bottom:12px">
         <div style="width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
         <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">${escapeAttr(shopifyConn.shopDomain||'Connected')}</div>
         <div style="font-size:11px;color:var(--muted)">Last synced: ${last}</div></div>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:14px;font-size:12px">
+        <div style="width:7px;height:7px;border-radius:50%;background:${shopifyConn.realtime?'var(--green)':'var(--muted)'}"></div>
+        <span style="color:var(--text)">${shopifyConn.realtime
+          ? 'Real-time sync <strong>on</strong> — new orders import automatically'
+          : 'Real-time sync <strong>off</strong> — reconnect with your API secret key to enable'}</span>
+      </div>
       <button class="topbar-btn primary" id="shopifySyncBtn" onclick="syncShopify()" style="width:100%;justify-content:center;padding:12px;margin-bottom:10px">Sync unfulfilled orders now</button>
-      <button onclick="disconnectShopify()" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Disconnect store</button>
+      <div style="display:flex;gap:10px">
+        <button onclick="renderShopifyBody(true)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Reconnect</button>
+        <button onclick="disconnectShopify()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Disconnect</button>
+      </div>
       <div id="shopifySyncMsg" style="font-size:12px;margin-top:12px"></div>`;
   } else {
     body.innerHTML = `
       <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px">
         Import unfulfilled Shopify orders here to rate-shop, batch, and print. When you buy a label, the order is marked fulfilled in Shopify with tracking.
         <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
-          <strong style="color:var(--text)">Get an access token:</strong> Shopify admin → Settings → Apps and sales channels → Develop apps → Create an app → Admin API scopes: enable <code>read_orders</code> and <code>write_merchant_managed_fulfillment_orders</code> → Install → copy the Admin API access token.
+          <strong style="color:var(--text)">In Shopify admin:</strong> Settings → Apps and sales channels → Develop apps → Create an app → Admin API scopes: enable <code>read_orders</code> and <code>write_merchant_managed_fulfillment_orders</code> → Install. Copy the <strong>Admin API access token</strong>, and (for real-time sync) the <strong>API secret key</strong> from the app's API credentials.
         </div>
       </div>
-      <div class="form-field"><label>Store domain</label><input type="text" id="shopify-domain" placeholder="your-store.myshopify.com"></div>
+      <div class="form-field"><label>Store domain</label><input type="text" id="shopify-domain" placeholder="your-store.myshopify.com" value="${escapeAttr(shopifyConn?.shopDomain||'')}"></div>
       <div class="form-field"><label>Admin API access token</label><input type="password" id="shopify-token" placeholder="shpat_…"></div>
+      <div class="form-field"><label>API secret key <span style="color:var(--muted);font-weight:400">— optional, enables real-time sync</span></label><input type="password" id="shopify-secret" placeholder="shpss_…"></div>
       <button class="topbar-btn primary" id="shopifyConnectBtn" onclick="connectShopify()" style="width:100%;justify-content:center;padding:12px;margin-top:6px">Connect & verify</button>
       <div id="shopifyConnectMsg" style="font-size:12px;margin-top:12px"></div>`;
   }
@@ -2411,14 +2421,15 @@ async function renderShopifyBody(){
 async function connectShopify(){
   const shopDomain = document.getElementById('shopify-domain').value.trim();
   const accessToken = document.getElementById('shopify-token').value.trim();
+  const apiSecret = document.getElementById('shopify-secret').value.trim();
   const msg = document.getElementById('shopifyConnectMsg');
   if(!shopDomain || !accessToken){ msg.style.color='var(--accent)'; msg.textContent='Enter your store domain and access token.'; return; }
   const btn = document.getElementById('shopifyConnectBtn'); btn.disabled=true; btn.textContent='Verifying…';
   try {
-    const res = await fetch('/api/seller/channels/shopify', { method:'POST', headers:authHeaders(), body:JSON.stringify({ shopDomain, accessToken }) });
+    const res = await fetch('/api/seller/channels/shopify', { method:'POST', headers:authHeaders(), body:JSON.stringify({ shopDomain, accessToken, apiSecret }) });
     const data = await res.json();
     if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
-    toast(data.message || 'Shopify connected','success');
+    toast((data.message || 'Shopify connected') + (data.realtime ? ' — real-time sync on' : ''),'success');
     await renderShopifyBody();
   } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
 }

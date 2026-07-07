@@ -171,6 +171,35 @@ async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier
   }
 }
 
+// Upsert one mapped channel order (dedupe by external id). Shared by manual
+// sync and the webhook receiver. Returns 'imported' | 'skipped'.
+async function importChannelOrder(sellerId, channel, mapped) {
+  const existing = await db.getOrderByExternalId(sellerId, channel, mapped.externalId);
+  if (existing) return 'skipped';
+  await db.createOrder({
+    sellerId, channel,
+    externalId:          mapped.externalId,
+    externalOrderNumber: mapped.externalOrderNumber,
+    customerEmail:       mapped.customerEmail,
+    customerInfo:        mapped.customerInfo,
+    items:               mapped.items,
+    subtotal:            mapped.subtotal,
+    tax:                 mapped.tax,
+    total:               mapped.total,
+    status:              'processing', // already paid on the channel → ready to ship
+  });
+  return 'imported';
+}
+
+// Public HTTPS webhook callback for a seller's channel. Requires ALLOWED_ORIGIN
+// (the deployed https origin) — returns null if it isn't set, so callers skip
+// registration and fall back to manual sync.
+function channelWebhookUrl(sellerId) {
+  const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
+  if (!/^https:\/\//.test(base)) return null;
+  return `${base}/api/webhooks/shopify/${sellerId}`;
+}
+
 // ── STRIPE KEYS (encrypted at rest) ──────────────────────────
 async function persistStripeKeys(sellerId, { publishableKey, secretKey, webhookSecret }) {
   await db.saveStripeKeys(sellerId, {
@@ -212,8 +241,10 @@ app.use(helmet({
   },
 }));
 
-// IMPORTANT: stripe webhooks need raw body — must come BEFORE express.json()
+// IMPORTANT: stripe + shopify webhooks need the raw body for HMAC verification —
+// must come BEFORE express.json().
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/webhooks/shopify', express.raw({ type: 'application/json' }));
 
 // Parse JSON for all other routes
 app.use(express.json());
@@ -2648,11 +2679,12 @@ app.put('/api/seller/ship-from', requireAuth, async (req, res) => {
 app.get('/api/seller/channels', requireAuth, async (req, res) => {
   try {
     const rows = await db.getChannelConnections(req.seller.sellerId);
-    res.json({
-      channels: rows.map(r => ({
-        channel: r.channel, shopDomain: r.shopDomain, status: r.status, lastSyncedAt: r.lastSyncedAt,
-      })),
+    const channels = rows.map(r => {
+      let realtime = false;
+      try { realtime = !!cryptoLib.decrypt(r.credentials).apiSecret; } catch (e) { /* leave false */ }
+      return { channel: r.channel, shopDomain: r.shopDomain, status: r.status, lastSyncedAt: r.lastSyncedAt, realtime };
     });
+    res.json({ channels });
   } catch (err) {
     console.error('List channels error:', err);
     res.status(500).json({ error: 'Failed to load channels.' });
@@ -2665,13 +2697,29 @@ app.post('/api/seller/channels/shopify', requireAuth, async (req, res) => {
     if (!cryptoLib.isConfigured()) {
       return res.status(500).json({ error: 'Server encryption is not configured; cannot store credentials.' });
     }
-    const { shopDomain, accessToken } = req.body;
+    const { shopDomain, accessToken, apiSecret } = req.body;
     const verified = await shopify.verifyConnection({ shopDomain, accessToken }); // throws on bad creds
-    const credentials = cryptoLib.encrypt({ accessToken, shopDomain: verified.domain });
+    const credentials = cryptoLib.encrypt({ accessToken, apiSecret: apiSecret || null, shopDomain: verified.domain });
     await db.saveChannelConnection(req.seller.sellerId, 'shopify', {
       shopDomain: verified.domain, credentials, status: 'verified',
     });
-    res.json({ message: `Connected to ${verified.shopName}.`, shopName: verified.shopName, shopDomain: verified.domain });
+
+    // Register the real-time orders/create webhook when we have the API secret
+    // (needed to verify inbound webhooks) and a public https origin. Best-effort.
+    let realtime = false;
+    const callbackUrl = channelWebhookUrl(req.seller.sellerId);
+    if (apiSecret && callbackUrl) {
+      try {
+        await shopify.ensureOrderWebhook({ shopDomain: verified.domain, accessToken }, callbackUrl);
+        realtime = true;
+      } catch (e) {
+        console.error('Shopify webhook registration failed:', e.message);
+      }
+    }
+    res.json({
+      message: `Connected to ${verified.shopName}.`,
+      shopName: verified.shopName, shopDomain: verified.domain, realtime,
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -2686,23 +2734,8 @@ app.post('/api/seller/channels/shopify/sync', requireAuth, async (req, res) => {
     const shopifyOrders = await shopify.fetchUnfulfilledOrders(creds);
     let imported = 0, skipped = 0;
     for (const so of shopifyOrders) {
-      const mapped = shopify.mapShopifyOrder(so);
-      const existing = await db.getOrderByExternalId(req.seller.sellerId, 'shopify', mapped.externalId);
-      if (existing) { skipped++; continue; }
-      await db.createOrder({
-        sellerId:            req.seller.sellerId,
-        channel:             'shopify',
-        externalId:          mapped.externalId,
-        externalOrderNumber: mapped.externalOrderNumber,
-        customerEmail:       mapped.customerEmail,
-        customerInfo:        mapped.customerInfo,
-        items:               mapped.items,
-        subtotal:            mapped.subtotal,
-        tax:                 mapped.tax,
-        total:               mapped.total,
-        status:              'processing', // paid on Shopify → ready to ship
-      });
-      imported++;
+      const outcome = await importChannelOrder(req.seller.sellerId, 'shopify', shopify.mapShopifyOrder(so));
+      if (outcome === 'imported') imported++; else skipped++;
     }
     await db.touchChannelSync(req.seller.sellerId, 'shopify');
     res.json({ imported, skipped, total: shopifyOrders.length });
@@ -2714,11 +2747,56 @@ app.post('/api/seller/channels/shopify/sync', requireAuth, async (req, res) => {
 
 app.delete('/api/seller/channels/shopify', requireAuth, async (req, res) => {
   try {
+    // Remove the registered webhook before dropping the creds (best-effort).
+    const creds = await loadChannelCreds(req.seller.sellerId, 'shopify');
+    const callbackUrl = channelWebhookUrl(req.seller.sellerId);
+    if (creds && callbackUrl) {
+      await shopify.removeOrderWebhooks(creds, callbackUrl).catch(() => {});
+    }
     await db.deleteChannelConnection(req.seller.sellerId, 'shopify');
     res.json({ success: true });
   } catch (err) {
     console.error('Disconnect channel error:', err);
     res.status(500).json({ error: 'Failed to disconnect.' });
+  }
+});
+
+// SHOPIFY WEBHOOK RECEIVER — Shopify POSTs orders/create here. Raw body is
+// preserved by the express.raw middleware on /api/webhooks/shopify. We verify
+// the HMAC with the seller's stored API secret, then import the order.
+app.post('/api/webhooks/shopify/:sellerId', async (req, res) => {
+  try {
+    const sellerId = parseInt(req.params.sellerId, 10);
+    if (!Number.isInteger(sellerId)) return res.status(404).end();
+
+    const creds = await loadChannelCreds(sellerId, 'shopify');
+    if (!creds || !creds.apiSecret) return res.status(401).end();
+
+    // req.body is a Buffer here (raw). Verify before trusting anything.
+    const hmac = req.headers['x-shopify-hmac-sha256'];
+    if (!shopify.verifyWebhookHmac(req.body, hmac, creds.apiSecret)) {
+      return res.status(401).end();
+    }
+    // Defense-in-depth: the shop domain must match the connected store.
+    const shopHeader = String(req.headers['x-shopify-shop-domain'] || '').toLowerCase();
+    if (creds.shopDomain && shopHeader && shopHeader !== creds.shopDomain) {
+      return res.status(401).end();
+    }
+
+    // Ack fast; import after responding so a slow DB write can't cause retries.
+    res.status(200).end();
+
+    try {
+      const so = JSON.parse(req.body.toString('utf8'));
+      const outcome = await importChannelOrder(sellerId, 'shopify', shopify.mapShopifyOrder(so));
+      await db.touchChannelSync(sellerId, 'shopify');
+      console.log(`Shopify webhook: order ${so.name || so.id} → ${outcome} (seller ${sellerId}).`);
+    } catch (e) {
+      console.error('Shopify webhook import failed:', e.message);
+    }
+  } catch (err) {
+    console.error('Shopify webhook error:', err.message);
+    if (!res.headersSent) res.status(500).end();
   }
 });
 
