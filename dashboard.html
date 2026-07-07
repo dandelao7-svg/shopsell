@@ -1943,11 +1943,27 @@ function renderOrders(filter='all',search=''){
       <td><span class="status-pill ${o.status}">${cap(o.status)}</span></td>
       <td>
         <div style="display:flex;gap:4px">
-          <button class="btn secondary sm" onclick="toast('Order #${o.id} — fulfill coming soon')">Fulfill</button>
-          <button class="btn secondary sm" onclick="toast('Viewing order #${o.id}')">View</button>
+          ${['processing','shipped','delivered'].includes(o.status)
+            ? `<button class="btn secondary sm" onclick="refundOrder('${o.id}','${o.total}')">Refund</button>`
+            : (o.status==='refunded' ? '<span style="font-size:12px;color:var(--muted)">Refunded</span>' : '')}
         </div>
       </td>
     </tr>`).join('');
+}
+
+async function refundOrder(orderId, totalLabel){
+  if(!confirm('Refund order '+orderId+' for '+totalLabel+'? This returns the full amount to the customer and cannot be undone.')) return;
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+  try {
+    const res = await fetch('/api/seller/orders/'+encodeURIComponent(orderId)+'/refund', {
+      method:'POST', headers:{ 'Authorization':'Bearer '+token }
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Refund failed'); return; }
+    toast('✓ Refunded '+orderId);
+    await loadOrders();   // refresh order statuses
+  } catch(e){ toast('Network error — refund not completed'); }
 }
 
 function filterOrders(filter,btn){

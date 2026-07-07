@@ -1328,6 +1328,49 @@ app.patch('/api/seller/orders/:id', requireAuth, async (req, res) => {
   }
 });
 
+// Issue a full refund for an order on the SELLER's own Stripe account, then
+// mark it refunded. (Stripe also fires charge.refunded to the seller webhook,
+// which sets the same status — idempotent.)
+app.post('/api/seller/orders/:id/refund', requireAuth, async (req, res) => {
+  try {
+    const orderId = normalizeOrderId(req.params.id);
+    if (orderId === null) return res.status(404).json({ error: 'Order not found.' });
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+    if (order.sellerId !== req.seller.sellerId) {
+      return res.status(403).json({ error: 'You do not own this order.' });
+    }
+    if (order.status === 'refunded') {
+      return res.status(400).json({ error: 'This order has already been refunded.' });
+    }
+    if (!order.paymentIntentId) {
+      return res.status(400).json({ error: 'This order has no captured payment to refund.' });
+    }
+    if (!['processing', 'shipped', 'delivered'].includes(order.status)) {
+      return res.status(400).json({ error: 'This order can’t be refunded in its current state.' });
+    }
+
+    const stripeConfig = await loadStripeKeys(order.sellerId);
+    if (!stripeConfig || !stripeConfig.secretKey) {
+      return res.status(400).json({ error: 'Store payment configuration is missing.' });
+    }
+    const sellerStripe = require('stripe')(stripeConfig.secretKey);
+
+    try {
+      await sellerStripe.refunds.create({ payment_intent: order.paymentIntentId });
+    } catch (refErr) {
+      console.error('Stripe refund error:', refErr.message);
+      return res.status(400).json({ error: 'Stripe could not process the refund: ' + refErr.message });
+    }
+
+    const updated = await db.updateOrder(orderId, { status: 'refunded' });
+    res.json({ message: 'Refund issued.', order: updated });
+  } catch (err) {
+    console.error('Refund error:', err);
+    res.status(500).json({ error: 'Failed to issue refund.' });
+  }
+});
+
 // PACKING SLIP PDF — 8.5x11 printable slip for the warehouse
 app.get('/api/seller/orders/:id/packing-slip.pdf', requireAuth, async (req, res) => {
   try {
