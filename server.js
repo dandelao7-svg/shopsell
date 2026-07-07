@@ -2335,6 +2335,90 @@ app.get('/api/shipping/carriers/test', requireAuth, async (req, res) => {
   }
 });
 
+/* ============================================================
+   ── SHIPPING AUTOMATION RULES (CRUD) ─────────────────────────
+   IF (weight/value/destination) THEN (carrier/service/box).
+   Applied by the batch flow's 'rules' strategy.
+   ============================================================ */
+
+// Validate + normalize a rule payload from the client.
+function normalizeRulePayload(body) {
+  const c = body.conditions || {};
+  const a = body.action || {};
+  const num = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
+  if (!body.name || !String(body.name).trim()) throw new Error('Rule name is required.');
+  if (!['ups', 'fedex', 'usps'].includes(a.carrier)) throw new Error('Rule action needs a valid carrier.');
+  if (!a.service) throw new Error('Rule action needs a service.');
+  return {
+    name:     String(body.name).trim().slice(0, 80),
+    priority: body.priority == null ? 100 : parseInt(body.priority, 10) || 100,
+    enabled:  body.enabled !== false,
+    conditions: {
+      weightMin: num(c.weightMin),
+      weightMax: num(c.weightMax),
+      valueMin:  num(c.valueMin),
+      valueMax:  num(c.valueMax),
+      states:    Array.isArray(c.states) ? c.states.filter(Boolean).map(s => String(s).toUpperCase()) : [],
+      destinationType: ['domestic', 'international'].includes(c.destinationType) ? c.destinationType : 'any',
+    },
+    action: {
+      carrier: a.carrier,
+      service: String(a.service),
+      boxSize: ['small', 'medium', 'large', 'xlarge'].includes(a.boxSize) ? a.boxSize : null,
+    },
+  };
+}
+
+app.get('/api/seller/automation-rules', requireAuth, async (req, res) => {
+  try {
+    const rules = await db.getAutomationRulesBySeller(req.seller.sellerId);
+    res.json({ rules });
+  } catch (err) {
+    console.error('List automation rules error:', err);
+    res.status(500).json({ error: 'Failed to load automation rules.' });
+  }
+});
+
+app.post('/api/seller/automation-rules', requireAuth, async (req, res) => {
+  try {
+    const rule = await db.createAutomationRule(req.seller.sellerId, normalizeRulePayload(req.body));
+    res.json({ rule });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/seller/automation-rules/:id', requireAuth, async (req, res) => {
+  try {
+    const existing = await db.getAutomationRuleById(parseInt(req.params.id, 10));
+    if (!existing || existing.sellerId !== req.seller.sellerId) {
+      return res.status(404).json({ error: 'Rule not found.' });
+    }
+    // Allow lightweight toggles (just { enabled }) without a full payload.
+    const fields = ('enabled' in req.body && Object.keys(req.body).length === 1)
+      ? { enabled: req.body.enabled !== false }
+      : normalizeRulePayload(req.body);
+    const rule = await db.updateAutomationRule(existing.id, fields);
+    res.json({ rule });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/seller/automation-rules/:id', requireAuth, async (req, res) => {
+  try {
+    const existing = await db.getAutomationRuleById(parseInt(req.params.id, 10));
+    if (!existing || existing.sellerId !== req.seller.sellerId) {
+      return res.status(404).json({ error: 'Rule not found.' });
+    }
+    await db.deleteAutomationRule(existing.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete automation rule error:', err);
+    res.status(500).json({ error: 'Failed to delete rule.' });
+  }
+});
+
 // RATE SHOPPING — compare live rates across ALL of the seller's connected
 // carriers for one package/route. Queries each connected carrier in parallel
 // (Promise.allSettled) so one carrier erroring never sinks the others; returns
@@ -2402,11 +2486,36 @@ async function buyCarrierLabel(carrier, creds, { shipper, recipient, package: pk
   return client.createShipment({ shipper, recipient, package: pkg, serviceToken: service || 'usps_priority', reference: orderId });
 }
 
+// Standard box presets → [length, width, height] in inches. Used when an
+// automation rule specifies a box size.
+const BOX_DIMS = { small: [8,6,4], medium: [12,9,6], large: [18,14,10], xlarge: [24,18,12] };
+
+// Find the first enabled automation rule whose conditions all match this order.
+// ctx: { weight (lb), value ($), state, country }. `rules` must be pre-sorted
+// by priority. A missing condition field is a wildcard. Returns the rule or null.
+function matchAutomationRule(rules, ctx) {
+  for (const rule of rules) {
+    if (rule.enabled === false) continue;
+    const c = rule.conditions || {};
+    if (c.weightMin != null && ctx.weight < Number(c.weightMin)) continue;
+    if (c.weightMax != null && ctx.weight > Number(c.weightMax)) continue;
+    if (c.valueMin  != null && ctx.value  < Number(c.valueMin))  continue;
+    if (c.valueMax  != null && ctx.value  > Number(c.valueMax))  continue;
+    if (Array.isArray(c.states) && c.states.length && !c.states.includes(ctx.state)) continue;
+    if (c.destinationType === 'domestic'     && ctx.country !== 'US') continue;
+    if (c.destinationType === 'international' && ctx.country === 'US') continue;
+    return rule;
+  }
+  return null;
+}
+
 // BATCH LABELS — buy labels for many orders in one pass. This is the
 // ShipStation batch workflow, built on the rate-shopping engine.
 //   strategy 'cheapest' → rate-shop each order across all connected carriers,
 //                         buy the cheapest service.
 //   strategy 'fixed'    → buy the same carrier + service for every order.
+//   strategy 'rules'    → apply the seller's automation rules per order;
+//                         orders with no matching rule fall back to cheapest.
 // Orders are processed with limited concurrency; each order succeeds or fails
 // independently and reports its own result.
 app.post('/api/shipping/batch', requireAuth, async (req, res) => {
@@ -2425,6 +2534,11 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
 
     const sellerId = req.seller.sellerId;
     const defaultPkg = pkg || { weight: 1, length: 12, width: 9, height: 4 };
+
+    // Automation rules (only loaded for the 'rules' strategy), pre-sorted by priority.
+    const rules = strategy === 'rules'
+      ? (await db.getAutomationRulesBySeller(sellerId)).filter(r => r.enabled !== false)
+      : [];
 
     // Which carriers are connected? (cheapest strategy rate-shops across these.)
     const accounts  = await db.getCarrierAccounts(sellerId);
@@ -2493,7 +2607,28 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
 
         // Pick carrier + service for this order.
         let chosenCarrier = carrier, chosenService = service;
-        if (strategy === 'cheapest') {
+        let appliedRule = null;
+
+        // Automation rules: first matching rule sets carrier/service (+box).
+        if (strategy === 'rules') {
+          const ctx = {
+            weight:  pkgForOrder.weight,
+            value:   Number(order.total) || 0,
+            state:   recipient.state,
+            country: recipient.country,
+          };
+          const rule = matchAutomationRule(rules, ctx);
+          if (rule) {
+            chosenCarrier = rule.action?.carrier;
+            chosenService = rule.action?.service;
+            appliedRule   = rule.name;
+            const dims = BOX_DIMS[rule.action?.boxSize];
+            if (dims) { pkgForOrder.length = dims[0]; pkgForOrder.width = dims[1]; pkgForOrder.height = dims[2]; }
+          }
+        }
+
+        // Rate-shop when asked for cheapest, or when a rule didn't resolve a carrier.
+        if (strategy === 'cheapest' || (strategy === 'rules' && !chosenCarrier)) {
           const rated = await Promise.allSettled(connected.map(async c => {
             const creds = await credsFor(c);
             if (!creds) throw new Error('credentials unavailable');
@@ -2504,6 +2639,7 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
           if (!all.length) throw new Error('No rates returned from any carrier');
           chosenCarrier = all[0].carrier;
           chosenService = all[0].serviceCode;
+          if (strategy === 'rules') appliedRule = 'No rule matched → cheapest';
         }
 
         const creds = await credsFor(chosenCarrier);
@@ -2537,6 +2673,7 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
         result.success       = true;
         result.carrier       = chosenCarrier;
         result.service       = label.serviceName || chosenService;
+        result.appliedRule   = appliedRule;
         result.weight        = pkgForOrder.weight;
         result.weightSource  = orderWeight > 0 ? 'items' : 'default';
         result.trackingNumber= label.trackingNumber;

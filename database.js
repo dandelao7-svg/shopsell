@@ -312,6 +312,24 @@ async function initSchema() {
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_code TEXT;`);
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;`);
 
+    // SHIPPING AUTOMATION RULES — IF (conditions) THEN (carrier/service/box).
+    // Evaluated in priority order (lowest first); first enabled match wins.
+    // conditions/action are JSONB so the shape can grow without migrations.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS automation_rules (
+        id          SERIAL PRIMARY KEY,
+        seller_id   INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        priority    INTEGER NOT NULL DEFAULT 100,
+        enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+        conditions  JSONB NOT NULL DEFAULT '{}'::jsonb,
+        action      JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_automation_rules_seller ON automation_rules (seller_id, priority);`);
+
     // PRODUCT REVIEWS — one per buyer per product; feeds products.rating/review_count.
     await client.query(`
       CREATE TABLE IF NOT EXISTS reviews (
@@ -1051,6 +1069,48 @@ async function deleteDiscount(id) {
   await pool.query(`DELETE FROM discount_codes WHERE id = $1`, [id]);
 }
 
+// ── SHIPPING AUTOMATION RULES ─────────────────────────────────
+async function createAutomationRule(sellerId, r) {
+  const { rows } = await pool.query(
+    `INSERT INTO automation_rules (seller_id, name, priority, enabled, conditions, action)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [sellerId, r.name, r.priority == null ? 100 : r.priority, r.enabled !== false,
+     JSON.stringify(r.conditions || {}), JSON.stringify(r.action || {})]
+  );
+  return camelize(rows[0]);
+}
+
+async function getAutomationRulesBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM automation_rules WHERE seller_id = $1 ORDER BY priority ASC, id ASC`, [sellerId]);
+  return rows.map(r => camelize(r));
+}
+
+async function getAutomationRuleById(id) {
+  const { rows } = await pool.query(`SELECT * FROM automation_rules WHERE id = $1 LIMIT 1`, [id]);
+  return camelize(rows[0]);
+}
+
+async function updateAutomationRule(id, fields) {
+  const map = { name:'name', priority:'priority', enabled:'enabled', conditions:'conditions', action:'action' };
+  const sets = [], vals = []; let i = 1;
+  for (const k of Object.keys(fields)) {
+    if (map[k] && fields[k] !== undefined) {
+      sets.push(`${map[k]} = $${i++}`);
+      vals.push((k === 'conditions' || k === 'action') ? JSON.stringify(fields[k] || {}) : fields[k]);
+    }
+  }
+  if (!sets.length) return getAutomationRuleById(id);
+  sets.push(`updated_at = NOW()`); vals.push(id);
+  const { rows } = await pool.query(
+    `UPDATE automation_rules SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
+  return camelize(rows[0]);
+}
+
+async function deleteAutomationRule(id) {
+  await pool.query(`DELETE FROM automation_rules WHERE id = $1`, [id]);
+}
+
 // Atomically bump usage, respecting max_uses. Returns true if it incremented.
 async function incrementDiscountUse(sellerId, code) {
   const { rowCount } = await pool.query(
@@ -1171,6 +1231,13 @@ module.exports = {
   updateDiscount,
   deleteDiscount,
   incrementDiscountUse,
+
+  // Shipping automation rules
+  createAutomationRule,
+  getAutomationRulesBySeller,
+  getAutomationRuleById,
+  updateAutomationRule,
+  deleteAutomationRule,
 
   // Stripe keys
   saveStripeKeys,
