@@ -764,8 +764,8 @@ function normalizeProduct(p) {
     rating:       p.rating ? parseFloat(p.rating) : 5,
     reviews:      0,
     desc:         p.description || '',
+    options:      Array.isArray(p.options) ? p.options : [],
     variants:     Array.isArray(p.variants) ? p.variants : [],
-    variantLabel: 'Option',
     quantity:     p.quantity,
     images:       Array.isArray(p.imageUrls) ? p.imageUrls : [],
   };
@@ -854,13 +854,70 @@ function openModal(id){
   document.getElementById('modalOrig').textContent=p.origPrice?fmt(p.origPrice):'';
   document.getElementById('modalDesc').textContent=p.desc;
   document.getElementById('mqNum').textContent=1;
-  if(p.variants&&p.variants.length){
+  const opts = Array.isArray(p.options) ? p.options : [];
+  if(opts.length){
     document.getElementById('modalVarWrap').style.display='block';
-    document.getElementById('modalVarLabel').textContent=p.variantLabel+':';
-    document.getElementById('modalVariants').innerHTML=p.variants.map((v,i)=>`<button class="variant-btn${i===0?' active':''}" onclick="selVar(this)">${v}</button>`).join('');
-  } else document.getElementById('modalVarWrap').style.display='none';
+    document.getElementById('modalVarLabel').textContent='';
+    modalSel = {};
+    opts.forEach(o => { modalSel[o.name] = o.values[0]; });   // default to first value
+    renderModalOptions(p);
+  } else {
+    modalSel = {};
+    document.getElementById('modalVarWrap').style.display='none';
+    setModalAddState(true);
+  }
   document.getElementById('modalOverlay').classList.add('open');
   document.body.style.overflow='hidden';
+}
+
+let modalSel = {};   // { optionName: selectedValue } for the open product
+
+function resolveVariant(p, sel){
+  const vs = Array.isArray(p.variants) ? p.variants : [];
+  if(!vs.length) return null;
+  const opts = Array.isArray(p.options) ? p.options : [];
+  return vs.find(v => opts.every(o => v.options && v.options[o.name] === sel[o.name])) || null;
+}
+
+function renderModalOptions(p){
+  const opts = p.options || [];
+  document.getElementById('modalVariants').innerHTML = opts.map((o,oi)=>`
+    <div style="width:100%;margin-bottom:10px">
+      <div class="modal-var-label">${escapeHtml(o.name)}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${o.values.map((val,vi)=>`<button class="variant-btn${modalSel[o.name]===val?' active':''}" onclick="selectOpt(${oi},${vi})">${escapeHtml(val)}</button>`).join('')}
+      </div>
+    </div>`).join('');
+  updateModalVariant(p);
+}
+
+function selectOpt(oi, vi){
+  const p = currentModal; if(!p) return;
+  const o = p.options[oi];
+  modalSel[o.name] = o.values[vi];
+  renderModalOptions(p);
+}
+
+function updateModalVariant(p){
+  const v = resolveVariant(p, modalSel);
+  const priceEl = document.getElementById('modalPrice');
+  if(v){
+    priceEl.textContent = fmt(Number(v.price));
+    const inStock = Number(v.quantity) > 0;
+    setModalAddState(inStock, inStock ? '' : 'Out of stock');
+  } else {
+    priceEl.textContent = fmt(p.price);
+    setModalAddState(false, 'Unavailable');
+  }
+}
+
+function setModalAddState(enabled, label){
+  const btn = document.querySelector('.modal-add-btn');
+  if(!btn) return;
+  btn.disabled = !enabled;
+  btn.style.opacity = enabled ? '' : '0.5';
+  btn.style.cursor  = enabled ? '' : 'not-allowed';
+  btn.textContent   = enabled ? 'Add to cart' : (label || 'Unavailable');
 }
 function closeModal(){document.getElementById('modalOverlay').classList.remove('open');document.body.style.overflow=''}
 function handleModalClick(e){if(e.target===document.getElementById('modalOverlay'))closeModal()}
@@ -911,19 +968,28 @@ function contactSeller(){
   const subject = encodeURIComponent('Question about ' + (STORE_CONFIG.storeName || 'your store'));
   window.location.href = 'mailto:' + email + '?subject=' + subject;
 }
-function selVar(btn){document.querySelectorAll('.variant-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active')}
 function mqChange(d){mq=Math.max(1,Math.min(99,mq+d));document.getElementById('mqNum').textContent=mq}
 function addFromModal(){
   if(!currentModal)return;
-  const v=document.querySelector('.variant-btn.active')?.textContent||'';
-  addToCart(currentModal.id,mq,v);
+  const p=currentModal;
+  const opts = Array.isArray(p.options) ? p.options : [];
+  if(opts.length){
+    const v = resolveVariant(p, modalSel);
+    if(!v){ toast('Please choose an option'); return; }
+    if(Number(v.quantity) <= 0){ toast('That option is out of stock'); return; }
+    addToCart(p.id, mq, v.id, v.title);
+  } else {
+    addToCart(p.id, mq);
+  }
   closeModal();
 }
 
 // ── CART ──────────────────────────────────────────────────────
 function quickAdd(id){
   const p=PRODUCTS.find(x=>x.id===id);
-  addToCart(id,1,p.variants?p.variants[0]:'');
+  // Products with options need a variant chosen — open the modal instead.
+  if(p.options && p.options.length){ openModal(id); return; }
+  addToCart(id,1);
   const btn=document.getElementById('ab-'+id);
   if(btn){
     btn.classList.add('added');
@@ -932,12 +998,24 @@ function quickAdd(id){
   }
 }
 
-function addToCart(id,qty=1,variant=''){
-  const key=`${id}_${variant}`;
-  cart[key]?cart[key].qty+=qty:(cart[key]={id,qty,variant});
+function addToCart(id,qty=1,variantId=null,variantTitle=''){
+  const key=`${id}_${variantId||''}`;
+  if(cart[key]) cart[key].qty+=qty;
+  else cart[key]={id,qty,variantId:variantId||null,variantTitle:variantTitle||''};
   updateCartUI();
   const p=PRODUCTS.find(x=>x.id===id);
-  toast(`${p.emoji} ${p.name} added to cart`);
+  toast(`${p.emoji} ${p.name}${variantTitle?' ('+variantTitle+')':''} added to cart`);
+}
+
+// Unit price for a cart item — the chosen variant's price, or the product price.
+function unitPrice(item){
+  const p=PRODUCTS.find(x=>x.id===item.id);
+  if(!p) return 0;
+  if(item.variantId){
+    const v=(p.variants||[]).find(x=>String(x.id)===String(item.variantId));
+    if(v) return Number(v.price);
+  }
+  return Number(p.price);
 }
 
 function changeQty(key,d){
@@ -948,7 +1026,7 @@ function changeQty(key,d){
 }
 function removeItem(key){delete cart[key];updateCartUI()}
 
-function cartTotal(){return Object.values(cart).reduce((s,i)=>{const p=PRODUCTS.find(x=>x.id===i.id);return s+p.price*i.qty},0)}
+function cartTotal(){return Object.values(cart).reduce((s,i)=>s+unitPrice(i)*i.qty,0)}
 function cartCount(){return Object.values(cart).reduce((s,i)=>s+i.qty,0)}
 
 function updateCartUI(){
@@ -970,14 +1048,14 @@ function updateCartUI(){
         <div class="cart-item-img">${p.images && p.images.length ? `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">` : p.emoji}</div>
         <div class="cart-item-info">
           <div class="cart-item-name">${p.name}</div>
-          ${item.variant?`<div class="cart-item-var">${item.variant}</div>`:''}
+          ${item.variantTitle?`<div class="cart-item-var">${escapeHtml(item.variantTitle)}</div>`:''}
           <div class="cart-item-btm">
             <div class="cart-qty-ctrl">
               <button class="cart-qty-btn" onclick="changeQty('${key}',-1)">−</button>
               <span class="cart-qty-num">${item.qty}</span>
               <button class="cart-qty-btn" onclick="changeQty('${key}',1)">+</button>
             </div>
-            <div class="cart-item-price">${fmt(p.price*item.qty)}</div>
+            <div class="cart-item-price">${fmt(unitPrice(item)*item.qty)}</div>
             <button class="cart-rm" onclick="removeItem('${key}')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -1024,8 +1102,8 @@ function updateCheckoutUI(){
       const item=cart[key],p=PRODUCTS.find(x=>x.id===item.id);
       return`<div class="os-item">
         <div class="os-img">${p.images && p.images.length ? `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">` : p.emoji}</div>
-        <div class="os-name">${p.name}${item.variant?' · '+item.variant:''} ×${item.qty}</div>
-        <div class="os-price">${fmt(p.price*item.qty)}</div>
+        <div class="os-name">${p.name}${item.variantTitle?' · '+escapeHtml(item.variantTitle):''} ×${item.qty}</div>
+        <div class="os-price">${fmt(unitPrice(item)*item.qty)}</div>
       </div>`;
     }).join('');
   }
@@ -1146,7 +1224,7 @@ async function setupStripeCheckout(){
   }
 
   // Build cartItems shape expected by /api/checkout/create-payment-intent
-  const cartItems = Object.values(cart).map(i => ({ productId: i.id, qty: i.qty, variant: i.variant }));
+  const cartItems = Object.values(cart).map(i => ({ productId: i.id, qty: i.qty, variantId: i.variantId }));
   // Buyer often hasn't typed their email yet when the card form mounts.
   // Pass whatever's there (may be empty); the real email is captured on confirm.
   const email = document.getElementById('co-email').value.trim();

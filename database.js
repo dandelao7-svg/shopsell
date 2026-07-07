@@ -95,6 +95,7 @@ async function initSchema() {
         sku              TEXT NOT NULL,
         quantity         INTEGER NOT NULL DEFAULT 0,
         weight           NUMERIC(10,3),
+        options          JSONB DEFAULT '[]'::jsonb,
         variants         JSONB DEFAULT '[]'::jsonb,
         status           TEXT NOT NULL DEFAULT 'active',
         image_urls       JSONB DEFAULT '[]'::jsonb,
@@ -115,6 +116,9 @@ async function initSchema() {
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS returnable          BOOLEAN NOT NULL DEFAULT TRUE;`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS return_window_days  INTEGER NOT NULL DEFAULT 30;`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS restocking_fee_pct  NUMERIC(5,2) NOT NULL DEFAULT 0;`);
+    // Product options (e.g. Size, Color). Variants (already present) hold one
+    // priced/stocked entry per option combination.
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS options JSONB DEFAULT '[]'::jsonb;`);
 
     // BUYERS — accounts for the buyer storefront. Separate from sellers
     // (different login flow, different JWT claim type).
@@ -495,14 +499,15 @@ async function createProduct(data) {
     `INSERT INTO products
        (seller_id, name, description, category, brand,
         price, compare_at_price, cost_per_item, sku, quantity,
-        weight, variants, status, image_urls,
+        weight, options, variants, status, image_urls,
         returnable, return_window_days, restocking_fee_pct)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       data.sellerId, data.name, data.description, data.category, data.brand,
       data.price, data.compareAtPrice, data.costPerItem, data.sku, data.quantity,
       data.weight,
+      JSON.stringify(data.options || []),
       JSON.stringify(data.variants || []),
       data.status || 'active',
       JSON.stringify(data.imageUrls || []),
@@ -533,6 +538,7 @@ async function updateProduct(id, fields) {
     sku:              'sku',
     quantity:         'quantity',
     weight:           'weight',
+    options:          'options',
     variants:         'variants',
     status:           'status',
     imageUrls:        'image_urls',
@@ -546,7 +552,7 @@ async function updateProduct(id, fields) {
   for (const k of Object.keys(fields)) {
     if (map[k]) {
       sets.push(`${map[k]} = $${i++}`);
-      const v = (k === 'variants' || k === 'imageUrls')
+      const v = (k === 'variants' || k === 'imageUrls' || k === 'options')
         ? JSON.stringify(fields[k] || [])
         : fields[k];
       vals.push(v);
@@ -571,6 +577,23 @@ async function decrementStock(productId, qty) {
     `UPDATE products SET quantity = GREATEST(0, quantity - $1), updated_at = NOW()
        WHERE id = $2`,
     [qty, productId]
+  );
+}
+
+// Decrement a specific variant's stock and keep the product-level quantity in
+// sync as the sum of its variants. Falls back to product-level if the variant
+// isn't found (e.g. product has no variants).
+async function decrementVariantStock(productId, variantId, qty) {
+  const { rows } = await pool.query(`SELECT variants FROM products WHERE id = $1`, [productId]);
+  if (!rows[0]) return;
+  const variants = Array.isArray(rows[0].variants) ? rows[0].variants : [];
+  const v = variants.find(x => String(x.id) === String(variantId));
+  if (!v) return decrementStock(productId, qty);
+  v.quantity = Math.max(0, (Number(v.quantity) || 0) - qty);
+  const total = variants.reduce((s, x) => s + (Number(x.quantity) || 0), 0);
+  await pool.query(
+    `UPDATE products SET variants = $1, quantity = $2, updated_at = NOW() WHERE id = $3`,
+    [JSON.stringify(variants), total, productId]
   );
 }
 
@@ -978,6 +1001,7 @@ module.exports = {
   updateProduct,
   deleteProduct,
   decrementStock,
+  decrementVariantStock,
 
   // Orders
   createOrder,

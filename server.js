@@ -570,19 +570,78 @@ app.get('/api/seller/products', requireAuth, async (req, res) => {
   }
 });
 
+function slugifyOpt(s) {
+  return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+// Normalize product options + variants from client input into a trusted shape.
+// Returns { options, variants } — each variant gets a stable id + title. A
+// product with no valid options is "simple" (empty options/variants).
+function normalizeVariants(rawOptions, rawVariants) {
+  const options = [];
+  if (Array.isArray(rawOptions)) {
+    for (const o of rawOptions.slice(0, 3)) {            // cap at 3 option types
+      const name = String(o && o.name || '').trim();
+      const values = Array.isArray(o && o.values)
+        ? [...new Set(o.values.map(v => String(v).trim()).filter(Boolean))].slice(0, 50)
+        : [];
+      if (name && values.length) options.push({ name, values });
+    }
+  }
+  if (!options.length) return { options: [], variants: [] };
+
+  const variants = [];
+  const seen = new Set();
+  if (Array.isArray(rawVariants)) {
+    for (const v of rawVariants) {
+      const optMap = {};
+      let ok = true;
+      for (const opt of options) {
+        const val = v && v.options ? String(v.options[opt.name] == null ? '' : v.options[opt.name]).trim() : '';
+        if (!val || !opt.values.includes(val)) { ok = false; break; }
+        optMap[opt.name] = val;
+      }
+      if (!ok) continue;
+      const title = options.map(o => optMap[o.name]).join(' / ');
+      let id = slugifyOpt(options.map(o => optMap[o.name]).join('-')) || ('v' + variants.length);
+      while (seen.has(id)) id += '-x';
+      seen.add(id);
+      variants.push({
+        id,
+        options:  optMap,
+        title,
+        price:    Math.max(0, Number(v.price) || 0),
+        sku:      String(v.sku || '').trim(),
+        quantity: Math.max(0, parseInt(v.quantity, 10) || 0),
+      });
+    }
+  }
+  return { options, variants };
+}
+
 app.post('/api/seller/products', requireAuth, async (req, res) => {
   try {
     const {
       name, description, category, brand,
       price, compareAtPrice, costPerItem,
-      sku, quantity, weight, variants,
+      sku, quantity, weight,
       status, imageUrls,
       returnable, returnWindowDays, restockingFeePct,
     } = req.body;
 
-    if (!name || !category || !price || !sku) {
-      return res.status(400).json({ error: 'Name, category, price, and SKU are required.' });
+    const { options, variants } = normalizeVariants(req.body.options, req.body.variants);
+
+    if (!name || !category || !sku) {
+      return res.status(400).json({ error: 'Name, category, and SKU are required.' });
     }
+    if (!variants.length && !(parseFloat(price) > 0)) {
+      return res.status(400).json({ error: 'Price is required for a product without variants.' });
+    }
+
+    // With variants, the product-level price/quantity are derived from them
+    // (price shown = lowest variant; quantity = sum of variant stock).
+    const effPrice = variants.length ? Math.min(...variants.map(v => v.price)) : parseFloat(price);
+    const effQty   = variants.length ? variants.reduce((s, v) => s + v.quantity, 0) : (parseInt(quantity) || 0);
 
     const productCount = await db.getProductCountBySeller(req.seller.sellerId);
     const PLAN_LIMITS  = { starter: 50, growth: 500, pro: Infinity };
@@ -606,13 +665,14 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       description,
       category,
       brand,
-      price:          parseFloat(price),
+      price:          effPrice,
       compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
       costPerItem:    costPerItem    ? parseFloat(costPerItem)    : null,
       sku,
-      quantity:       parseInt(quantity) || 0,
+      quantity:       effQty,
       weight:         weight ? parseFloat(weight) : null,
-      variants:         variants   || [],
+      options:          options,
+      variants:         variants,
       status:           status     || 'active',
       imageUrls:        imageUrls  || [],
       returnable:       returnable,
@@ -634,7 +694,19 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
     if (product.sellerId !== req.seller.sellerId) {
       return res.status(403).json({ error: 'You do not own this product.' });
     }
-    const updated = await db.updateProduct(req.params.id, req.body);
+    const body = { ...req.body };
+    // When options/variants are being edited, normalize them and re-derive the
+    // product-level price/quantity from the variants.
+    if (body.options !== undefined || body.variants !== undefined) {
+      const { options, variants } = normalizeVariants(body.options, body.variants);
+      body.options = options;
+      body.variants = variants;
+      if (variants.length) {
+        body.price = Math.min(...variants.map(v => v.price));
+        body.quantity = variants.reduce((s, v) => s + v.quantity, 0);
+      }
+    }
+    const updated = await db.updateProduct(req.params.id, body);
     res.json({ message: 'Product updated!', product: updated });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update product.' });
@@ -726,11 +798,35 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       if (!product || product.sellerId !== seller.id) {
         return res.status(400).json({ error: `Product not found: ${item.productId}` });
       }
-      if (product.quantity < item.qty) {
-        return res.status(400).json({ error: `"${product.name}" is out of stock.` });
+
+      // Resolve the chosen variant (if this product has any) so price and stock
+      // come from the variant, not the product-level aggregate.
+      let unitPrice    = Number(product.price);
+      let available    = Number(product.quantity);
+      let variantId    = null;
+      let variantTitle = null;
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      if (variants.length) {
+        const v = variants.find(x => String(x.id) === String(item.variantId));
+        if (!v) return res.status(400).json({ error: `Please choose an option for "${product.name}".` });
+        unitPrice    = Number(v.price);
+        available    = Number(v.quantity);
+        variantId    = v.id;
+        variantTitle = v.title;
       }
-      subtotal += product.price * item.qty;
-      verifiedItems.push({ ...item, price: product.price, name: product.name });
+
+      if (available < item.qty) {
+        return res.status(400).json({ error: `"${product.name}${variantTitle ? ' — ' + variantTitle : ''}" is out of stock.` });
+      }
+      subtotal += unitPrice * item.qty;
+      verifiedItems.push({
+        productId: item.productId,
+        qty:       item.qty,
+        price:     unitPrice,
+        name:      product.name,
+        variantId,
+        variantTitle,
+      });
     }
 
     // Tax is destination-based, so it can't be known until the buyer enters a
@@ -980,7 +1076,8 @@ app.post('/api/checkout/confirm', async (req, res) => {
     }
 
     for (const item of order.items) {
-      await db.decrementStock(item.productId, item.qty);
+      if (item.variantId) await db.decrementVariantStock(item.productId, item.variantId, item.qty);
+      else                await db.decrementStock(item.productId, item.qty);
     }
 
     // Record the Stripe Tax transaction (for the seller's tax reporting) from

@@ -690,8 +690,8 @@ tr:hover td{background:#fafaf7}
               <input type="number" id="pQty" placeholder="0" min="0" step="1">
             </div>
             <div class="field">
-              <label>Variants (comma-separated)</label>
-              <input type="text" id="pVariants" placeholder="S, M, L, XL — or Red, Blue">
+              <label>Selling variations?</label>
+              <div class="hint" style="margin-top:8px">Add sizes/colors in <b>Options &amp; variants</b> below — each gets its own price &amp; stock. Price &amp; Quantity here are used only when there are no variants.</div>
             </div>
           </div>
           <div class="two-col">
@@ -708,6 +708,17 @@ tr:hover td{background:#fafaf7}
                 <option value="archived">Archived</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <div class="form-section-hd">Options &amp; variants</div>
+          <div class="hint" style="margin-bottom:12px">Optional. Add options like Size or Color and we'll build a row per combination, each with its own price, SKU and stock. Leave empty for a single-variant product.</div>
+          <div id="optionsList"></div>
+          <button type="button" class="btn secondary sm" id="addOptionBtn" onclick="addOption()">+ Add option</button>
+          <div id="variantsWrap" style="display:none;margin-top:16px">
+            <div class="form-section-hd" style="font-size:13px;margin-bottom:8px">Variants</div>
+            <div style="overflow-x:auto"><table id="variantsTable" style="width:100%;border-collapse:collapse;font-size:13px"></table></div>
           </div>
         </div>
 
@@ -1311,8 +1322,8 @@ tr:hover td{background:#fafaf7}
           <input type="number" id="epQty" min="0" step="1">
         </div>
         <div class="field">
-          <label>Variants (comma-separated)</label>
-          <input type="text" id="epVariants" placeholder="S, M, L — or Red, Blue">
+          <label>Selling variations?</label>
+          <div class="hint" style="margin-top:8px">Edit sizes/colors in <b>Options &amp; variants</b> below.</div>
         </div>
       </div>
       <div class="two-col">
@@ -1328,6 +1339,17 @@ tr:hover td{background:#fafaf7}
             <option value="archived">Archived</option>
           </select>
         </div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-hd">Options &amp; variants</div>
+      <div class="hint" style="margin-bottom:12px">Add options like Size or Color; each combination gets its own price, SKU and stock. Leave empty for a single-variant product.</div>
+      <div id="epOptionsList"></div>
+      <button type="button" class="btn secondary sm" id="epAddOptionBtn" onclick="addOption()">+ Add option</button>
+      <div id="epVariantsWrap" style="display:none;margin-top:16px">
+        <div class="form-section-hd" style="font-size:13px;margin-bottom:8px">Variants</div>
+        <div style="overflow-x:auto"><table id="epVariantsTable" style="width:100%;border-collapse:collapse;font-size:13px"></table></div>
       </div>
     </div>
 
@@ -1752,6 +1774,7 @@ function showDash(name){
 
   if(name === 'stripe') loadStripeConfig();
   if(name === 'discounts') loadDiscounts();
+  if(name === 'add-product') initVariantEditor(ADD_VAR_CTX);
 }
 
 // ── MODE TOGGLE ──
@@ -1978,21 +2001,133 @@ function toggleReturnFields(){
   document.getElementById('pReturnFields').style.opacity = on ? '1' : '0.4';
 }
 
+// ── PRODUCT OPTIONS & VARIANTS EDITOR (shared by the add page + edit modal) ──
+const ADD_VAR_CTX  = { list:'optionsList',   wrap:'variantsWrap',   table:'variantsTable',   addBtn:'addOptionBtn' };
+const EDIT_VAR_CTX = { list:'epOptionsList', wrap:'epVariantsWrap', table:'epVariantsTable', addBtn:'epAddOptionBtn' };
+let productOptions = [];   // [{name, values:[]}]
+let variantData    = {};   // comboKey -> {price, sku, quantity}
+let currentCombos  = [];   // [{key, vals}] mirroring the rendered rows
+let varCtx = ADD_VAR_CTX;
+
+function vEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function comboKey(vals){ return vals.join(''); }
+function buildCombos(opts){
+  let combos = [[]];
+  for(const o of opts){
+    if(!o.values.length) return [];
+    const next=[];
+    for(const c of combos) for(const v of o.values) next.push(c.concat(v));
+    combos = next;
+  }
+  return combos;
+}
+function activeOptions(){ return productOptions.map(o=>({name:(o.name||'').trim(), values:o.values})).filter(o=>o.name && o.values.length); }
+
+function initVariantEditor(ctx, product){
+  varCtx = ctx;
+  productOptions = []; variantData = {};
+  if(product){
+    productOptions = Array.isArray(product.options)
+      ? product.options.map(o=>({name:o.name, values:Array.isArray(o.values)?o.values.slice():[]})) : [];
+    if(Array.isArray(product.variants)){
+      for(const v of product.variants){
+        if(v && v.options){
+          const vals = productOptions.map(o=>v.options[o.name]);
+          if(vals.every(x=>x!=null)) variantData[comboKey(vals)] = { price:v.price, sku:v.sku, quantity:v.quantity };
+        }
+      }
+    }
+  }
+  renderOptionsEditor();
+  renderVariantsTable();
+}
+
+function addOption(){
+  if(productOptions.length>=3){ toast('Up to 3 options per product'); return; }
+  productOptions.push({name:'', values:[]});
+  renderOptionsEditor();
+  renderVariantsTable();
+}
+function removeOption(i){ productOptions.splice(i,1); renderOptionsEditor(); renderVariantsTable(); }
+function setOptionName(i,v){ productOptions[i].name=v; renderVariantsTable(); }
+function setOptionValues(i,v){ productOptions[i].values = v.split(',').map(s=>s.trim()).filter(Boolean); renderVariantsTable(); }
+
+function renderOptionsEditor(){
+  const el = document.getElementById(varCtx.list);
+  if(!el) return;
+  el.innerHTML = productOptions.map((o,i)=>`
+    <div class="two-col" style="margin-bottom:8px">
+      <div class="field" style="margin:0">
+        <label>Option ${i+1} name</label>
+        <input type="text" placeholder="Size" value="${vEsc(o.name)}" oninput="setOptionName(${i}, this.value)">
+      </div>
+      <div class="field" style="margin:0">
+        <label>Values (comma-separated)</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" placeholder="S, M, L" value="${vEsc(o.values.join(', '))}" oninput="setOptionValues(${i}, this.value)" style="flex:1">
+          <button type="button" class="btn secondary sm" onclick="removeOption(${i})">Remove</button>
+        </div>
+      </div>
+    </div>`).join('');
+  const addBtn = document.getElementById(varCtx.addBtn);
+  if(addBtn) addBtn.style.display = productOptions.length>=3 ? 'none' : '';
+}
+
+function renderVariantsTable(){
+  const wrap = document.getElementById(varCtx.wrap);
+  const table = document.getElementById(varCtx.table);
+  if(!wrap || !table) return;
+  const opts = activeOptions();
+  if(!opts.length){ wrap.style.display='none'; table.innerHTML=''; currentCombos=[]; return; }
+  const combos = buildCombos(opts);
+  currentCombos = combos.map(vals=>({ key: comboKey(vals), vals }));
+  wrap.style.display='';
+  const th='padding:8px;border-bottom:1px solid var(--border)';
+  const head = `<thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">
+    ${opts.map(o=>`<th style="${th}">${vEsc(o.name)}</th>`).join('')}
+    <th style="${th}">Price $</th><th style="${th}">SKU</th><th style="${th}">Qty</th></tr></thead>`;
+  const body = currentCombos.map((c,i)=>{
+    const d = variantData[c.key] || {};
+    return `<tr>
+      ${c.vals.map(v=>`<td style="padding:6px 8px;font-weight:600">${vEsc(v)}</td>`).join('')}
+      <td style="padding:6px 8px"><input type="number" min="0" step="0.01" style="width:88px" value="${d.price==null?'':d.price}" oninput="setVariantField(${i},'price',this.value)"></td>
+      <td style="padding:6px 8px"><input type="text" style="width:120px" value="${vEsc(d.sku||'')}" oninput="setVariantField(${i},'sku',this.value)"></td>
+      <td style="padding:6px 8px"><input type="number" min="0" step="1" style="width:64px" value="${d.quantity==null?'':d.quantity}" oninput="setVariantField(${i},'quantity',this.value)"></td>
+    </tr>`;
+  }).join('');
+  table.innerHTML = head + '<tbody>'+body+'</tbody>';
+}
+function setVariantField(i, field, val){
+  const c = currentCombos[i]; if(!c) return;
+  (variantData[c.key] = variantData[c.key] || {})[field] = val;
+}
+
+// Collect editor state into { options, variants } for the API.
+function collectOptionsAndVariants(){
+  const opts = activeOptions();
+  if(!opts.length) return { options: [], variants: [] };
+  const variants = buildCombos(opts).map(vals=>{
+    const d = variantData[comboKey(vals)] || {};
+    const optionsMap = {};
+    opts.forEach((o,idx)=>optionsMap[o.name]=vals[idx]);
+    return { options: optionsMap, price: parseFloat(d.price)||0, sku:(d.sku||'').toString().trim(), quantity: parseInt(d.quantity)||0 };
+  });
+  return { options: opts, variants };
+}
+
 async function publishProduct(){
   const name = document.getElementById('pName').value.trim();
   const price = document.getElementById('pPrice').value;
   const sku = document.getElementById('pSKU').value.trim();
   const cat = document.getElementById('pCat').value;
+  const { options, variants } = collectOptionsAndVariants();
   if(!name){toast('Please enter a product name');return}
   if(!cat){toast('Please select a category');return}
-  if(!price||parseFloat(price)<=0){toast('Please enter a valid price');return}
+  if(!variants.length && (!price||parseFloat(price)<=0)){toast('Please enter a valid price');return}
   if(!sku){toast('Please enter or generate a SKU');return}
 
   const token = localStorage.getItem('ss_token');
   if(!token){ toast('Please log in to publish products'); return; }
-
-  const variantsRaw = document.getElementById('pVariants').value.trim();
-  const variants = variantsRaw ? variantsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
   const payload = {
     name,
@@ -2000,11 +2135,12 @@ async function publishProduct(){
     category:         cat,
     brand:            document.getElementById('pBrand').value.trim(),
     sku,
-    price:            parseFloat(price),
+    price:            parseFloat(price) || 0,
     compareAtPrice:   parseFloat(document.getElementById('pCompare').value) || null,
     costPerItem:      parseFloat(document.getElementById('pCost').value)    || null,
     quantity:         parseInt(document.getElementById('pQty').value)       || 0,
     weight:           parseFloat(document.getElementById('pWeight').value)  || null,
+    options,
     variants,
     status:           document.getElementById('pStatus').value || 'active',
     imageUrls:        uploadedImages.slice(),
@@ -2191,13 +2327,13 @@ function openEditProduct(id){
   document.getElementById('epCompare').value      = r.compareAtPrice != null ? r.compareAtPrice : '';
   document.getElementById('epCost').value         = r.costPerItem != null ? r.costPerItem : '';
   document.getElementById('epQty').value          = r.quantity != null ? r.quantity : 0;
-  document.getElementById('epVariants').value     = Array.isArray(r.variants) ? r.variants.join(', ') : '';
   document.getElementById('epWeight').value       = r.weight != null ? r.weight : '';
   document.getElementById('epStatus').value       = r.status || 'active';
   document.getElementById('epReturnable').checked = r.returnable !== false;
   document.getElementById('epReturnDays').value   = r.returnWindowDays != null ? r.returnWindowDays : 30;
   document.getElementById('epRestockFee').value   = r.restockingFeePct != null ? r.restockingFeePct : 0;
 
+  initVariantEditor(EDIT_VAR_CTX, r);
   epToggleReturnFields();
   epRenderImgPreviews();
   document.getElementById('editProductModal').classList.add('show');
@@ -2220,13 +2356,11 @@ async function saveEditProduct(){
   const price = document.getElementById('epPrice').value;
   const sku   = document.getElementById('epSKU').value.trim();
   const cat   = document.getElementById('epCat').value;
+  const { options, variants } = collectOptionsAndVariants();
   if(!name){ toast('Product name is required'); return; }
   if(!cat){  toast('Please select a category'); return; }
-  if(!price || parseFloat(price) <= 0){ toast('Enter a valid price'); return; }
+  if(!variants.length && (!price || parseFloat(price) <= 0)){ toast('Enter a valid price'); return; }
   if(!sku){  toast('SKU is required'); return; }
-
-  const variantsRaw = document.getElementById('epVariants').value.trim();
-  const variants = variantsRaw ? variantsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
   const payload = {
     name,
@@ -2234,11 +2368,12 @@ async function saveEditProduct(){
     category:         cat,
     brand:            document.getElementById('epBrand').value.trim(),
     sku,
-    price:            parseFloat(price),
+    price:            parseFloat(price) || 0,
     compareAtPrice:   parseFloat(document.getElementById('epCompare').value) || null,
     costPerItem:      parseFloat(document.getElementById('epCost').value)    || null,
     quantity:         parseInt(document.getElementById('epQty').value)       || 0,
     weight:           parseFloat(document.getElementById('epWeight').value)  || null,
+    options,
     variants,
     status:           document.getElementById('epStatus').value || 'active',
     imageUrls:        editUploadedImages.slice(),

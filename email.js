@@ -66,7 +66,7 @@ async function buildLabelAttachment({ labelImage, labelUrl, labelFormat, trackin
 function renderItemsHtml(items) {
   return (items || []).map(it => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0">${esc(it.name)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0">${esc(it.name)}${it.variantTitle ? ' <span style="color:#9ca3af">— ' + esc(it.variantTitle) + '</span>' : ''}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0;text-align:right;font-variant-numeric:tabular-nums">${esc(it.qty)}</td>
     </tr>
   `).join('');
@@ -225,7 +225,7 @@ function renderReceiptRows(items) {
     const line = (Number(it.price) || 0) * qty;
     return `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0">${esc(it.name)}${qty > 1 ? ` <span style="color:#9ca3af">× ${qty}</span>` : ''}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0">${esc(it.name)}${it.variantTitle ? ` <span style="color:#9ca3af">— ${esc(it.variantTitle)}</span>` : ''}${qty > 1 ? ` <span style="color:#9ca3af">× ${qty}</span>` : ''}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e5e0;text-align:right;font-variant-numeric:tabular-nums">${money(line)}</td>
     </tr>`;
   }).join('');
