@@ -561,6 +561,72 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+/* ============================================================
+   ── PRODUCT REVIEWS ──────────────────────────────────────────
+   GET  /api/products/:id/reviews    — public: summary + list
+   POST /api/products/:id/reviews    — buyer: add/update own review
+   ============================================================ */
+
+app.get('/api/products/:id/reviews', async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(productId)) return res.status(400).json({ error: 'Invalid product.' });
+    const [summary, reviews] = await Promise.all([
+      db.getReviewSummary(productId),
+      db.getReviewsByProduct(productId),
+    ]);
+    // Only expose safe fields — never buyer id/email.
+    res.json({
+      summary,
+      reviews: reviews.map(r => ({
+        id: r.id, author: r.authorName, rating: r.rating,
+        title: r.title, body: r.body, verified: r.verified, createdAt: r.createdAt,
+      })),
+    });
+  } catch (err) {
+    console.error('Get reviews error:', err);
+    res.status(500).json({ error: 'Failed to load reviews.' });
+  }
+});
+
+app.post('/api/products/:id/reviews', requireBuyerAuth, async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(productId)) return res.status(400).json({ error: 'Invalid product.' });
+
+    const product = await db.getProductById(productId);
+    if (!product) return res.status(404).json({ error: 'Product not found.' });
+
+    const rating = parseInt(req.body.rating, 10);
+    if (!(rating >= 1 && rating <= 5)) return res.status(400).json({ error: 'Please give a rating from 1 to 5 stars.' });
+    const title = String(req.body.title || '').trim().slice(0, 120);
+    const body  = String(req.body.body  || '').trim().slice(0, 2000);
+
+    // Display name = first name + last initial (privacy-friendly).
+    const buyer = await db.getBuyerById(req.buyer.buyerId);
+    const authorName = buyer
+      ? `${buyer.firstName || 'Buyer'}${buyer.lastName ? ' ' + buyer.lastName[0] + '.' : ''}`
+      : 'Buyer';
+
+    const verified = await db.buyerHasPurchased(req.buyer.buyerId, req.buyer.email, productId);
+
+    const review = await db.upsertReview({
+      productId, sellerId: product.sellerId, buyerId: req.buyer.buyerId,
+      authorName, rating, title, body, verified,
+    });
+    await db.recomputeProductRating(productId);
+
+    res.status(201).json({
+      message: 'Thanks for your review!',
+      review: { id: review.id, author: review.authorName, rating: review.rating,
+                title: review.title, body: review.body, verified: review.verified, createdAt: review.createdAt },
+    });
+  } catch (err) {
+    console.error('Post review error:', err);
+    res.status(500).json({ error: 'Failed to submit review.' });
+  }
+});
+
 app.get('/api/seller/products', requireAuth, async (req, res) => {
   try {
     const products = await db.getProductsBySeller(req.seller.sellerId);

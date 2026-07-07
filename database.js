@@ -119,6 +119,9 @@ async function initSchema() {
     // Product options (e.g. Size, Color). Variants (already present) hold one
     // priced/stocked entry per option combination.
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS options JSONB DEFAULT '[]'::jsonb;`);
+    // Denormalized review count (rating column already exists). Both are kept in
+    // sync from the reviews table.
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS review_count INTEGER NOT NULL DEFAULT 0;`);
 
     // BUYERS — accounts for the buyer storefront. Separate from sellers
     // (different login flow, different JWT claim type).
@@ -301,6 +304,25 @@ async function initSchema() {
     // Orders carry the applied code + dollars discounted (for receipts/reporting).
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_code TEXT;`);
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;`);
+
+    // PRODUCT REVIEWS — one per buyer per product; feeds products.rating/review_count.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id           SERIAL PRIMARY KEY,
+        product_id   INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        seller_id    INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        buyer_id     INTEGER REFERENCES buyers(id) ON DELETE SET NULL,
+        author_name  TEXT,
+        rating       INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        title        TEXT,
+        body         TEXT,
+        verified     BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_product_buyer ON reviews (product_id, buyer_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews (product_id, created_at DESC);`);
 
     await client.query('COMMIT');
     console.log('✓ Database schema ready');
@@ -981,6 +1003,63 @@ async function incrementDiscountUse(sellerId, code) {
   return rowCount > 0;
 }
 
+// ── REVIEWS ──────────────────────────────────────────────────
+// One review per buyer per product — re-submitting updates the existing one.
+async function upsertReview({ productId, sellerId, buyerId, authorName, rating, title, body, verified }) {
+  const { rows } = await pool.query(
+    `INSERT INTO reviews (product_id, seller_id, buyer_id, author_name, rating, title, body, verified)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     ON CONFLICT (product_id, buyer_id)
+       DO UPDATE SET rating=EXCLUDED.rating, title=EXCLUDED.title, body=EXCLUDED.body,
+                     author_name=EXCLUDED.author_name, verified=EXCLUDED.verified, updated_at=NOW()
+     RETURNING *`,
+    [productId, sellerId, buyerId, authorName, rating, title, body, verified]
+  );
+  return camelize(rows[0]);
+}
+
+async function getReviewsByProduct(productId, limit = 100) {
+  const { rows } = await pool.query(
+    `SELECT * FROM reviews WHERE product_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [productId, limit]
+  );
+  return rows.map(r => camelize(r));
+}
+
+async function getReviewSummary(productId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS count, COALESCE(ROUND(AVG(rating),2),0) AS average
+       FROM reviews WHERE product_id = $1`,
+    [productId]
+  );
+  return { count: rows[0].count, average: Number(rows[0].average) };
+}
+
+// Keep the denormalized rating + review_count on the product in sync.
+async function recomputeProductRating(productId) {
+  await pool.query(
+    `UPDATE products
+        SET rating = (SELECT ROUND(AVG(rating),2) FROM reviews WHERE product_id = $1),
+            review_count = (SELECT COUNT(*) FROM reviews WHERE product_id = $1),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [productId]
+  );
+}
+
+// True if this buyer has a PAID order containing the product (verified badge).
+async function buyerHasPurchased(buyerId, email, productId) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM orders
+       WHERE (buyer_id = $1 OR LOWER(customer_email) = LOWER($2))
+         AND status IN ('processing','shipped','delivered')
+         AND items @> $3::jsonb
+       LIMIT 1`,
+    [buyerId || 0, email || '', JSON.stringify([{ productId: Number(productId) }])]
+  );
+  return rows.length > 0;
+}
+
 // ── EXPORTS ──────────────────────────────────────────────────
 module.exports = {
   // Sellers
@@ -1012,6 +1091,13 @@ module.exports = {
 
   // Customers
   getCustomersBySeller,
+
+  // Reviews
+  upsertReview,
+  getReviewsByProduct,
+  getReviewSummary,
+  recomputeProductRating,
+  buyerHasPurchased,
 
   // Discount codes
   createDiscount,
