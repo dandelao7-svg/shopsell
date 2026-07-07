@@ -1210,4 +1210,8 @@ module.exports = {
 
   // Internal — exposed in case anything needs raw access
   pool,
+
+  // Resolves once the schema has been created/migrated. server.js awaits this
+  // before listening so a cold boot never serves requests against missing tables.
+  schemaReady,
 };

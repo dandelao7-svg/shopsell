@@ -3089,12 +3089,26 @@ app.post('/api/returns', async (req, res) => {
    ── HEALTH CHECK ─────────────────────────────────────────────
    ============================================================ */
 
-app.get('/health', (req, res) => {
-  res.json({
-    status:    'ok',
-    timestamp: new Date().toISOString(),
-    env:       process.env.NODE_ENV || 'development',
-  });
+// Health check for the platform (Railway healthcheckPath). Verifies the DB is
+// actually reachable, not just that the process is up — returns 503 if the
+// Postgres pool can't answer, so the platform holds traffic off a broken deploy.
+app.get('/health', async (req, res) => {
+  try {
+    await db.pool.query('SELECT 1');
+    res.json({
+      status:    'ok',
+      db:        'ok',
+      timestamp: new Date().toISOString(),
+      env:       process.env.NODE_ENV || 'development',
+    });
+  } catch (err) {
+    res.status(503).json({
+      status:    'degraded',
+      db:        'unreachable',
+      timestamp: new Date().toISOString(),
+      env:       process.env.NODE_ENV || 'development',
+    });
+  }
 });
 
 /* ============================================================
@@ -3114,14 +3128,25 @@ app.use((err, req, res, next) => {
    ── START SERVER ─────────────────────────────────────────────
    ============================================================ */
 
-app.listen(PORT, () => {
-  console.log(`
+// Wait for the schema to be created/migrated before accepting traffic, so a
+// cold boot against a fresh Postgres never serves requests against missing
+// tables. If schema init fails, exit non-zero and let the platform restart us
+// with backoff rather than run in a broken state.
+db.schemaReady
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`
 ╔══════════════════════════════════════════╗
 ║   ShopSell Server running on port ${PORT}   ║
 ║   ENV: ${(process.env.NODE_ENV||'development').padEnd(34)}║
 ║   Stripe: ${process.env.STRIPE_SECRET_KEY ? 'Connected ✓' : 'NOT CONNECTED ✗'.padEnd(30)}║
 ╚══════════════════════════════════════════╝
   `);
-});
+    });
+  })
+  .catch(err => {
+    console.error('Fatal: schema initialization failed, not starting server.', err);
+    process.exit(1);
+  });
 
 module.exports = app;
