@@ -2171,12 +2171,26 @@ app.post('/api/returns', async (req, res) => {
    ── HEALTH CHECK ─────────────────────────────────────────────
    ============================================================ */
 
-app.get('/health', (req, res) => {
-  res.json({
-    status:    'ok',
-    timestamp: new Date().toISOString(),
-    env:       process.env.NODE_ENV || 'development',
-  });
+// Health check for the platform (Railway healthcheckPath). Verifies the DB is
+// actually reachable, not just that the process is up — returns 503 if the
+// Postgres pool can't answer, so the platform holds traffic off a broken deploy.
+app.get('/health', async (req, res) => {
+  try {
+    await db.pool.query('SELECT 1');
+    res.json({
+      status:    'ok',
+      db:        'ok',
+      timestamp: new Date().toISOString(),
+      env:       process.env.NODE_ENV || 'development',
+    });
+  } catch (err) {
+    res.status(503).json({
+      status:    'degraded',
+      db:        'unreachable',
+      timestamp: new Date().toISOString(),
+      env:       process.env.NODE_ENV || 'development',
+    });
+  }
 });
 
 /* ============================================================
