@@ -40,6 +40,7 @@ const emailService = require('./email');
 const cryptoLib    = require('./lib/crypto');
 const { mergeLabels } = require('./lib/labelmerge');
 const shopify      = require('./lib/shopify');
+const amazon       = require('./lib/amazon');
 const crypto       = require('crypto');
 const dns          = require('dns').promises;
 
@@ -157,17 +158,21 @@ const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 // channel failure must never break a label purchase. No-op for non-channel
 // orders or when the channel isn't connected.
 async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier }) {
-  if (!order || order.channel !== 'shopify' || !order.externalId || !trackingNumber) return;
+  if (!order || !order.externalId || !trackingNumber) return;
+  const channel = order.channel;
+  if (channel !== 'shopify' && channel !== 'amazon') return;
   try {
-    const creds = await loadChannelCreds(sellerId, 'shopify');
+    const creds = await loadChannelCreds(sellerId, channel);
     if (!creds) return;
-    await shopify.createFulfillment(creds, order.externalId, {
-      trackingNumber,
-      carrierName: CARRIER_DISPLAY[carrier] || carrier,
-    });
-    console.log(`Shopify fulfillment pushed for order ${order.id} (${trackingNumber}).`);
+    const carrierName = CARRIER_DISPLAY[carrier] || carrier;
+    if (channel === 'shopify') {
+      await shopify.createFulfillment(creds, order.externalId, { trackingNumber, carrierName });
+    } else {
+      await amazon.confirmShipment(creds, order, { trackingNumber, carrierName });
+    }
+    console.log(`${channel} fulfillment pushed for order ${order.id} (${trackingNumber}).`);
   } catch (e) {
-    console.error(`Shopify fulfillment push failed for order ${order.id}:`, e.message);
+    console.error(`${channel} fulfillment push failed for order ${order.id}:`, e.message);
   }
 }
 
@@ -2757,6 +2762,60 @@ app.delete('/api/seller/channels/shopify', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Disconnect channel error:', err);
+    res.status(500).json({ error: 'Failed to disconnect.' });
+  }
+});
+
+// Connect an Amazon store (self-authorized private SP-API app). Creds:
+// clientId, clientSecret, refreshToken (+ marketplace, region).
+app.post('/api/seller/channels/amazon', requireAuth, async (req, res) => {
+  try {
+    if (!cryptoLib.isConfigured()) {
+      return res.status(500).json({ error: 'Server encryption is not configured; cannot store credentials.' });
+    }
+    const { clientId, clientSecret, refreshToken, marketplace = 'US', region = 'na' } = req.body;
+    if (!clientId || !clientSecret || !refreshToken) {
+      return res.status(400).json({ error: 'client id, client secret, and refresh token are required.' });
+    }
+    const creds = { clientId, clientSecret, refreshToken, marketplace, region };
+    await amazon.verifyConnection(creds); // throws on bad creds / missing access
+    const credentials = cryptoLib.encrypt(creds);
+    await db.saveChannelConnection(req.seller.sellerId, 'amazon', {
+      shopDomain: `${String(marketplace).toUpperCase()} · ${String(region).toUpperCase()}`,
+      credentials, status: 'verified',
+    });
+    res.json({ message: `Connected to Amazon (${String(marketplace).toUpperCase()}).` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/seller/channels/amazon/sync', requireAuth, async (req, res) => {
+  try {
+    const creds = await loadChannelCreds(req.seller.sellerId, 'amazon');
+    if (!creds) return res.status(400).json({ error: 'Connect an Amazon store first.', channelSetupRequired: true });
+
+    const orders = await amazon.fetchUnfulfilledOrders(creds);
+    let imported = 0, skipped = 0, noAddress = 0;
+    for (const mapped of orders) {
+      if (!mapped.customerInfo.address1) noAddress++;
+      const outcome = await importChannelOrder(req.seller.sellerId, 'amazon', mapped);
+      if (outcome === 'imported') imported++; else skipped++;
+    }
+    await db.touchChannelSync(req.seller.sellerId, 'amazon');
+    res.json({ imported, skipped, total: orders.length, noAddress });
+  } catch (err) {
+    console.error('Amazon sync error:', err);
+    res.status(502).json({ error: 'Sync failed: ' + err.message });
+  }
+});
+
+app.delete('/api/seller/channels/amazon', requireAuth, async (req, res) => {
+  try {
+    await db.deleteChannelConnection(req.seller.sellerId, 'amazon');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Disconnect amazon error:', err);
     res.status(500).json({ error: 'Failed to disconnect.' });
   }
 });
