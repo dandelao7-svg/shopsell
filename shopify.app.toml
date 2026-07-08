@@ -1,0 +1,17 @@
+# Shopify app configuration (pushed to Shopify via `shopify app deploy`).
+# This is the reliable way to set redirect_urls for the new Dev Dashboard.
+client_id = "a71ee84cde4c758b2168a8ad8c2ce1a1"
+name = "NextLao Shipping"
+application_url = "https://shopsell-production.up.railway.app/shipping"
+embedded = false
+
+[access_scopes]
+scopes = "read_orders,write_merchant_managed_fulfillment_orders"
+
+[auth]
+redirect_urls = [
+  "https://shopsell-production.up.railway.app/api/channels/shopify/callback"
+]
+
+[webhooks]
+api_version = "2025-01"
