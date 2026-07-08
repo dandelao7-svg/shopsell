@@ -53,7 +53,9 @@ const dns          = require('dns').promises;
 // domains are pointed at CUSTOM_DOMAIN_TARGET with a CNAME.
 const PLATFORM_DOMAIN       = (process.env.PLATFORM_DOMAIN || 'nextlao.com').toLowerCase();
 const CUSTOM_DOMAIN_TARGET  = process.env.CUSTOM_DOMAIN_TARGET || `shop.${PLATFORM_DOMAIN}`;
-const RESERVED_SUBDOMAINS   = new Set(['www', 'shop', 'app', 'api', 'admin', 'mail', 'dashboard', 'static', 'assets', 'cdn']);
+const RESERVED_SUBDOMAINS   = new Set(['www', 'shop', 'app', 'api', 'admin', 'mail', 'dashboard', 'static', 'assets', 'cdn',
+  // NextLao product + system subdomains — never available as a seller store slug.
+  'shopsell', 'audit', 'handyman', 'help', 'docs', 'blog', 'status', 'support', 'staging']);
 
 // Resolve which store a request belongs to, from its hostname. This is the
 // single mechanism behind both subdomains and bring-your-own custom domains.
@@ -511,9 +513,16 @@ app.use('/api',      apiLimiter);
 // ── SERVE STATIC FILES ────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve the buyer storefront
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+// Root: a seller host (custom domain or <slug>.PLATFORM_DOMAIN) serves that
+// seller's storefront; the platform domain (apex / reserved subdomain like
+// shopsell.nextlao.com / the Railway app host) serves the ShopSell marketing site.
+app.get('/', async (req, res) => {
+  try {
+    const seller = await resolveStoreByHost(req.hostname);
+    return res.sendFile(path.join(__dirname, seller ? 'index.html' : 'landing.html'));
+  } catch (e) {
+    return res.sendFile(path.join(__dirname, 'landing.html'));
+  }
 });
 
 // Serve seller signup page
