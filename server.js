@@ -3487,13 +3487,18 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
       console.error('Shipment DB write failed (label still valid):', dbErr.message);
     }
 
-    // If this label is for an imported channel order, push tracking back.
+    // Post-label bookkeeping for a real/imported order: mark it shipped (so it
+    // leaves the "awaiting label" tab — mirrors the batch flow) and, if it came
+    // from a sales channel, push tracking back. Both best-effort; the label is
+    // already valid and must not be undone by a bookkeeping failure.
     let channelPush = null;
     try {
       const oid = normalizeOrderId(orderId);
       if (oid !== null) {
         const ord = await db.getOrderById(oid);
         if (ord && ord.sellerId === req.seller.sellerId) {
+          await db.updateOrder(oid, { status: 'shipped', trackingNumber: label.trackingNumber, trackingCarrier: carrier })
+            .catch(e => console.error('Order status update failed (label still valid):', e.message));
           channelPush = await pushChannelFulfillment(req.seller.sellerId, ord, { trackingNumber: label.trackingNumber, carrier });
         }
       }
