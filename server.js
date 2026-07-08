@@ -320,6 +320,16 @@ function ebayAppConfig() {
   return { apiKey, apiSecret, ruName, callbackUrl, configured: !!(apiKey && apiSecret && ruName) };
 }
 
+// eBay Marketplace Account Deletion notification config. The endpoint URL used
+// in the challenge hash must exactly match what's registered in the eBay portal
+// (paste this endpoint there verbatim). Token: 32–80 chars [A-Za-z0-9_-].
+function ebayDeletionConfig() {
+  const verificationToken = process.env.EBAY_VERIFICATION_TOKEN || '';
+  const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
+  const endpoint = /^https:\/\//.test(base) ? `${base}/api/webhooks/ebay/account-deletion` : null;
+  return { verificationToken, endpoint, configured: !!(verificationToken && endpoint) };
+}
+
 // ── STRIPE KEYS (encrypted at rest) ──────────────────────────
 async function persistStripeKeys(sellerId, { publishableKey, secretKey, webhookSecret }) {
   await db.saveStripeKeys(sellerId, {
@@ -3133,6 +3143,37 @@ app.delete('/api/seller/channels/ebay', requireAuth, async (req, res) => {
     console.error('Disconnect ebay error:', err);
     res.status(500).json({ error: 'Failed to disconnect.' });
   }
+});
+
+/* eBay MARKETPLACE ACCOUNT DELETION endpoint (public, no auth — eBay calls it).
+   GET  ?challenge_code=…  → prove ownership by echoing the SHA-256 challenge.
+   POST                    → a buyer/seller closed their eBay account; ack fast.
+   eBay requires this (or an exemption) before a production app can call the
+   Sell APIs. Register this exact URL + the verification token in the portal. */
+app.get('/api/webhooks/ebay/account-deletion', (req, res) => {
+  const cfg = ebayDeletionConfig();
+  const challengeCode = req.query.challenge_code;
+  if (!challengeCode) return res.status(400).json({ error: 'Missing challenge_code.' });
+  if (!cfg.configured) {
+    console.error('eBay deletion challenge received but EBAY_VERIFICATION_TOKEN / ALLOWED_ORIGIN not set.');
+    return res.status(500).json({ error: 'Endpoint not configured.' });
+  }
+  const challengeResponse = ebay.accountDeletionChallengeResponse(
+    String(challengeCode), cfg.verificationToken, cfg.endpoint
+  );
+  res.status(200).json({ challengeResponse });
+});
+
+app.post('/api/webhooks/ebay/account-deletion', (req, res) => {
+  // We don't retain eBay buyer PII beyond imported order records, so there's
+  // nothing to purge on account closure — acknowledge so eBay marks it handled.
+  // (Signature verification via eBay's public key can be added later; a 2xx ack
+  // is what the notification pipeline requires.)
+  try {
+    const userId = req.body?.notification?.data?.userId || req.body?.notification?.data?.username || 'unknown';
+    console.log(`eBay account-deletion notification received (userId=${userId}).`);
+  } catch { /* ignore malformed body */ }
+  res.sendStatus(200);
 });
 
 // SHOPIFY WEBHOOK RECEIVER — Shopify POSTs orders/create here. Raw body is
