@@ -519,7 +519,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', async (req, res) => {
   try {
     const seller = await resolveStoreByHost(req.hostname);
-    return res.sendFile(path.join(__dirname, seller ? 'index.html' : 'landing.html'));
+    if (seller) return res.sendFile(path.join(__dirname, 'index.html'));
+    // No seller: the bare platform apex (nextlao.com / www.nextlao.com) shows the
+    // NextLao umbrella; everything else (shopsell.nextlao.com, the Railway app
+    // host, other reserved subdomains) shows the ShopSell marketing site.
+    const host = String(req.hostname || '').toLowerCase().replace(/^www\./, '');
+    if (host === PLATFORM_DOMAIN) return res.sendFile(path.join(__dirname, 'nextlao.html'));
+    return res.sendFile(path.join(__dirname, 'landing.html'));
   } catch (e) {
     return res.sendFile(path.join(__dirname, 'landing.html'));
   }

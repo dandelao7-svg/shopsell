@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NextLao — Practical software for commerce &amp; the trades</title>
+<meta name="description" content="NextLao builds focused tools for small business: ShopSell (sell online + ship), carrier bill auditing, and handyman/trades tools.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0f; --bg2:#13131a; --bg3:#1c1c27;
+  --card:#16161e; --border:#24242f; --border2:#2f2f3d;
+  --text:#e8e8f0; --text2:#b8b8c8; --muted:#7a7a90;
+  --accent:#e63946; --accent-hover:#d32a37;
+  --green:#00c896; --gold:#ffb500;
+  --radius:14px; --maxw:1080px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden;
+  background-image:radial-gradient(circle at 50% -10%, rgba(230,57,70,0.12), transparent 45%),
+                   radial-gradient(circle at 85% 8%, rgba(255,181,0,0.07), transparent 40%);
+}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+.eyebrow{font-family:'DM Mono',monospace;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold)}
+h1,h2,h3{font-family:'Syne',sans-serif;font-weight:700;line-height:1.1;letter-spacing:-0.5px}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:10px;padding:11px 20px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:var(--text);border-color:var(--border2)}
+.btn-ghost:hover{border-color:var(--muted);background:var(--bg3)}
+
+/* NAV */
+.nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(10,10,15,0.72);border-bottom:1px solid var(--border)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-family:'Syne',sans-serif;font-weight:800;font-size:19px;letter-spacing:.3px}
+.brand-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--gold));border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px}
+.nav a.link{font-size:14px;color:var(--text2)}
+.nav a.link:hover{color:var(--text)}
+
+/* HERO */
+.hero{padding:96px 0 52px;text-align:center}
+.hero h1{font-size:clamp(2.3rem,6.5vw,4.2rem);margin:18px auto 0;max-width:15ch}
+.hero .lede{font-size:clamp(1.02rem,2.4vw,1.22rem);color:var(--text2);max-width:56ch;margin:22px auto 0}
+
+/* PRODUCTS */
+.products{padding:40px 0 30px}
+.p-head{text-align:center;margin-bottom:40px}
+.p-head h2{font-size:clamp(1.5rem,3.6vw,2.1rem);margin-top:8px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.prod{position:relative;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;transition:all .18s;min-height:280px}
+.prod:hover{border-color:var(--border2);transform:translateY(-4px)}
+.prod.live{border-color:rgba(0,200,150,.35)}
+.p-badge{position:absolute;top:20px;right:20px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:4px 9px;border-radius:20px;font-family:'DM Mono',monospace}
+.p-badge.live{background:rgba(0,200,150,.15);color:var(--green)}
+.p-badge.soon{background:var(--bg3);color:var(--muted)}
+.p-ico{width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:18px;background:linear-gradient(135deg,rgba(230,57,70,.18),rgba(255,181,0,.12));color:var(--accent)}
+.prod h3{font-size:1.35rem}
+.prod .tag{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-top:3px;letter-spacing:.5px}
+.prod p{color:var(--text2);font-size:.95rem;margin-top:12px;flex:1}
+.prod .cta{margin-top:18px}
+.prod .cta a{font-size:14px;font-weight:600;color:var(--accent);display:inline-flex;align-items:center;gap:6px}
+.prod .cta .disabled{color:var(--muted);font-weight:500;font-size:13px}
+
+/* VALUES */
+.values{padding:70px 0}
+.values .wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.val h3{font-size:1.05rem;margin-bottom:6px}
+.val p{color:var(--text2);font-size:.92rem}
+.val .dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--gold));margin-bottom:12px}
+
+/* CONTACT BAND */
+.band{margin:20px auto 80px;max-width:var(--maxw);text-align:center;background:linear-gradient(135deg,rgba(230,57,70,.12),rgba(255,181,0,.07));border:1px solid var(--border2);border-radius:20px;padding:52px 24px}
+.band h2{font-size:clamp(1.5rem,4vw,2.2rem)}
+.band p{color:var(--text2);margin:12px auto 24px;max-width:46ch}
+
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:40px 0;color:var(--muted);font-size:13px}
+.foot-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.foot-links{display:flex;gap:20px}
+.foot-links a:hover{color:var(--text)}
+
+@media(max-width:820px){
+  .grid,.values .wrap{grid-template-columns:1fr}
+  .hero{padding:64px 0 36px}
+  .values{padding:48px 0}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a href="/" class="brand"><div class="brand-mark">N</div>NextLao</a>
+    <div style="display:flex;align-items:center;gap:24px">
+      <a class="link" href="#products">Products</a>
+      <a class="btn btn-ghost" href="https://shopsell.nextlao.com">Visit ShopSell</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">NextLao</span>
+    <h1>Practical software for commerce &amp; the trades.</h1>
+    <p class="lede">We build focused tools that take on the tedious, expensive parts of running a small business — selling online, auditing carrier bills, and running a trades operation.</p>
+  </div>
+</header>
+
+<section class="products" id="products">
+  <div class="wrap">
+    <div class="p-head">
+      <span class="eyebrow">What we build</span>
+      <h2>Three tools, one mission: keep more of your money</h2>
+    </div>
+    <div class="grid">
+
+      <!-- ShopSell (LIVE) -->
+      <div class="prod live">
+        <span class="p-badge live">Live</span>
+        <div class="p-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v11a1 1 0 001 1h14a1 1 0 001-1V9"/><path d="M9 22V12h6v10"/></svg></div>
+        <h3>ShopSell</h3>
+        <div class="tag">Commerce + shipping</div>
+        <p>Sell everywhere, ship anywhere. A hosted storefront, order sync from every marketplace, and a shipping suite that rate-shops UPS, FedEx and USPS — in one platform.</p>
+        <div class="cta"><a href="https://shopsell.nextlao.com">Visit ShopSell <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+      </div>
+
+      <!-- Carrier audit (COMING SOON) -->
+      <div class="prod">
+        <span class="p-badge soon">Coming soon</span>
+        <div class="p-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 15l2 2 4-4"/></svg></div>
+        <h3>Carrier Bill Audit</h3>
+        <div class="tag">UPS &amp; FedEx refunds</div>
+        <p>Stop overpaying couriers. Automatically audit your UPS and FedEx invoices for late-delivery refunds, billing errors and surcharges — and claim the money back.</p>
+        <div class="cta"><span class="disabled">In development</span></div>
+      </div>
+
+      <!-- Handyman / trades (COMING SOON) -->
+      <div class="prod">
+        <span class="p-badge soon">Coming soon</span>
+        <div class="p-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 00-5.6 5.6l-6.4 6.4a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l6.4-6.4a4 4 0 005.6-5.6l-2.6 2.6-2-2 2.6-2.6z"/></svg></div>
+        <h3>Handyman Toolkit</h3>
+        <div class="tag">Trades ops &amp; invoicing</div>
+        <p>Everything a handyman or trades business needs off the truck: quotes, scheduling, invoicing and job tracking — without the enterprise bloat or price tag.</p>
+        <div class="cta"><span class="disabled">In development</span></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="values">
+  <div class="wrap">
+    <div class="val"><div class="dot"></div><h3>Small-business first</h3><p>Built for owner-operators and small teams — not enterprises. Fair, flat pricing and no lock-in.</p></div>
+    <div class="val"><div class="dot"></div><h3>Bring your own accounts</h3><p>Connect your own Stripe and carrier accounts. The money and the margin stay yours.</p></div>
+    <div class="val"><div class="dot"></div><h3>Actually finished tools</h3><p>We ship focused products that do the whole job, end to end — not half-features behind an upsell.</p></div>
+  </div>
+</section>
+
+<section class="band wrap">
+  <h2>Start with ShopSell</h2>
+  <p>Our commerce platform is live today. The rest of the NextLao suite is on the way.</p>
+  <a class="btn btn-primary" href="https://shopsell.nextlao.com">Explore ShopSell</a>
+</section>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div style="display:flex;align-items:center;gap:10px"><div class="brand-mark" style="width:26px;height:26px;font-size:13px">N</div><span>© 2026 NextLao</span></div>
+    <div class="foot-links">
+      <a href="https://shopsell.nextlao.com">ShopSell</a>
+      <a href="#products">Products</a>
+      <a href="mailto:hello@nextlao.com">Contact</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
