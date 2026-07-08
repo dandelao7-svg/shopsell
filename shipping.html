@@ -373,10 +373,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       eBay
       <span class="nav-badge" id="ebayNavBadge" style="background:rgba(0,100,210,0.2);color:#0064d2;display:none">•</span>
     </a>
-    <a class="nav-item locked" title="OMS module — coming soon">
+    <a class="nav-item" onclick="openEtsyModal()" id="nav-etsy" style="cursor:pointer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
       Etsy
-      <span class="coming-soon">OMS</span>
+      <span class="nav-badge" id="etsyNavBadge" style="background:rgba(241,100,30,0.2);color:#f1641e;display:none">•</span>
     </a>
     <a class="nav-item locked" title="OMS module — coming soon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -2363,12 +2363,15 @@ async function refreshChannels(){
     shopifyConn = chans.find(c=>c.channel==='shopify') || null;
     amazonConn  = chans.find(c=>c.channel==='amazon')  || null;
     ebayConn    = chans.find(c=>c.channel==='ebay')    || null;
+    etsyConn    = chans.find(c=>c.channel==='etsy')    || null;
     const sb = document.getElementById('shopifyNavBadge');
     if(sb) sb.style.display = shopifyConn ? 'inline-block' : 'none';
     const ab = document.getElementById('amazonNavBadge');
     if(ab) ab.style.display = amazonConn ? 'inline-block' : 'none';
     const eb = document.getElementById('ebayNavBadge');
     if(eb) eb.style.display = ebayConn ? 'inline-block' : 'none';
+    const tb = document.getElementById('etsyNavBadge');
+    if(tb) tb.style.display = etsyConn ? 'inline-block' : 'none';
   } catch(e){ /* ignore */ }
 }
 
@@ -2377,10 +2380,13 @@ function handleChannelReturn(){
   const p = new URLSearchParams(location.search);
   const s = p.get('shopify');
   const e = p.get('ebay');
+  const t = p.get('etsy');
   if(s === 'connected'){ toast('Shopify connected — real-time sync on','success'); refreshChannels().then(()=>openShopifyModal()); }
   else if(s === 'error'){ toast('Shopify connection failed or was cancelled','error'); }
   else if(e === 'connected'){ toast('eBay connected','success'); refreshChannels().then(()=>openEbayModal()); }
   else if(e === 'error'){ toast('eBay connection failed or was cancelled','error'); }
+  else if(t === 'connected'){ toast('Etsy connected','success'); refreshChannels().then(()=>openEtsyModal()); }
+  else if(t === 'error'){ toast('Etsy connection failed or was cancelled','error'); }
   else return;
   // Clean the URL so a refresh doesn't re-trigger.
   history.replaceState(null, '', location.pathname);
@@ -2685,6 +2691,101 @@ async function disconnectEbay(){
     if(!res.ok){ const d=await res.json().catch(()=>({})); toast(d.error||'Could not disconnect','error'); return; }
     toast('eBay disconnected','info');
     ebayConn=null; await renderEbayBody(); await refreshChannels();
+  } catch(e){ toast('Network error: '+e.message,'error'); }
+}
+
+// ── ETSY CHANNEL ──────────────────────────────────────────────
+let etsyConn = null; // { shopDomain, status, lastSyncedAt } or null
+
+function openEtsyModal(){
+  const existing = document.getElementById('etsyModal'); if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id='etsyModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow:auto">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Etsy</div>
+        <button onclick="closeEtsyModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div id="etsyBody" style="padding:20px"><div style="text-align:center;color:var(--muted);font-size:13px;padding:20px">Loading…</div></div>
+    </div>`;
+  document.body.appendChild(modal);
+  renderEtsyBody();
+}
+function closeEtsyModal(){ document.getElementById('etsyModal')?.remove(); }
+
+async function renderEtsyBody(forceForm){
+  await refreshChannels();
+  const body = document.getElementById('etsyBody');
+  if(!body) return;
+  if(etsyConn && !forceForm){
+    const last = etsyConn.lastSyncedAt ? new Date(etsyConn.lastSyncedAt).toLocaleString() : 'never';
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--green-bg);border:1px solid rgba(0,200,150,0.25);border-radius:10px;margin-bottom:14px">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">${escapeAttr(etsyConn.shopDomain||'Connected')}</div>
+        <div style="font-size:11px;color:var(--muted)">Last synced: ${last}</div></div>
+      </div>
+      <button class="topbar-btn primary" id="etsySyncBtn" onclick="syncEtsy()" style="width:100%;justify-content:center;padding:12px;margin-bottom:10px">Sync unshipped orders now</button>
+      <div style="display:flex;gap:10px">
+        <button onclick="renderEtsyBody(true)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Reconnect</button>
+        <button onclick="disconnectEtsy()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Disconnect</button>
+      </div>
+      <div id="etsySyncMsg" style="font-size:12px;margin-top:12px"></div>`;
+  } else {
+    body.innerHTML = `
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+        Import unshipped Etsy orders here to rate-shop, batch, and print. When you buy a label, the order is marked shipped on Etsy with tracking — automatically.
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
+          Click <strong>Connect</strong> to sign in on Etsy and approve access, then land back here — no tokens to copy.
+        </div>
+      </div>
+      <button class="topbar-btn primary" id="etsyConnectBtn" onclick="installEtsy()" style="width:100%;justify-content:center;padding:12px;margin-top:6px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14L21 3M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/></svg>
+        Connect Etsy
+      </button>
+      <div id="etsyConnectMsg" style="font-size:12px;margin-top:12px"></div>`;
+  }
+}
+
+// Start the OAuth install: get the consent URL, then redirect the browser to
+// Etsy. On approval, Etsy bounces back to /shipping?etsy=connected.
+async function installEtsy(){
+  const msg = document.getElementById('etsyConnectMsg');
+  const btn = document.getElementById('etsyConnectBtn'); btn.disabled=true; btn.textContent='Redirecting to Etsy…';
+  try {
+    const res = await fetch('/api/seller/channels/etsy/install', { method:'POST', headers:authHeaders() });
+    const data = await res.json();
+    if(!res.ok || !data.url){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect Etsy'; return; }
+    window.location.href = data.url;
+  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect Etsy'; }
+}
+
+async function syncEtsy(){
+  const btn = document.getElementById('etsySyncBtn'); const msg = document.getElementById('etsySyncMsg');
+  btn.disabled=true; btn.textContent='Syncing…'; msg.textContent='';
+  try {
+    const res = await fetch('/api/seller/channels/etsy/sync', { method:'POST', headers:authHeaders() });
+    const data = await res.json();
+    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    else {
+      msg.style.color='var(--green)';
+      msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unshipped on Etsy).`;
+      if(data.imported>0){ ordersLoaded=false; renderOrders(); }
+      await refreshChannels();
+    }
+  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  finally { if(btn){ btn.disabled=false; btn.textContent='Sync unshipped orders now'; } }
+}
+
+async function disconnectEtsy(){
+  if(!confirm('Disconnect this Etsy shop? Imported orders stay; new ones won’t sync.')) return;
+  try {
+    const res = await fetch('/api/seller/channels/etsy', { method:'DELETE', headers:authHeaders() });
+    if(!res.ok){ const d=await res.json().catch(()=>({})); toast(d.error||'Could not disconnect','error'); return; }
+    toast('Etsy disconnected','info');
+    etsyConn=null; await renderEtsyBody(); await refreshChannels();
   } catch(e){ toast('Network error: '+e.message,'error'); }
 }
 

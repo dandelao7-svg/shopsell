@@ -42,6 +42,7 @@ const { mergeLabels } = require('./lib/labelmerge');
 const shopify      = require('./lib/shopify');
 const amazon       = require('./lib/amazon');
 const ebay         = require('./lib/ebay');
+const etsy         = require('./lib/etsy');
 const crypto       = require('crypto');
 const dns          = require('dns').promises;
 
@@ -156,6 +157,8 @@ async function loadChannelCreds(sellerId, channel) {
   if (channel === 'shopify') return ensureFreshShopifyToken(sellerId, creds);
   // eBay user tokens expire in ~2h; renew before use.
   if (channel === 'ebay') return ensureFreshEbayToken(sellerId, creds);
+  // Etsy access tokens expire in ~1h; renew before use (+ attach the keystring).
+  if (channel === 'etsy') return ensureFreshEtsyToken(sellerId, creds);
   return creds;
 }
 
@@ -236,6 +239,42 @@ async function ensureFreshEbayToken(sellerId, creds) {
   }
 }
 
+// Build the encrypted-at-rest Etsy creds blob. Etsy tokens are short-lived
+// (~1h); we stamp the access-token expiry and keep the resolved shop id/name.
+function etsyCredsFromToken(tok, prev = {}) {
+  const now = Date.now();
+  return {
+    accessToken: tok.accessToken,
+    refreshToken: tok.refreshToken || prev.refreshToken || null,
+    accessTokenExpiresAt: tok.expiresIn ? now + tok.expiresIn * 1000 : null,
+    shopId: prev.shopId || null,
+    shopName: prev.shopName || null,
+  };
+}
+
+// Return Etsy creds with a valid access token and the app keystring attached
+// (every Etsy request needs the keystring as the x-api-key header). Refresh
+// shortly before expiry and persist; null when the refresh token has lapsed.
+async function ensureFreshEtsyToken(sellerId, creds) {
+  const SKEW_MS = 2 * 60 * 1000;
+  const cfg = etsyAppConfig();
+  const withKey = (c) => ({ ...c, keystring: cfg.keystring });
+  if (!creds.refreshToken || !creds.accessTokenExpiresAt) return withKey(creds);
+  if (Date.now() < creds.accessTokenExpiresAt - SKEW_MS) return withKey(creds);
+  if (!cfg.configured) return withKey(creds);
+  try {
+    const tok = await etsy.refreshAccessToken({ keystring: cfg.keystring, refreshToken: creds.refreshToken });
+    const fresh = etsyCredsFromToken(tok, creds);
+    await db.saveChannelConnection(sellerId, 'etsy', {
+      shopDomain: creds.shopDomain, credentials: cryptoLib.encrypt(fresh), status: 'verified',
+    });
+    return withKey({ ...fresh, shopDomain: creds.shopDomain });
+  } catch (e) {
+    console.error(`Etsy token refresh failed for seller ${sellerId}:`, e.message);
+    return null; // refresh token likely expired → seller must reconnect
+  }
+}
+
 const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 
 // Push tracking back to the source channel as a fulfillment. Best-effort: a
@@ -244,7 +283,7 @@ const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier }) {
   if (!order || !order.externalId || !trackingNumber) return { skipped: 'not a channel order' };
   const channel = order.channel;
-  if (channel !== 'shopify' && channel !== 'amazon' && channel !== 'ebay') return { skipped: `channel ${channel}` };
+  if (!['shopify', 'amazon', 'ebay', 'etsy'].includes(channel)) return { skipped: `channel ${channel}` };
   try {
     const creds = await loadChannelCreds(sellerId, channel);
     if (!creds) return { ok: false, channel, error: 'channel not connected (reconnect needed)' };
@@ -253,6 +292,8 @@ async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier
       await shopify.createFulfillment(creds, order.externalId, { trackingNumber, carrierName });
     } else if (channel === 'ebay') {
       await ebay.createFulfillment(creds, order, { trackingNumber, carrierName });
+    } else if (channel === 'etsy') {
+      await etsy.createFulfillment(creds, order, { trackingNumber, carrierName });
     } else {
       await amazon.confirmShipment(creds, order, { trackingNumber, carrierName });
     }
@@ -318,6 +359,17 @@ function ebayAppConfig() {
   const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
   const callbackUrl = /^https:\/\//.test(base) ? `${base}/api/channels/ebay/callback` : null;
   return { apiKey, apiSecret, ruName, callbackUrl, configured: !!(apiKey && apiSecret && ruName) };
+}
+
+// Etsy OpenAPI v3 OAuth config (PKCE public client — the keystring is the
+// client_id AND the x-api-key header; no client secret). Register the callback
+// <ALLOWED_ORIGIN>/api/channels/etsy/callback in the Etsy app settings.
+const ETSY_SCOPES = 'transactions_r transactions_w';
+function etsyAppConfig() {
+  const keystring = process.env.ETSY_KEYSTRING; // API key (client_id + x-api-key)
+  const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
+  const redirectUri = /^https:\/\//.test(base) ? `${base}/api/channels/etsy/callback` : null;
+  return { keystring, redirectUri, configured: !!(keystring && redirectUri) };
 }
 
 // eBay Marketplace Account Deletion notification config. The endpoint URL used
@@ -3141,6 +3193,85 @@ app.delete('/api/seller/channels/ebay', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Disconnect ebay error:', err);
+    res.status(500).json({ error: 'Failed to disconnect.' });
+  }
+});
+
+/* ── Etsy (OAuth + PKCE) ──────────────────────────────────────
+   Like eBay, but PKCE: the per-install code_verifier rides in the signed
+   `state` JWT so the callback can complete the token exchange. */
+
+app.post('/api/seller/channels/etsy/install', requireAuth, async (req, res) => {
+  try {
+    const cfg = etsyAppConfig();
+    if (!cfg.configured) {
+      return res.status(500).json({ error: 'Etsy app is not configured on this server (ETSY_KEYSTRING / ALLOWED_ORIGIN).' });
+    }
+    const { codeVerifier, codeChallenge } = etsy.generatePkce();
+    const state = jwt.sign(
+      { sellerId: req.seller.sellerId, purpose: 'etsy_oauth', codeVerifier, nonce: crypto.randomBytes(8).toString('hex') },
+      process.env.JWT_SECRET, { expiresIn: '10m' }
+    );
+    const url = etsy.buildInstallUrl({ keystring: cfg.keystring, scopes: ETSY_SCOPES, redirectUri: cfg.redirectUri, state, codeChallenge });
+    res.json({ url });
+  } catch (err) {
+    console.error('Etsy install error:', err);
+    res.status(500).json({ error: 'Could not start Etsy install.' });
+  }
+});
+
+app.get('/api/channels/etsy/callback', async (req, res) => {
+  const back = (ok) => res.redirect(`${(process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '')}/shipping?etsy=${ok ? 'connected' : 'error'}`);
+  try {
+    const cfg = etsyAppConfig();
+    if (!cfg.configured) return back(false);
+    const { code, state } = req.query;
+    if (!code || !state) return back(false);
+
+    let claims;
+    try { claims = jwt.verify(state, process.env.JWT_SECRET); } catch (e) { return back(false); }
+    if (claims.purpose !== 'etsy_oauth' || !claims.codeVerifier) return back(false);
+
+    const tok = await etsy.exchangeCodeForToken({
+      keystring: cfg.keystring, redirectUri: cfg.redirectUri, code, codeVerifier: claims.codeVerifier,
+    });
+    const shop = await etsy.getShop({ keystring: cfg.keystring, accessToken: tok.accessToken });
+    const creds = etsyCredsFromToken(tok, shop);
+    await db.saveChannelConnection(claims.sellerId, 'etsy', {
+      shopDomain: shop.shopName || 'Etsy shop', credentials: cryptoLib.encrypt(creds), status: 'verified',
+    });
+    back(true);
+  } catch (err) {
+    console.error('Etsy callback error:', err.message);
+    back(false);
+  }
+});
+
+app.post('/api/seller/channels/etsy/sync', requireAuth, async (req, res) => {
+  try {
+    const creds = await loadChannelCreds(req.seller.sellerId, 'etsy');
+    if (!creds) return res.status(400).json({ error: 'Connect an Etsy shop first.', channelSetupRequired: true });
+
+    const receipts = await etsy.fetchUnshippedReceipts(creds);
+    let imported = 0, skipped = 0;
+    for (const r of receipts) {
+      const outcome = await importChannelOrder(req.seller.sellerId, 'etsy', etsy.mapEtsyReceipt(r));
+      if (outcome === 'imported') imported++; else skipped++;
+    }
+    await db.touchChannelSync(req.seller.sellerId, 'etsy');
+    res.json({ imported, skipped, total: receipts.length });
+  } catch (err) {
+    console.error('Etsy sync error:', err);
+    res.status(502).json({ error: 'Sync failed: ' + err.message });
+  }
+});
+
+app.delete('/api/seller/channels/etsy', requireAuth, async (req, res) => {
+  try {
+    await db.deleteChannelConnection(req.seller.sellerId, 'etsy');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Disconnect etsy error:', err);
     res.status(500).json({ error: 'Failed to disconnect.' });
   }
 });
