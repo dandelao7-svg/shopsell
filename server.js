@@ -143,12 +143,55 @@ function carrierNotConnected(res, carrier, verb = 'shipping') {
 async function loadChannelCreds(sellerId, channel) {
   const row = await db.getChannelConnection(sellerId, channel);
   if (!row) return null;
+  let secrets;
   try {
-    const secrets = cryptoLib.decrypt(row.credentials);
-    return { ...secrets, shopDomain: row.shopDomain || secrets.shopDomain };
+    secrets = cryptoLib.decrypt(row.credentials);
   } catch (e) {
     console.error(`Failed to decrypt ${channel} creds for seller ${sellerId}:`, e.message);
     return null;
+  }
+  const creds = { ...secrets, shopDomain: row.shopDomain || secrets.shopDomain };
+  // Shopify offline tokens now expire; renew before use (and persist the roll).
+  if (channel === 'shopify') return ensureFreshShopifyToken(sellerId, creds);
+  return creds;
+}
+
+// Build the encrypted-at-rest Shopify creds blob from a token response,
+// stamping absolute expiry timestamps so we can tell when to refresh.
+function shopifyCredsFromToken(tok, shopDomain) {
+  const now = Date.now();
+  return {
+    shopDomain,
+    accessToken: tok.accessToken,
+    refreshToken: tok.refreshToken || null,
+    accessTokenExpiresAt:  tok.expiresIn ? now + tok.expiresIn * 1000 : null,
+    refreshTokenExpiresAt: tok.refreshTokenExpiresIn ? now + tok.refreshTokenExpiresIn * 1000 : null,
+  };
+}
+
+// Return Shopify creds with a valid access token. Expiring offline tokens are
+// short-lived, so refresh (rotating the refresh token) shortly before expiry
+// and persist the new pair. Returns the creds unchanged when there's nothing
+// to refresh (legacy non-expiring token), or null when refresh fails and the
+// seller must reconnect (refresh token expired).
+async function ensureFreshShopifyToken(sellerId, creds) {
+  const SKEW_MS = 2 * 60 * 1000; // renew ~2 min before expiry
+  if (!creds.refreshToken || !creds.accessTokenExpiresAt) return creds;     // legacy/non-expiring
+  if (Date.now() < creds.accessTokenExpiresAt - SKEW_MS) return creds;      // still valid
+  const cfg = shopifyAppConfig();
+  if (!cfg.configured) return creds;
+  try {
+    const tok = await shopify.refreshOfflineToken(creds.shopDomain, {
+      apiKey: cfg.apiKey, apiSecret: cfg.apiSecret, refreshToken: creds.refreshToken,
+    });
+    const fresh = shopifyCredsFromToken(tok, creds.shopDomain);
+    await db.saveChannelConnection(sellerId, 'shopify', {
+      shopDomain: creds.shopDomain, credentials: cryptoLib.encrypt(fresh), status: 'verified',
+    });
+    return fresh;
+  } catch (e) {
+    console.error(`Shopify token refresh failed for seller ${sellerId}:`, e.message);
+    return null; // refresh token likely expired → seller must reconnect
   }
 }
 
@@ -2817,17 +2860,17 @@ app.get('/api/channels/shopify/callback', async (req, res) => {
     const shopDomain = shopify.normalizeShopDomain(shop);
     if (claims.purpose !== 'shopify_oauth' || claims.shop !== shopDomain) return back(false);
 
-    const { accessToken } = await shopify.exchangeCodeForToken(shopDomain, {
+    const tok = await shopify.exchangeCodeForToken(shopDomain, {
       apiKey: cfg.apiKey, apiSecret: cfg.apiSecret, code,
     });
 
-    const credentials = cryptoLib.encrypt({ accessToken, shopDomain });
+    const credentials = cryptoLib.encrypt(shopifyCredsFromToken(tok, shopDomain));
     await db.saveChannelConnection(claims.sellerId, 'shopify', { shopDomain, credentials, status: 'verified' });
 
     // Register the orders/create webhook (verified later with the app secret).
     const callbackUrl = channelWebhookUrl(claims.sellerId);
     if (callbackUrl) {
-      await shopify.ensureOrderWebhook({ shopDomain, accessToken }, callbackUrl).catch(e =>
+      await shopify.ensureOrderWebhook({ shopDomain, accessToken: tok.accessToken }, callbackUrl).catch(e =>
         console.error('Shopify webhook registration failed:', e.message));
     }
     back(true);
