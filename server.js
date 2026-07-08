@@ -201,12 +201,12 @@ const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 // channel failure must never break a label purchase. No-op for non-channel
 // orders or when the channel isn't connected.
 async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier }) {
-  if (!order || !order.externalId || !trackingNumber) return;
+  if (!order || !order.externalId || !trackingNumber) return { skipped: 'not a channel order' };
   const channel = order.channel;
-  if (channel !== 'shopify' && channel !== 'amazon') return;
+  if (channel !== 'shopify' && channel !== 'amazon') return { skipped: `channel ${channel}` };
   try {
     const creds = await loadChannelCreds(sellerId, channel);
-    if (!creds) return;
+    if (!creds) return { ok: false, channel, error: 'channel not connected (reconnect needed)' };
     const carrierName = CARRIER_DISPLAY[carrier] || carrier;
     if (channel === 'shopify') {
       await shopify.createFulfillment(creds, order.externalId, { trackingNumber, carrierName });
@@ -214,8 +214,10 @@ async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier
       await amazon.confirmShipment(creds, order, { trackingNumber, carrierName });
     }
     console.log(`${channel} fulfillment pushed for order ${order.id} (${trackingNumber}).`);
+    return { ok: true, channel };
   } catch (e) {
     console.error(`${channel} fulfillment push failed for order ${order.id}:`, e.message);
+    return { ok: false, channel, error: e.message };
   }
 }
 
@@ -3486,18 +3488,19 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
     }
 
     // If this label is for an imported channel order, push tracking back.
+    let channelPush = null;
     try {
       const oid = normalizeOrderId(orderId);
       if (oid !== null) {
         const ord = await db.getOrderById(oid);
         if (ord && ord.sellerId === req.seller.sellerId) {
-          await pushChannelFulfillment(req.seller.sellerId, ord, { trackingNumber: label.trackingNumber, carrier });
+          channelPush = await pushChannelFulfillment(req.seller.sellerId, ord, { trackingNumber: label.trackingNumber, carrier });
         }
       }
-    } catch (e) { /* best-effort */ }
+    } catch (e) { channelPush = { ok: false, error: e.message }; }
 
     console.log(`Label created: ${carrier.toUpperCase()} ${label.trackingNumber} for order ${orderId}`);
-    res.json({ success: true, label });
+    res.json({ success: true, label, channelPush });
 
   } catch(err) {
     console.error('Create label error:', err);

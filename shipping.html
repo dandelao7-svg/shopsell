@@ -3087,6 +3087,7 @@ async function printLabel(){
       closeModal();
       renderOrders();
       toast(`✓ Real UPS label generated! Tracking: ${tn}`,'success');
+      reportChannelPush(data.channelPush);
 
       // Display the REAL UPS label image so it has a scannable barcode + maxicode
       if(data.label.labelImage){
@@ -4892,6 +4893,7 @@ async function generateQuickShipLabel(){
       qsLabelData.serviceName    = data.label.serviceName || qsLabelData.service;
       qsLabelData.voided         = false;
       apiSuccess = true;
+      reportChannelPush(data.channelPush);
     } else {
       apiError = data.error || 'Unknown error from carrier';
     }
@@ -5291,6 +5293,17 @@ async function loadHistory(forceRefresh = false){
   })();
 
   return historyLoadInFlight;
+}
+
+// Show the result of pushing tracking back to the source sales channel
+// (Shopify/Amazon). null = not a channel order (nothing to report).
+function reportChannelPush(cp){
+  if(!cp) return;
+  if(cp.ok){
+    toast(`✓ Marked fulfilled on ${cp.channel} with tracking`,'success');
+  } else if(cp.error){
+    toast(`⚠ Couldn't mark fulfilled on ${cp.channel||'channel'}: ${cp.error}`,'error');
+  }
 }
 
 // Server saves shipments automatically when /api/shipping/label succeeds.
