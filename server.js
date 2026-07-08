@@ -43,6 +43,7 @@ const shopify      = require('./lib/shopify');
 const amazon       = require('./lib/amazon');
 const ebay         = require('./lib/ebay');
 const etsy         = require('./lib/etsy');
+const tiktok       = require('./lib/tiktok');
 const crypto       = require('crypto');
 const dns          = require('dns').promises;
 
@@ -159,6 +160,8 @@ async function loadChannelCreds(sellerId, channel) {
   if (channel === 'ebay') return ensureFreshEbayToken(sellerId, creds);
   // Etsy access tokens expire in ~1h; renew before use (+ attach the keystring).
   if (channel === 'etsy') return ensureFreshEtsyToken(sellerId, creds);
+  // TikTok tokens expire; renew before use (+ attach app_key/app_secret for signing).
+  if (channel === 'tiktok') return ensureFreshTikTokToken(sellerId, creds);
   return creds;
 }
 
@@ -275,6 +278,43 @@ async function ensureFreshEtsyToken(sellerId, creds) {
   }
 }
 
+// Build the encrypted-at-rest TikTok creds blob. Keeps the resolved shop cipher
+// and stamps absolute token expiries.
+function tiktokCredsFromToken(tok, prev = {}) {
+  return {
+    accessToken: tok.accessToken,
+    refreshToken: tok.refreshToken || prev.refreshToken || null,
+    accessTokenExpiresAt: tok.accessTokenExpiresAt || null,
+    refreshTokenExpiresAt: tok.refreshTokenExpiresAt || prev.refreshTokenExpiresAt || null,
+    shopId: prev.shopId || null,
+    shopCipher: prev.shopCipher || null,
+    shopName: prev.shopName || null,
+  };
+}
+
+// Return TikTok creds with a valid access token and the app_key/app_secret
+// attached (every signed request needs them). Refresh shortly before expiry and
+// persist; null when the refresh token has lapsed (seller must reconnect).
+async function ensureFreshTikTokToken(sellerId, creds) {
+  const SKEW_MS = 5 * 60 * 1000; // TikTok is strict on skew; renew early
+  const cfg = tiktokAppConfig();
+  const withKey = (c) => ({ ...c, appKey: cfg.appKey, appSecret: cfg.appSecret });
+  if (!creds.refreshToken || !creds.accessTokenExpiresAt) return withKey(creds);
+  if (Date.now() < creds.accessTokenExpiresAt - SKEW_MS) return withKey(creds);
+  if (!cfg.configured) return withKey(creds);
+  try {
+    const tok = await tiktok.refreshToken({ appKey: cfg.appKey, appSecret: cfg.appSecret, refreshToken: creds.refreshToken });
+    const fresh = tiktokCredsFromToken(tok, creds);
+    await db.saveChannelConnection(sellerId, 'tiktok', {
+      shopDomain: creds.shopDomain, credentials: cryptoLib.encrypt(fresh), status: 'verified',
+    });
+    return withKey({ ...fresh, shopDomain: creds.shopDomain });
+  } catch (e) {
+    console.error(`TikTok token refresh failed for seller ${sellerId}:`, e.message);
+    return null; // refresh token likely expired → seller must reconnect
+  }
+}
+
 const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 
 // Push tracking back to the source channel as a fulfillment. Best-effort: a
@@ -283,7 +323,7 @@ const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier }) {
   if (!order || !order.externalId || !trackingNumber) return { skipped: 'not a channel order' };
   const channel = order.channel;
-  if (!['shopify', 'amazon', 'ebay', 'etsy'].includes(channel)) return { skipped: `channel ${channel}` };
+  if (!['shopify', 'amazon', 'ebay', 'etsy', 'tiktok'].includes(channel)) return { skipped: `channel ${channel}` };
   try {
     const creds = await loadChannelCreds(sellerId, channel);
     if (!creds) return { ok: false, channel, error: 'channel not connected (reconnect needed)' };
@@ -294,6 +334,8 @@ async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier
       await ebay.createFulfillment(creds, order, { trackingNumber, carrierName });
     } else if (channel === 'etsy') {
       await etsy.createFulfillment(creds, order, { trackingNumber, carrierName });
+    } else if (channel === 'tiktok') {
+      await tiktok.createFulfillment(creds, order, { trackingNumber, carrierName });
     } else {
       await amazon.confirmShipment(creds, order, { trackingNumber, carrierName });
     }
@@ -370,6 +412,17 @@ function etsyAppConfig() {
   const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
   const redirectUri = /^https:\/\//.test(base) ? `${base}/api/channels/etsy/callback` : null;
   return { keystring, redirectUri, configured: !!(keystring && redirectUri) };
+}
+
+// TikTok Shop Open API config (your one app: app_key + app_secret, server-side).
+// Register the callback <ALLOWED_ORIGIN>/api/channels/tiktok/callback as the
+// app's redirect URL in the TikTok Shop Partner Center.
+function tiktokAppConfig() {
+  const appKey = process.env.TIKTOK_APP_KEY;
+  const appSecret = process.env.TIKTOK_APP_SECRET;
+  const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
+  const callbackUrl = /^https:\/\//.test(base) ? `${base}/api/channels/tiktok/callback` : null;
+  return { appKey, appSecret, callbackUrl, configured: !!(appKey && appSecret) };
 }
 
 // eBay Marketplace Account Deletion notification config. The endpoint URL used
@@ -3272,6 +3325,82 @@ app.delete('/api/seller/channels/etsy', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Disconnect etsy error:', err);
+    res.status(500).json({ error: 'Failed to disconnect.' });
+  }
+});
+
+/* ── TikTok Shop (OAuth + HMAC-signed API) ────────────────────
+   Seller consent returns ?code=<auth_code>&state=<jwt> to the callback (the
+   redirect URL is registered in the TikTok Shop Partner Center). We exchange
+   the code, resolve the shop cipher, and store it all encrypted. */
+
+app.post('/api/seller/channels/tiktok/install', requireAuth, async (req, res) => {
+  try {
+    const cfg = tiktokAppConfig();
+    if (!cfg.configured) {
+      return res.status(500).json({ error: 'TikTok app is not configured on this server (TIKTOK_APP_KEY / TIKTOK_APP_SECRET).' });
+    }
+    const state = jwt.sign(
+      { sellerId: req.seller.sellerId, purpose: 'tiktok_oauth', nonce: crypto.randomBytes(8).toString('hex') },
+      process.env.JWT_SECRET, { expiresIn: '10m' }
+    );
+    res.json({ url: tiktok.buildInstallUrl({ appKey: cfg.appKey, state }) });
+  } catch (err) {
+    console.error('TikTok install error:', err);
+    res.status(500).json({ error: 'Could not start TikTok install.' });
+  }
+});
+
+app.get('/api/channels/tiktok/callback', async (req, res) => {
+  const back = (ok) => res.redirect(`${(process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '')}/shipping?tiktok=${ok ? 'connected' : 'error'}`);
+  try {
+    const cfg = tiktokAppConfig();
+    if (!cfg.configured) return back(false);
+    const { code, state } = req.query;
+    if (!code || !state) return back(false);
+
+    let claims;
+    try { claims = jwt.verify(state, process.env.JWT_SECRET); } catch (e) { return back(false); }
+    if (claims.purpose !== 'tiktok_oauth') return back(false);
+
+    const tok = await tiktok.getToken({ appKey: cfg.appKey, appSecret: cfg.appSecret, authCode: code });
+    const shop = await tiktok.getShop({ appKey: cfg.appKey, appSecret: cfg.appSecret, accessToken: tok.accessToken });
+    const creds = tiktokCredsFromToken(tok, shop);
+    await db.saveChannelConnection(claims.sellerId, 'tiktok', {
+      shopDomain: shop.shopName || 'TikTok shop', credentials: cryptoLib.encrypt(creds), status: 'verified',
+    });
+    back(true);
+  } catch (err) {
+    console.error('TikTok callback error:', err.message);
+    back(false);
+  }
+});
+
+app.post('/api/seller/channels/tiktok/sync', requireAuth, async (req, res) => {
+  try {
+    const creds = await loadChannelCreds(req.seller.sellerId, 'tiktok');
+    if (!creds) return res.status(400).json({ error: 'Connect a TikTok shop first.', channelSetupRequired: true });
+
+    const ttOrders = await tiktok.fetchUnfulfilledOrders(creds);
+    let imported = 0, skipped = 0;
+    for (const o of ttOrders) {
+      const outcome = await importChannelOrder(req.seller.sellerId, 'tiktok', tiktok.mapTikTokOrder(o));
+      if (outcome === 'imported') imported++; else skipped++;
+    }
+    await db.touchChannelSync(req.seller.sellerId, 'tiktok');
+    res.json({ imported, skipped, total: ttOrders.length });
+  } catch (err) {
+    console.error('TikTok sync error:', err);
+    res.status(502).json({ error: 'Sync failed: ' + err.message });
+  }
+});
+
+app.delete('/api/seller/channels/tiktok', requireAuth, async (req, res) => {
+  try {
+    await db.deleteChannelConnection(req.seller.sellerId, 'tiktok');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Disconnect tiktok error:', err);
     res.status(500).json({ error: 'Failed to disconnect.' });
   }
 });
