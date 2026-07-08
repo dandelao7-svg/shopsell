@@ -1864,6 +1864,11 @@ function mapDbOrderToUI(o){
     ? items.map(it => `${it.name||'Item'} × ${it.qty||1}`).join(', ')
     : `${items.length || 0} items`;
 
+  // Total shipment weight = sum of line-item weights (stored in OUNCES) × qty,
+  // shown in lbs. Falls back to '—' when no item carries a weight.
+  const totalOz = items.reduce((s, it) => s + (Number(it.weight) || 0) * (it.qty || 1), 0);
+  const weightLabel = totalOz > 0 ? `${(totalOz / 16).toFixed(2)} lbs` : '— lbs';
+
   // Status mapping from DB to UI:
   //   pending/processing → awaiting (no label printed)
   //   shipped            → shipped
@@ -1891,7 +1896,7 @@ function mapDbOrderToUI(o){
     zip:      customerInfo.zip   || '',
     items:    itemsLabel,
     rawItems: items,
-    weight:   '— lbs',
+    weight:   weightLabel,
     carrier:  null,                                      // set when shipment exists
     status:   uiStatus,
     tracking: null,                                      // set when shipment exists
