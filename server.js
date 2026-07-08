@@ -41,6 +41,7 @@ const cryptoLib    = require('./lib/crypto');
 const { mergeLabels } = require('./lib/labelmerge');
 const shopify      = require('./lib/shopify');
 const amazon       = require('./lib/amazon');
+const ebay         = require('./lib/ebay');
 const crypto       = require('crypto');
 const dns          = require('dns').promises;
 
@@ -153,6 +154,8 @@ async function loadChannelCreds(sellerId, channel) {
   const creds = { ...secrets, shopDomain: row.shopDomain || secrets.shopDomain };
   // Shopify offline tokens now expire; renew before use (and persist the roll).
   if (channel === 'shopify') return ensureFreshShopifyToken(sellerId, creds);
+  // eBay user tokens expire in ~2h; renew before use.
+  if (channel === 'ebay') return ensureFreshEbayToken(sellerId, creds);
   return creds;
 }
 
@@ -195,6 +198,44 @@ async function ensureFreshShopifyToken(sellerId, creds) {
   }
 }
 
+// Build the encrypted-at-rest eBay creds blob, stamping absolute expiry
+// timestamps. eBay refresh tokens don't rotate, so we preserve the existing
+// refresh token + its expiry across access-token renewals.
+function ebayCredsFromToken(tok, prev = {}) {
+  const now = Date.now();
+  return {
+    accessToken: tok.accessToken,
+    refreshToken: tok.refreshToken || prev.refreshToken || null,
+    accessTokenExpiresAt:  tok.expiresIn ? now + tok.expiresIn * 1000 : null,
+    refreshTokenExpiresAt: tok.refreshTokenExpiresIn ? now + tok.refreshTokenExpiresIn * 1000 : (prev.refreshTokenExpiresAt || null),
+    username: prev.username || null,
+  };
+}
+
+// Return eBay creds with a valid access token, refreshing shortly before expiry
+// and persisting the new access token. Returns creds unchanged when nothing to
+// refresh, or null when the refresh token has lapsed (seller must reconnect).
+async function ensureFreshEbayToken(sellerId, creds) {
+  const SKEW_MS = 2 * 60 * 1000; // renew ~2 min before expiry
+  if (!creds.refreshToken || !creds.accessTokenExpiresAt) return creds;
+  if (Date.now() < creds.accessTokenExpiresAt - SKEW_MS) return creds;
+  const cfg = ebayAppConfig();
+  if (!cfg.configured) return creds;
+  try {
+    const tok = await ebay.refreshUserToken({
+      clientId: cfg.apiKey, clientSecret: cfg.apiSecret, refreshToken: creds.refreshToken, scopes: EBAY_SCOPES,
+    });
+    const fresh = ebayCredsFromToken(tok, creds);
+    await db.saveChannelConnection(sellerId, 'ebay', {
+      shopDomain: creds.shopDomain, credentials: cryptoLib.encrypt(fresh), status: 'verified',
+    });
+    return { ...fresh, shopDomain: creds.shopDomain };
+  } catch (e) {
+    console.error(`eBay token refresh failed for seller ${sellerId}:`, e.message);
+    return null; // refresh token likely expired → seller must reconnect
+  }
+}
+
 const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 
 // Push tracking back to the source channel as a fulfillment. Best-effort: a
@@ -203,13 +244,15 @@ const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier }) {
   if (!order || !order.externalId || !trackingNumber) return { skipped: 'not a channel order' };
   const channel = order.channel;
-  if (channel !== 'shopify' && channel !== 'amazon') return { skipped: `channel ${channel}` };
+  if (channel !== 'shopify' && channel !== 'amazon' && channel !== 'ebay') return { skipped: `channel ${channel}` };
   try {
     const creds = await loadChannelCreds(sellerId, channel);
     if (!creds) return { ok: false, channel, error: 'channel not connected (reconnect needed)' };
     const carrierName = CARRIER_DISPLAY[carrier] || carrier;
     if (channel === 'shopify') {
       await shopify.createFulfillment(creds, order.externalId, { trackingNumber, carrierName });
+    } else if (channel === 'ebay') {
+      await ebay.createFulfillment(creds, order, { trackingNumber, carrierName });
     } else {
       await amazon.confirmShipment(creds, order, { trackingNumber, carrierName });
     }
@@ -258,6 +301,23 @@ function shopifyAppConfig() {
   const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
   const redirectUri = /^https:\/\//.test(base) ? `${base}/api/channels/shopify/callback` : null;
   return { apiKey, apiSecret, redirectUri, configured: !!(apiKey && apiSecret && redirectUri) };
+}
+
+// eBay OAuth config (your one app: App ID / Cert ID / RuName, server-side).
+// The callback URL <ALLOWED_ORIGIN>/api/channels/ebay/callback must be
+// registered against the RuName in the eBay developer portal.
+const EBAY_SCOPES = [
+  'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+  'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
+  'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
+].join(' ');
+function ebayAppConfig() {
+  const apiKey = process.env.EBAY_API_KEY;       // App ID (client_id)
+  const apiSecret = process.env.EBAY_API_SECRET; // Cert ID (client_secret)
+  const ruName = process.env.EBAY_RU_NAME;       // redirect_uri value in OAuth
+  const base = (process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '');
+  const callbackUrl = /^https:\/\//.test(base) ? `${base}/api/channels/ebay/callback` : null;
+  return { apiKey, apiSecret, ruName, callbackUrl, configured: !!(apiKey && apiSecret && ruName) };
 }
 
 // ── STRIPE KEYS (encrypted at rest) ──────────────────────────
@@ -2990,6 +3050,87 @@ app.delete('/api/seller/channels/amazon', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Disconnect amazon error:', err);
+    res.status(500).json({ error: 'Failed to disconnect.' });
+  }
+});
+
+/* ── eBay (OAuth user token) ──────────────────────────────────
+   Mirrors Shopify: install → consent → callback → store → sync/push. The
+   seller's identity rides in a signed `state` JWT so the (unauthenticated)
+   callback can map the install back to this account. */
+
+// Begin the eBay OAuth install. Returns the consent URL to redirect to.
+app.post('/api/seller/channels/ebay/install', requireAuth, async (req, res) => {
+  try {
+    const cfg = ebayAppConfig();
+    if (!cfg.configured) {
+      return res.status(500).json({ error: 'eBay app is not configured on this server (EBAY_API_KEY / EBAY_API_SECRET / EBAY_RU_NAME).' });
+    }
+    const state = jwt.sign(
+      { sellerId: req.seller.sellerId, purpose: 'ebay_oauth', nonce: crypto.randomBytes(8).toString('hex') },
+      process.env.JWT_SECRET, { expiresIn: '10m' }
+    );
+    const url = ebay.buildInstallUrl({ clientId: cfg.apiKey, scopes: EBAY_SCOPES, ruName: cfg.ruName, state });
+    res.json({ url });
+  } catch (err) {
+    console.error('eBay install error:', err);
+    res.status(500).json({ error: 'Could not start eBay install.' });
+  }
+});
+
+// OAuth callback (top-level browser redirect — identified from the signed
+// state; eBay doesn't sign the callback, so the state JWT is the trust anchor).
+app.get('/api/channels/ebay/callback', async (req, res) => {
+  const back = (ok) => res.redirect(`${(process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '')}/shipping?ebay=${ok ? 'connected' : 'error'}`);
+  try {
+    const cfg = ebayAppConfig();
+    if (!cfg.configured) return back(false);
+    const { code, state } = req.query;
+    if (!code || !state) return back(false);
+
+    let claims;
+    try { claims = jwt.verify(state, process.env.JWT_SECRET); } catch (e) { return back(false); }
+    if (claims.purpose !== 'ebay_oauth') return back(false);
+
+    const tok = await ebay.exchangeCodeForToken({ clientId: cfg.apiKey, clientSecret: cfg.apiSecret, ruName: cfg.ruName, code });
+    const ident = await ebay.getSellerIdentity(tok.accessToken);
+    const creds = ebayCredsFromToken(tok, { username: ident?.username || null });
+    await db.saveChannelConnection(claims.sellerId, 'ebay', {
+      shopDomain: ident?.username || 'eBay', credentials: cryptoLib.encrypt(creds), status: 'verified',
+    });
+    back(true);
+  } catch (err) {
+    console.error('eBay callback error:', err.message);
+    back(false);
+  }
+});
+
+// Pull unfulfilled orders and upsert them (idempotent by external id).
+app.post('/api/seller/channels/ebay/sync', requireAuth, async (req, res) => {
+  try {
+    const creds = await loadChannelCreds(req.seller.sellerId, 'ebay');
+    if (!creds) return res.status(400).json({ error: 'Connect an eBay account first.', channelSetupRequired: true });
+
+    const ebayOrders = await ebay.fetchUnfulfilledOrders(creds);
+    let imported = 0, skipped = 0;
+    for (const eo of ebayOrders) {
+      const outcome = await importChannelOrder(req.seller.sellerId, 'ebay', ebay.mapEbayOrder(eo));
+      if (outcome === 'imported') imported++; else skipped++;
+    }
+    await db.touchChannelSync(req.seller.sellerId, 'ebay');
+    res.json({ imported, skipped, total: ebayOrders.length });
+  } catch (err) {
+    console.error('eBay sync error:', err);
+    res.status(502).json({ error: 'Sync failed: ' + err.message });
+  }
+});
+
+app.delete('/api/seller/channels/ebay', requireAuth, async (req, res) => {
+  try {
+    await db.deleteChannelConnection(req.seller.sellerId, 'ebay');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Disconnect ebay error:', err);
     res.status(500).json({ error: 'Failed to disconnect.' });
   }
 });
