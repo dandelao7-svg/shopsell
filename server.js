@@ -2902,6 +2902,28 @@ app.post('/api/seller/channels/shopify/sync', requireAuth, async (req, res) => {
   }
 });
 
+// Read-only diagnostic for the fulfillment push-back. Reports the granted
+// scopes on the stored token and (with ?orderId=<local id>) that order's open
+// fulfillment orders — no writes. Lets us tell a missing-scope 403 apart from an
+// order that has nothing left to fulfill, without buying a label.
+app.get('/api/seller/channels/shopify/diagnose', requireAuth, async (req, res) => {
+  try {
+    const creds = await loadChannelCreds(req.seller.sellerId, 'shopify');
+    if (!creds) return res.status(400).json({ error: 'Connect a Shopify store first.' });
+    let externalId = null;
+    const oid = normalizeOrderId(req.query.orderId);
+    if (oid !== null) {
+      const ord = await db.getOrderById(oid);
+      if (ord && ord.sellerId === req.seller.sellerId && ord.channel === 'shopify') externalId = ord.externalId;
+    }
+    const result = await shopify.diagnoseFulfillment(creds, externalId);
+    res.json({ ...result, localOrderId: oid, externalId });
+  } catch (err) {
+    console.error('Shopify diagnose error:', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.delete('/api/seller/channels/shopify', requireAuth, async (req, res) => {
   try {
     // Remove the registered webhook before dropping the creds (best-effort).
