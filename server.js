@@ -560,6 +560,12 @@ app.get('/returns', (req, res) => {
   res.sendFile(path.join(__dirname, 'returns.html'));
 });
 
+// Serve the platform privacy policy (public; used as the privacy-policy URL for
+// sales-channel app registrations, e.g. the eBay RuName).
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'privacy.html'));
+});
+
 // ── AUTH MIDDLEWARE ───────────────────────────────────────────
 function requireAuth(req, res, next) {
   const header = req.headers['authorization'];

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — ShopSell</title>
+<meta name="description" content="ShopSell privacy policy: what data we collect, how we use it, the third parties we share it with, and how to request deletion.">
+<meta name="robots" content="index,follow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0f; --bg2:#13131a; --bg3:#1c1c27;
+  --card:#16161e; --border:#24242f; --border2:#2f2f3d;
+  --text:#e8e8f0; --text2:#b8b8c8; --muted:#7a7a90;
+  --accent:#e63946; --accent-hover:#d32a37;
+  --green:#00c896; --gold:#ffb500;
+  --radius:14px; --maxw:820px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);
+  line-height:1.65;overflow-x:hidden;
+  background-image:radial-gradient(circle at 15% -10%, rgba(230,57,70,0.10), transparent 45%),
+                   radial-gradient(circle at 90% 5%, rgba(255,181,0,0.06), transparent 40%);
+}
+a{color:var(--gold);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+.nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(10,10,15,0.72);border-bottom:1px solid var(--border)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px;max-width:var(--maxw);margin:0 auto;padding:0 24px}
+.brand{display:flex;align-items:center;gap:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text)}
+.brand-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--gold));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px}
+.doc{padding:56px 0 100px}
+.eyebrow{font-family:'DM Mono',monospace;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold)}
+h1{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(2rem,5vw,3rem);letter-spacing:-0.5px;margin:14px 0 10px}
+h2{font-family:'Syne',sans-serif;font-weight:700;font-size:1.35rem;letter-spacing:-0.3px;margin:40px 0 12px;padding-top:8px}
+p,li{color:var(--text2);font-size:16px;margin:10px 0}
+ul{padding-left:22px}
+li{margin:6px 0}
+strong{color:var(--text);font-weight:600}
+.meta{font-family:'DM Mono',monospace;font-size:13px;color:var(--muted);margin-top:6px}
+.card{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);padding:20px 24px;margin:24px 0}
+.foot{border-top:1px solid var(--border);margin-top:60px;padding:28px 0;color:var(--muted);font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/"><span class="brand-mark">S</span> ShopSell</a>
+    <a class="link" href="/" style="color:var(--text2);font-size:14px">← Home</a>
+  </div>
+</nav>
+
+<main class="doc">
+  <div class="wrap">
+    <div class="eyebrow">Legal</div>
+    <h1>Privacy Policy</h1>
+    <p class="meta">Last updated: July 15, 2026</p>
+
+    <p>This Privacy Policy explains how <strong>ShopSell</strong> (the "Platform," "we," "us") collects,
+    uses, shares, and protects information when merchants ("sellers") use our commerce and shipping
+    platform, and when their customers ("buyers") shop the storefronts we host. By using ShopSell you
+    agree to the practices described here.</p>
+
+    <h2>1. Who we are</h2>
+    <p>ShopSell is a multi-tenant commerce and shipping platform. Sellers create hosted storefronts,
+    connect their own payment and carrier accounts, and sync orders from external sales channels.
+    ShopSell operates the software; each seller remains the merchant of record for their own store and
+    is the controller of their customers' data.</p>
+
+    <h2>2. Information we collect</h2>
+    <ul>
+      <li><strong>Account information</strong> — name, email, and login credentials for sellers who
+      register. Passwords are stored only as salted hashes.</li>
+      <li><strong>Order and customer information</strong> — when orders are placed on a storefront or
+      imported from a connected sales channel (such as Shopify, Amazon, eBay, Etsy, or TikTok Shop),
+      we process the buyer's name, shipping address, contact details, and order contents so the seller
+      can fulfill and ship the order.</li>
+      <li><strong>Payment information</strong> — buyer checkout payments are processed by the seller's
+      own <strong>Stripe</strong> account. Card details are handled directly by Stripe; ShopSell does
+      not store full card numbers.</li>
+      <li><strong>Connected-account credentials</strong> — API keys and OAuth tokens for the carrier
+      accounts (UPS, FedEx, USPS), Stripe, and sales channels that sellers connect. These secrets are
+      <strong>encrypted at rest</strong> (AES-256-GCM).</li>
+      <li><strong>Usage and technical data</strong> — basic log and request data needed to operate,
+      secure, and troubleshoot the service.</li>
+    </ul>
+
+    <h2>3. How we use information</h2>
+    <ul>
+      <li>To operate storefronts, process checkout, and import and fulfill orders.</li>
+      <li>To generate shipping rates, purchase labels, and provide tracking through connected carriers.</li>
+      <li>To push fulfillment and tracking back to the originating sales channel.</li>
+      <li>To authenticate users, secure accounts, and prevent abuse.</li>
+      <li>To send transactional email (e.g. order and account notifications).</li>
+    </ul>
+
+    <h2>4. Third-party services we share data with</h2>
+    <p>We share the minimum data necessary with the service providers a seller chooses to connect:</p>
+    <ul>
+      <li><strong>Stripe</strong> — payment processing for buyer checkout and for seller subscriptions.</li>
+      <li><strong>Shipping carriers</strong> — UPS, FedEx, and USPS for rating, labels, and tracking.</li>
+      <li><strong>Sales channels</strong> — Shopify, Amazon, eBay, Etsy, and TikTok Shop for order
+      import and fulfillment sync.</li>
+      <li><strong>Email delivery</strong> — a transactional email provider for notifications.</li>
+    </ul>
+    <p>We do not sell personal information.</p>
+
+    <h2>5. Marketplace account deletion &amp; data retention</h2>
+    <p>We retain order and account records for as long as needed to provide the service, meet the
+    seller's fulfillment and recordkeeping needs, and comply with legal obligations. Where a connected
+    sales channel provides account-deletion or closure notifications (for example, eBay's Marketplace
+    Account Deletion program), we honor them and remove the associated buyer records we hold.</p>
+    <div class="card">
+      <p style="margin:0"><strong>Requesting deletion.</strong> Buyers and sellers may request access to,
+      correction of, or deletion of their personal information by contacting us at the address below.
+      For storefront buyers, deletion requests may also be directed to the seller who operates the store.</p>
+    </div>
+
+    <h2>6. Security</h2>
+    <p>We use industry-standard measures to protect data, including encryption in transit (HTTPS) and
+    encryption at rest for connected-account secrets. No method of transmission or storage is 100%
+    secure, but we work to protect your information and to limit access to it.</p>
+
+    <h2>7. Children's privacy</h2>
+    <p>ShopSell is not directed to children under 13, and we do not knowingly collect personal
+    information from them.</p>
+
+    <h2>8. Changes to this policy</h2>
+    <p>We may update this Privacy Policy from time to time. Material changes will be reflected by the
+    "Last updated" date above.</p>
+
+    <h2>9. Contact us</h2>
+    <p>Questions or requests about this policy or your data:
+    <a href="mailto:dandelao7@gmail.com">dandelao7@gmail.com</a>.</p>
+
+    <div class="foot">© 2026 ShopSell. All rights reserved.</div>
+  </div>
+</main>
+</body>
+</html>
