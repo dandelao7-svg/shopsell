@@ -1,0 +1,82 @@
+# Daily off-site backup of the production Postgres.
+#
+# Runs pg_dump against Railway's PUBLIC database URL, gzips it, and encrypts
+# the result with GPG (AES-256) before storing it as a private GitHub Actions
+# artifact. Nothing leaves this repo's private storage in plaintext — the dump
+# contains buyer PII, password hashes, and (already-encrypted) seller creds,
+# so the backup itself is encrypted at rest too.
+#
+# ─── ONE-TIME SETUP (required before this works) ─────────────────────────────
+# Add two repository secrets under GitHub → Settings → Secrets and variables →
+# Actions → New repository secret:
+#
+#   1. DATABASE_PUBLIC_URL — Railway → Postgres service → Variables → copy the
+#      value of DATABASE_PUBLIC_URL (the public TCP-proxy connection string,
+#      NOT the internal DATABASE_URL, which GitHub can't reach). If it's absent,
+#      enable "Public Networking" on the Postgres service first.
+#
+#   2. BACKUP_PASSPHRASE — a long random passphrase you generate and store in a
+#      password manager. THIS IS AS CRITICAL AS ENCRYPTION_KEY: without it the
+#      backups cannot be decrypted. Lose it and the backups are worthless.
+#
+# ─── HOW TO RESTORE A BACKUP ─────────────────────────────────────────────────
+#   1. Download the artifact from the workflow run (Actions tab → the run →
+#      Artifacts) and unzip it to get shopsell-<stamp>.sql.gz.gpg.
+#   2. Decrypt + decompress + load into a target database:
+#        gpg --batch --decrypt --passphrase "$BACKUP_PASSPHRASE" \
+#          shopsell-<stamp>.sql.gz.gpg | gunzip | psql "$TARGET_DATABASE_URL"
+#      (restore into a FRESH/empty database, then repoint the app at it.)
+
+name: DB Backup
+
+on:
+  schedule:
+    - cron: '17 8 * * *'   # daily at 08:17 UTC
+  workflow_dispatch: {}     # allow manual runs from the Actions tab
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install latest PostgreSQL client
+        # Pull pg_dump from the official PGDG apt repo so its major version is
+        # >= the server's (an older pg_dump refuses to dump a newer server).
+        run: |
+          set -euo pipefail
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Dump, compress, and encrypt
+        env:
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_PUBLIC_URL:-}" ] || [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+            echo "::error::Missing DATABASE_PUBLIC_URL and/or BACKUP_PASSPHRASE repo secrets. See the setup notes at the top of this workflow."
+            exit 1
+          fi
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          FILE="shopsell-${STAMP}.sql.gz.gpg"
+          # --no-owner/--no-privileges keep the dump portable across roles.
+          pg_dump --no-owner --no-privileges "$DATABASE_PUBLIC_URL" \
+            | gzip -9 \
+            | gpg --batch --yes --symmetric --cipher-algo AES256 \
+                  --passphrase "$BACKUP_PASSPHRASE" -o "$FILE"
+          echo "Wrote $(ls -lh "$FILE" | awk '{print $5}') encrypted backup: $FILE"
+          echo "ARTIFACT_FILE=$FILE" >> "$GITHUB_ENV"
+
+      - name: Upload encrypted backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ env.ARTIFACT_FILE }}
+          retention-days: 30
+          if-no-files-found: error
