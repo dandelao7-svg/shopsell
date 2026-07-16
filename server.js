@@ -570,6 +570,39 @@ app.get('/privacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'privacy.html'));
 });
 
+// robots.txt — let crawlers index public pages, keep the app/API out of search.
+// Served per-host so the Sitemap line matches whatever domain is being crawled.
+app.get('/robots.txt', (req, res) => {
+  const base = `https://${req.hostname}`;
+  res.type('text/plain').send(
+`User-agent: *
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /shipping
+Disallow: /login
+Disallow: /signup
+Disallow: /reset-password
+
+Sitemap: ${base}/sitemap.xml
+`);
+});
+
+// sitemap.xml — the public pages for this host. (Per-store product URLs are a
+// future enhancement; this gets the brand/marketing pages discoverable now.)
+app.get('/sitemap.xml', (req, res) => {
+  const base = `https://${req.hostname}`;
+  const today = new Date().toISOString().slice(0, 10);
+  const urls = [
+    { loc: `${base}/`,        priority: '1.0' },
+    { loc: `${base}/privacy`, priority: '0.3' },
+  ];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    urls.map(u => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>${u.priority}</priority></url>`).join('\n') +
+    `\n</urlset>\n`;
+  res.type('application/xml').send(xml);
+});
+
 // ── AUTH MIDDLEWARE ───────────────────────────────────────────
 function requireAuth(req, res, next) {
   const header = req.headers['authorization'];
