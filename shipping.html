@@ -2045,63 +2045,21 @@ function toggleInsureAmt(val){
 }
 
 async function getRate(){
-  const rateEl = document.getElementById('sb-rate');
-  rateEl.textContent = '...';
-  await new Promise(r=>setTimeout(r,800));
-  const rates = ['$8.45','$9.20','$11.75','$13.50','$15.95','$18.40'];
-  rateEl.textContent = rates[Math.floor(Math.random()*rates.length)];
-  toast('Rate updated','success');
+  // Live rate-shopping across your connected carriers happens on Quick Ship
+  // (Compare rates). The old inline "rate" here was a placeholder, so route
+  // the seller to the real flow rather than show a made-up price.
+  toast('Compare live carrier rates on the Quick Ship page.','info');
+  if(typeof showPage === 'function') showPage('quickship');
 }
 
 async function createAndPrintFromSidebar(){
   if(!selectedOrderId){ toast('Select an order first','error'); return; }
-  const order = ordersData.find(o=>o.id===selectedOrderId);
-  if(!order){ return; }
-
-  const btn = event.target.closest('button');
-  btn.disabled    = true;
-  btn.textContent = 'Generating...';
-
-  const shipperIdx = parseInt(document.getElementById('sb-from').value)||0;
-  const shipper    = shipperAccounts[shipperIdx] || shipperAccounts[0];
-  const carrier    = document.getElementById('sb-carrier').value;
-  const lbs        = parseFloat(document.getElementById('sb-weight-lbs').value)||0;
-  const oz         = parseFloat(document.getElementById('sb-weight-oz').value)||0;
-  const weight     = lbs + (oz/16);
-
-  qsLabelData = {
-    fromName:  shipper.name,
-    fromAddr:  shipper.address1||'',
-    fromCity:  shipper.city||'',
-    fromState: shipper.state||'',
-    fromZip:   shipper.zip||'',
-    toName:    order.customer,
-    toCompany: '',
-    toAddr:    order.addr||'',
-    toAddr2:   '',
-    toCity:    order.city||'Austin',
-    toState:   order.state||'TX',
-    toZip:     order.zip||'78701',
-    weight:    weight.toFixed(1),
-    carrier:   carrier.toUpperCase(),
-    service:   document.getElementById('sb-service').value,
-    serviceName: document.getElementById('sb-service').options[document.getElementById('sb-service').selectedIndex].text,
-    ref:       order.id,
-    residential: false,
-    trackingNumber: `1Z${Math.random().toString(36).toUpperCase().slice(2,10)}${Math.floor(Math.random()*9000+1000)}`,
-    labelImage: null,
-    labelUrl:   null,
-  };
-
-  order.status = 'printed';
-  renderOrders();
-  selectOrder(selectedOrderId);
-
-  btn.disabled    = false;
-  btn.innerHTML   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Create + Print Label';
-
-  printQSLabel();
-  toast(`✓ Label created for #${order.id}`,'success');
+  // Buying a real label (live carrier rate + purchase + real tracking, recorded
+  // to History and pushed back to the sales channel) happens on the Quick Ship
+  // page. The old inline flow here only fabricated a tracking number and marked
+  // the order "printed" without buying anything — route to the real flow instead.
+  toast('Buy this label on Quick Ship — real carrier rate & tracking.','info');
+  if(typeof showPage === 'function') showPage('quickship');
 }
 
 // ── PRINT PACKING SLIP ───────────────────────────────────────
@@ -3292,12 +3250,11 @@ async function deleteRule(id){
 }
 
 function printSelected(){
-  const awaiting = ordersData.filter(o=>o.status==='awaiting').length;
-  toast(`Printing ${awaiting} labels for all awaiting orders... 🖨️`,'success');
-  setTimeout(()=>{
-    ordersData.forEach(o=>{if(o.status==='awaiting')o.status='printed'});
-    renderOrders();
-  },1500);
+  // The old behavior faked "printed" on every awaiting order without buying any
+  // labels. Real labels are bought on Quick Ship (one order) or via the batch
+  // flow (select orders → Print labels). Route to the real flow, don't fake it.
+  toast('Buy real labels on Quick Ship, or select orders and use “Print labels” for a batch.','info');
+  if(typeof showPage === 'function') showPage('quickship');
 }
 
 // ── LABEL MODAL ───────────────────────────────────────────────
