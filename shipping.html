@@ -383,10 +383,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       TikTok Shop
       <span class="nav-badge" id="tiktokNavBadge" style="background:rgba(254,44,85,0.2);color:#fe2c55;display:none">•</span>
     </a>
-    <a class="nav-item locked" title="OMS module — coming soon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    <a class="nav-item" onclick="openWalmartModal()" id="nav-walmart" style="cursor:pointer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M6 9l12 6M18 9L6 15"/></svg>
       Walmart
-      <span class="coming-soon">OMS</span>
+      <span class="nav-badge" id="walmartNavBadge" style="background:rgba(0,112,201,0.2);color:#0070c9;display:none">•</span>
     </a>
 
     <div class="nav-section">Account</div>
@@ -2329,6 +2329,7 @@ async function refreshChannels(){
     ebayConn    = chans.find(c=>c.channel==='ebay')    || null;
     etsyConn    = chans.find(c=>c.channel==='etsy')    || null;
     tiktokConn  = chans.find(c=>c.channel==='tiktok')  || null;
+    walmartConn = chans.find(c=>c.channel==='walmart') || null;
     const sb = document.getElementById('shopifyNavBadge');
     if(sb) sb.style.display = shopifyConn ? 'inline-block' : 'none';
     const ab = document.getElementById('amazonNavBadge');
@@ -2339,6 +2340,8 @@ async function refreshChannels(){
     if(tb) tb.style.display = etsyConn ? 'inline-block' : 'none';
     const kb = document.getElementById('tiktokNavBadge');
     if(kb) kb.style.display = tiktokConn ? 'inline-block' : 'none';
+    const wb = document.getElementById('walmartNavBadge');
+    if(wb) wb.style.display = walmartConn ? 'inline-block' : 'none';
   } catch(e){ /* ignore */ }
 }
 
@@ -2851,6 +2854,103 @@ async function disconnectTiktok(){
     if(!res.ok){ const d=await res.json().catch(()=>({})); toast(d.error||'Could not disconnect','error'); return; }
     toast('TikTok Shop disconnected','info');
     tiktokConn=null; await renderTiktokBody(); await refreshChannels();
+  } catch(e){ toast('Network error: '+e.message,'error'); }
+}
+
+// ── WALMART CHANNEL (self-authorized: Client ID + Client Secret) ──
+let walmartConn = null; // { shopDomain, status, lastSyncedAt } or null
+function openWalmartModal(){
+  const existing = document.getElementById('walmartModal'); if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id='walmartModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow:auto">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Walmart Marketplace</div>
+        <button onclick="closeWalmartModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div id="walmartBody" style="padding:20px"><div style="text-align:center;color:var(--muted);font-size:13px;padding:20px">Loading…</div></div>
+    </div>`;
+  document.body.appendChild(modal);
+  renderWalmartBody();
+}
+function closeWalmartModal(){ document.getElementById('walmartModal')?.remove(); }
+
+async function renderWalmartBody(forceForm){
+  await refreshChannels();
+  const body = document.getElementById('walmartBody');
+  if(!body) return;
+  if(walmartConn && !forceForm){
+    const last = walmartConn.lastSyncedAt ? new Date(walmartConn.lastSyncedAt).toLocaleString() : 'never';
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(0,112,201,0.08);border:1px solid rgba(0,112,201,0.3);border-radius:10px;margin-bottom:14px">
+        <div style="width:8px;height:8px;border-radius:50%;background:#0070c9"></div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">${escapeAttr(walmartConn.shopDomain||'Connected')}</div>
+        <div style="font-size:11px;color:var(--muted)">Last synced: ${last}</div></div>
+      </div>
+      <button class="topbar-btn primary" id="walmartSyncBtn" onclick="syncWalmart()" style="width:100%;justify-content:center;padding:12px;margin-bottom:10px">Sync unshipped orders now</button>
+      <div style="display:flex;gap:10px">
+        <button onclick="renderWalmartBody(true)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Reconnect</button>
+        <button onclick="disconnectWalmart()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:9px;border-radius:9px;cursor:pointer;font-size:12px">Disconnect</button>
+      </div>
+      <div id="walmartSyncMsg" style="font-size:12px;margin-top:12px"></div>`;
+  } else {
+    body.innerHTML = `
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+        Import unshipped Walmart Marketplace orders here to rate-shop, batch, and print. When you buy a label, the order is marked shipped on Walmart with tracking — automatically.
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
+          Walmart Seller Center → <strong>Developer Portal</strong> → <strong>API Keys</strong> → copy your <strong>Client ID</strong> and <strong>Client Secret</strong>, then paste them below.
+        </div>
+      </div>
+      <div class="form-field"><label>Client ID</label><input type="text" id="walmart-clientid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+      <div class="form-field"><label>Client Secret</label><input type="password" id="walmart-secret" placeholder="••••••••••••"></div>
+      <button class="topbar-btn primary" id="walmartConnectBtn" onclick="connectWalmart()" style="width:100%;justify-content:center;padding:12px;margin-top:6px">Connect &amp; verify</button>
+      <div id="walmartConnectMsg" style="font-size:12px;margin-top:12px"></div>`;
+  }
+}
+
+async function connectWalmart(){
+  const payload = {
+    clientId:     document.getElementById('walmart-clientid').value.trim(),
+    clientSecret: document.getElementById('walmart-secret').value.trim(),
+  };
+  const msg = document.getElementById('walmartConnectMsg');
+  if(!payload.clientId || !payload.clientSecret){ msg.style.color='var(--accent)'; msg.textContent='Enter your Client ID and Client Secret.'; return; }
+  const btn = document.getElementById('walmartConnectBtn'); btn.disabled=true; btn.textContent='Verifying…';
+  try {
+    const res = await fetch('/api/seller/channels/walmart', { method:'POST', headers:authHeaders(), body:JSON.stringify(payload) });
+    const data = await res.json();
+    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
+    toast(data.message || 'Walmart connected','success');
+    await renderWalmartBody();
+  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
+}
+
+async function syncWalmart(){
+  const btn = document.getElementById('walmartSyncBtn'); const msg = document.getElementById('walmartSyncMsg');
+  btn.disabled=true; btn.textContent='Syncing…'; msg.textContent='';
+  try {
+    const res = await fetch('/api/seller/channels/walmart/sync', { method:'POST', headers:authHeaders() });
+    const data = await res.json();
+    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    else {
+      msg.style.color='var(--green)';
+      msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unshipped on Walmart).`;
+      if(data.imported>0){ ordersLoaded=false; renderOrders(); }
+      await refreshChannels();
+    }
+  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  finally { if(btn){ btn.disabled=false; btn.textContent='Sync unshipped orders now'; } }
+}
+
+async function disconnectWalmart(){
+  if(!confirm('Disconnect this Walmart account? Imported orders stay; new ones won’t sync.')) return;
+  try {
+    const res = await fetch('/api/seller/channels/walmart', { method:'DELETE', headers:authHeaders() });
+    if(!res.ok){ const d=await res.json().catch(()=>({})); toast(d.error||'Could not disconnect','error'); return; }
+    toast('Walmart disconnected','info');
+    walmartConn=null; await renderWalmartBody(); await refreshChannels();
   } catch(e){ toast('Network error: '+e.message,'error'); }
 }
 

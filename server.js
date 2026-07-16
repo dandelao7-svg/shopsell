@@ -44,6 +44,7 @@ const amazon       = require('./lib/amazon');
 const ebay         = require('./lib/ebay');
 const etsy         = require('./lib/etsy');
 const tiktok       = require('./lib/tiktok');
+const walmart      = require('./lib/walmart');
 const crypto       = require('crypto');
 const dns          = require('dns').promises;
 
@@ -325,7 +326,7 @@ const CARRIER_DISPLAY = { ups: 'UPS', fedex: 'FedEx', usps: 'USPS' };
 async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier }) {
   if (!order || !order.externalId || !trackingNumber) return { skipped: 'not a channel order' };
   const channel = order.channel;
-  if (!['shopify', 'amazon', 'ebay', 'etsy', 'tiktok'].includes(channel)) return { skipped: `channel ${channel}` };
+  if (!['shopify', 'amazon', 'ebay', 'etsy', 'tiktok', 'walmart'].includes(channel)) return { skipped: `channel ${channel}` };
   try {
     const creds = await loadChannelCreds(sellerId, channel);
     if (!creds) return { ok: false, channel, error: 'channel not connected (reconnect needed)' };
@@ -338,6 +339,8 @@ async function pushChannelFulfillment(sellerId, order, { trackingNumber, carrier
       await etsy.createFulfillment(creds, order, { trackingNumber, carrierName });
     } else if (channel === 'tiktok') {
       await tiktok.createFulfillment(creds, order, { trackingNumber, carrierName });
+    } else if (channel === 'walmart') {
+      await walmart.createFulfillment(creds, order, { trackingNumber, carrierName });
     } else {
       await amazon.confirmShipment(creds, order, { trackingNumber, carrierName });
     }
@@ -3241,6 +3244,62 @@ app.delete('/api/seller/channels/amazon', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Disconnect amazon error:', err);
+    res.status(500).json({ error: 'Failed to disconnect.' });
+  }
+});
+
+/* ── Walmart Marketplace (self-authorized, client-credentials) ─────
+   Mirrors Amazon: the seller pastes their Client ID + Client Secret from the
+   Walmart Developer Portal; we verify, store encrypted, then sync/push. */
+
+// Connect a Walmart Marketplace account. Creds: clientId, clientSecret.
+app.post('/api/seller/channels/walmart', requireAuth, async (req, res) => {
+  try {
+    if (!cryptoLib.isConfigured()) {
+      return res.status(500).json({ error: 'Server encryption is not configured; cannot store credentials.' });
+    }
+    const clientId     = (req.body.clientId || '').trim();
+    const clientSecret = (req.body.clientSecret || '').trim();
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({ error: 'Client ID and Client Secret are required.' });
+    }
+    const creds = { clientId, clientSecret };
+    await walmart.verifyConnection(creds); // throws on bad creds / missing access
+    const credentials = cryptoLib.encrypt(creds);
+    await db.saveChannelConnection(req.seller.sellerId, 'walmart', {
+      shopDomain: 'Walmart Marketplace', credentials, status: 'verified',
+    });
+    res.json({ message: 'Connected to Walmart Marketplace.' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/seller/channels/walmart/sync', requireAuth, async (req, res) => {
+  try {
+    const creds = await loadChannelCreds(req.seller.sellerId, 'walmart');
+    if (!creds) return res.status(400).json({ error: 'Connect a Walmart account first.', channelSetupRequired: true });
+
+    const orders = await walmart.fetchUnfulfilledOrders(creds);
+    let imported = 0, skipped = 0;
+    for (const mapped of orders) {
+      const outcome = await importChannelOrder(req.seller.sellerId, 'walmart', mapped);
+      if (outcome === 'imported') imported++; else skipped++;
+    }
+    await db.touchChannelSync(req.seller.sellerId, 'walmart');
+    res.json({ imported, skipped, total: orders.length });
+  } catch (err) {
+    console.error('Walmart sync error:', err);
+    res.status(502).json({ error: 'Sync failed: ' + err.message });
+  }
+});
+
+app.delete('/api/seller/channels/walmart', requireAuth, async (req, res) => {
+  try {
+    await db.deleteChannelConnection(req.seller.sellerId, 'walmart');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Disconnect walmart error:', err);
     res.status(500).json({ error: 'Failed to disconnect.' });
   }
 });
