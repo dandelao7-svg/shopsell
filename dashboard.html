@@ -431,7 +431,7 @@ tr:hover td{background:#fafaf7}
         <button class="mode-btn test active" id="modeTest" onclick="setMode('test')">Test</button>
         <button class="mode-btn live" id="modeLive" onclick="setMode('live')">Live</button>
       </div>
-      <button class="topbar-btn" onclick="window.open('index.html','_blank')">
+      <button class="topbar-btn" onclick="viewStore()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         View store
       </button>
@@ -2549,6 +2549,16 @@ async function testStripeConnection(){
     result.style.color='var(--red)';
     result.textContent='✗ '+e.message;
   }
+}
+
+// Open this seller's storefront in a new tab. Uses ?store=<slug> so the preview
+// works on any host (including the platform host, before a subdomain/custom
+// domain is set up). The slug comes from the cached seller record.
+function viewStore(){
+  let slug = '';
+  try { slug = (JSON.parse(localStorage.getItem('ss_seller')||'{}').storeSlug || '').trim(); } catch(e){}
+  if(!slug){ alert('Add your store details in Settings first, then try again.'); return; }
+  window.open(location.origin + '/?store=' + encodeURIComponent(slug), '_blank');
 }
 
 // Load saved Stripe config (publishable key + masked secret status + the

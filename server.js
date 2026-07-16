@@ -518,6 +518,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // shopsell.nextlao.com / the Railway app host) serves the ShopSell marketing site.
 app.get('/', async (req, res) => {
   try {
+    // Explicit ?store=<slug> serves the storefront on ANY host — used by the
+    // dashboard "View store" preview and works before a seller's subdomain /
+    // custom domain is set up. The storefront JS reads the slug from ?store=.
+    if (req.query.store) return res.sendFile(path.join(__dirname, 'index.html'));
     const seller = await resolveStoreByHost(req.hostname);
     if (seller) return res.sendFile(path.join(__dirname, 'index.html'));
     // No seller: the bare platform apex (nextlao.com / www.nextlao.com) shows the
