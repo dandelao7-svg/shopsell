@@ -634,6 +634,9 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(400).json({ error: 'All required fields must be filled in.' });
     }
 
+    const pwErr = passwordPolicyError(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
+
     const existing = await db.getSellerByEmail(email);
     if (existing) {
       return res.status(409).json({ error: 'An account with this email already exists.' });
@@ -798,7 +801,8 @@ app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const { token, password } = req.body;
     if (!token || !password) return res.status(400).json({ error: 'Token and new password are required.' });
-    if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    const pwErr = passwordPolicyError(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
 
     const tokenHash = crypto.createHash('sha256').update(String(token)).digest('hex');
     const seller = await db.getSellerByResetToken(tokenHash);
@@ -841,6 +845,21 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Password policy (shared by seller signup/reset and buyer register): 8+ chars
+// with at least one uppercase, one lowercase, one number, and one special char.
+// Returns a human-readable error naming what's missing, or null if it passes.
+// Function declaration so it hoists and is callable from routes defined above.
+function passwordPolicyError(pw) {
+  const s = String(pw == null ? '' : pw);
+  const missing = [];
+  if (s.length < 8)          missing.push('at least 8 characters');
+  if (!/[A-Z]/.test(s))      missing.push('an uppercase letter');
+  if (!/[a-z]/.test(s))      missing.push('a lowercase letter');
+  if (!/[0-9]/.test(s))      missing.push('a number');
+  if (!/[^A-Za-z0-9]/.test(s)) missing.push('a special character');
+  return missing.length ? `Password needs ${missing.join(', ')}.` : null;
+}
+
 app.post('/api/buyer/signup', async (req, res) => {
   try {
     const { email, password, firstName, lastName } = req.body || {};
@@ -851,9 +870,8 @@ app.post('/api/buyer/signup', async (req, res) => {
     if (!EMAIL_RE.test(normEmail)) {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
-    }
+    const pwErr = passwordPolicyError(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
 
     const existing = await db.getBuyerByEmail(normEmail);
     if (existing) {

@@ -144,6 +144,15 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .buyer-auth-form label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:var(--ink)}
 .buyer-auth-form input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:14px;background:var(--card)}
 .buyer-auth-form input:focus{outline:none;border-color:var(--accent)}
+.buyer-auth-form .pw-wrap{position:relative}
+.buyer-auth-form .pw-wrap input{padding-right:42px}
+.buyer-auth-form .pw-eye{position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:4px 6px}
+.buyer-auth-form .pw-eye:hover{color:var(--ink)}
+.buyer-auth-form .pw-reqs{list-style:none;margin:7px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:3px 12px}
+.buyer-auth-form .pw-reqs li{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;transition:color .15s}
+.buyer-auth-form .pw-reqs li::before{content:'○';font-size:9px}
+.buyer-auth-form .pw-reqs li.met{color:var(--green)}
+.buyer-auth-form .pw-reqs li.met::before{content:'✓'}
 .buyer-auth-form .two-col{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
 .buyer-auth-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:13px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:.5rem;transition:background .15s}
 .buyer-auth-btn:hover{background:#c1121f}
@@ -574,7 +583,12 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 
           <form id="buyerLoginForm" class="buyer-auth-form" onsubmit="return buyerLogin(event)">
             <div class="field"><label>Email</label><input type="email" id="bLoginEmail" autocomplete="email" required></div>
-            <div class="field"><label>Password</label><input type="password" id="bLoginPassword" autocomplete="current-password" required></div>
+            <div class="field"><label>Password</label>
+              <div class="pw-wrap">
+                <input type="password" id="bLoginPassword" autocomplete="current-password" required>
+                <button type="button" class="pw-eye" onclick="togglePw('bLoginPassword', this)" aria-label="Show password" title="Show password">👁</button>
+              </div>
+            </div>
             <button type="submit" class="buyer-auth-btn" id="bLoginBtn">Sign in</button>
           </form>
 
@@ -584,7 +598,20 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
               <div class="field"><label>Last name</label><input type="text" id="bSignupLast" autocomplete="family-name"></div>
             </div>
             <div class="field"><label>Email *</label><input type="email" id="bSignupEmail" autocomplete="email" required></div>
-            <div class="field"><label>Password *</label><input type="password" id="bSignupPassword" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></div>
+            <div class="field">
+              <label>Password *</label>
+              <div class="pw-wrap">
+                <input type="password" id="bSignupPassword" autocomplete="new-password" minlength="8" required>
+                <button type="button" class="pw-eye" onclick="togglePw('bSignupPassword', this)" aria-label="Show password" title="Show password">👁</button>
+              </div>
+              <ul class="pw-reqs" id="bPwReqs">
+                <li data-req="len">8+ characters</li>
+                <li data-req="upper">1 uppercase letter</li>
+                <li data-req="lower">1 lowercase letter</li>
+                <li data-req="num">1 number</li>
+                <li data-req="special">1 special character</li>
+              </ul>
+            </div>
             <button type="submit" class="buyer-auth-btn" id="bSignupBtn">Create account</button>
           </form>
         </div>
@@ -1695,6 +1722,38 @@ async function buyerLogin(e){
   return false;
 }
 
+// ── Password strength: show/hide toggle + live requirements ──
+function togglePw(id, btn){
+  const inp = document.getElementById(id);
+  const reveal = inp.type === 'password';
+  inp.type = reveal ? 'text' : 'password';
+  btn.textContent = reveal ? '🙈' : '👁';
+  const label = reveal ? 'Hide password' : 'Show password';
+  btn.setAttribute('aria-label', label); btn.setAttribute('title', label);
+}
+function pwChecks(pw){
+  return {
+    len: pw.length >= 8, upper: /[A-Z]/.test(pw), lower: /[a-z]/.test(pw),
+    num: /[0-9]/.test(pw), special: /[^A-Za-z0-9]/.test(pw),
+  };
+}
+function pwError(pw){
+  const c = pwChecks(pw), missing = [];
+  if(!c.len)     missing.push('at least 8 characters');
+  if(!c.upper)   missing.push('an uppercase letter');
+  if(!c.lower)   missing.push('a lowercase letter');
+  if(!c.num)     missing.push('a number');
+  if(!c.special) missing.push('a special character');
+  return missing.length ? 'Password needs ' + missing.join(', ') + '.' : null;
+}
+(function(){
+  const inp = document.getElementById('bSignupPassword');
+  if(inp) inp.addEventListener('input', e => {
+    const c = pwChecks(e.target.value);
+    document.querySelectorAll('#bPwReqs li').forEach(li => li.classList.toggle('met', !!c[li.dataset.req]));
+  });
+})();
+
 async function buyerSignup(e){
   if(e) e.preventDefault();
   const payload = {
@@ -1703,6 +1762,8 @@ async function buyerSignup(e){
     email:     document.getElementById('bSignupEmail').value.trim(),
     password:  document.getElementById('bSignupPassword').value,
   };
+  const pwProblem = pwError(payload.password);
+  if(pwProblem){ setBuyerAuthMsg(pwProblem, 'error'); return false; }
   const btn      = document.getElementById('bSignupBtn');
   const original = btn.textContent;
   btn.disabled = true; btn.textContent = 'Creating account…';
