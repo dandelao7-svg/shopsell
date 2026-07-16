@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="ShopSell seller guide — how to set up your store, sell, and ship.">
+<title>ShopSell — Seller Guide</title>
+<style>
+:root{
+  --bg:#f7f5f2; --panel:#ffffff; --panel2:#fbfaf8; --border:#e7e3dc;
+  --text:#1b1b24; --muted:#6c6c7b; --faint:#8f8f9d;
+  --accent:#d92f3c; --accent-soft:rgba(217,47,60,.09);
+  --gold:#9a6b00; --gold-soft:rgba(154,107,0,.10);
+  --green:#0a8f6e; --green-soft:rgba(10,143,110,.12);
+  --warn:#b5560a; --warn-soft:rgba(181,86,10,.12);
+  --code:#f0ede7;
+  --measure:70ch;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0b0b10; --panel:#15151d; --panel2:#12121a; --border:#28283340;
+    --border:#282833; --text:#e9e9f1; --muted:#9c9caf; --faint:#74748a;
+    --accent:#ff5d68; --accent-soft:rgba(255,93,104,.12);
+    --gold:#ffb500; --gold-soft:rgba(255,181,0,.12);
+    --green:#00c896; --green-soft:rgba(0,200,150,.13);
+    --warn:#ffab4a; --warn-soft:rgba(255,171,74,.13);
+    --code:#1c1c27;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f7f5f2; --panel:#ffffff; --panel2:#fbfaf8; --border:#e7e3dc;
+  --text:#1b1b24; --muted:#6c6c7b; --faint:#8f8f9d;
+  --accent:#d92f3c; --accent-soft:rgba(217,47,60,.09);
+  --gold:#9a6b00; --gold-soft:rgba(154,107,0,.10);
+  --green:#0a8f6e; --green-soft:rgba(10,143,110,.12);
+  --warn:#b5560a; --warn-soft:rgba(181,86,10,.12);
+  --code:#f0ede7;
+}
+:root[data-theme="dark"]{
+  --bg:#0b0b10; --panel:#15151d; --panel2:#12121a; --border:#282833;
+  --text:#e9e9f1; --muted:#9c9caf; --faint:#74748a;
+  --accent:#ff5d68; --accent-soft:rgba(255,93,104,.12);
+  --gold:#ffb500; --gold-soft:rgba(255,181,0,.12);
+  --green:#00c896; --green-soft:rgba(0,200,150,.13);
+  --warn:#ffab4a; --warn-soft:rgba(255,171,74,.13);
+  --code:#1c1c27;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  line-height:1.62;-webkit-font-smoothing:antialiased;font-size:16px}
+.wrap{max-width:1160px;margin:0 auto;padding:0 24px;
+  display:grid;grid-template-columns:236px minmax(0,1fr);gap:48px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── Masthead ── */
+.masthead{grid-column:1/-1;border-bottom:1px solid var(--border);
+  padding:40px 0 26px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:38px;height:38px;border-radius:9px;flex:none;
+  background:linear-gradient(135deg,var(--accent),var(--gold));
+  display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;
+  font-family:var(--sans)}
+.brand h1{font-size:1.05rem;margin:0;font-weight:700;letter-spacing:-.01em}
+.brand .sub{display:block;font-size:.72rem;font-weight:500;color:var(--muted);
+  font-family:var(--mono);letter-spacing:.04em}
+.masthead h2{font-size:clamp(1.9rem,4vw,2.7rem);line-height:1.08;margin:22px 0 10px;
+  font-weight:800;letter-spacing:-.02em;text-wrap:balance;max-width:20ch}
+.masthead p{max-width:60ch;color:var(--muted);margin:0;font-size:1.05rem}
+.legend{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:22px;
+  font-size:.82rem;color:var(--muted)}
+.legend .row{display:flex;align-items:center;gap:7px}
+
+/* ── Status chips ── */
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:.68rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
+  padding:3px 8px;border-radius:999px;white-space:nowrap;vertical-align:middle}
+.chip.live{background:var(--green-soft);color:var(--green)}
+.chip.beta{background:var(--gold-soft);color:var(--gold)}
+.chip.soon{background:var(--warn-soft);color:var(--warn)}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.dot.live{background:var(--green)} .dot.beta{background:var(--gold)} .dot.soon{background:var(--warn)}
+
+/* ── Sidebar TOC ── */
+.toc{position:sticky;top:24px;align-self:start;font-size:.9rem;
+  max-height:calc(100vh - 48px);overflow:auto;padding-bottom:40px}
+.toc .ey{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+.toc ol{list-style:none;margin:0;padding:0;counter-reset:toc}
+.toc li{counter-increment:toc;margin:2px 0}
+.toc a{display:flex;gap:9px;color:var(--muted);padding:5px 8px;border-radius:7px;
+  align-items:baseline}
+.toc a:hover{color:var(--text);background:var(--panel);text-decoration:none}
+.toc a::before{content:counter(toc,decimal-leading-zero);font-family:var(--mono);
+  font-size:.7rem;color:var(--faint);flex:none}
+
+/* ── Main ── */
+main{min-width:0;padding-bottom:80px}
+section{scroll-margin-top:22px;padding:34px 0;border-top:1px solid var(--border)}
+section:first-of-type{border-top:none;padding-top:8px}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--gold);margin:0 0 6px;
+  display:flex;align-items:center;gap:8px}
+.eyebrow .n{color:var(--faint)}
+h3.sec{font-size:1.55rem;margin:0 0 8px;font-weight:800;letter-spacing:-.015em;
+  text-wrap:balance}
+h4{font-size:1.05rem;margin:26px 0 8px;font-weight:700;letter-spacing:-.01em}
+p,li{max-width:var(--measure)}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin:5px 0}
+.lead{color:var(--muted);font-size:1.05rem;margin-bottom:18px}
+strong{font-weight:670}
+code{font-family:var(--mono);font-size:.86em;background:var(--code);
+  padding:1px 6px;border-radius:5px;color:var(--text)}
+kbd{font-family:var(--mono);font-size:.78em;background:var(--panel);
+  border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;
+  padding:1px 6px}
+
+/* callouts */
+.note{border:1px solid var(--border);background:var(--panel);border-radius:12px;
+  padding:16px 18px;margin:16px 0;max-width:var(--measure)}
+.note .h{font-weight:700;font-size:.92rem;margin:0 0 5px;display:flex;align-items:center;gap:8px}
+.note.tip{border-left:3px solid var(--green)}
+.note.warn{border-left:3px solid var(--warn)}
+.note.key{border-left:3px solid var(--accent)}
+.note p{margin:0;font-size:.94rem;color:var(--muted)}
+.note p+p{margin-top:8px}
+
+/* step list */
+.steps{counter-reset:step;list-style:none;padding:0;margin:14px 0;max-width:var(--measure)}
+.steps>li{counter-increment:step;position:relative;padding-left:42px;margin:0 0 14px}
+.steps>li::before{content:counter(step);position:absolute;left:0;top:-2px;
+  width:28px;height:28px;border-radius:8px;background:var(--accent-soft);
+  color:var(--accent);font-family:var(--mono);font-weight:700;font-size:.85rem;
+  display:grid;place-items:center}
+.steps b{font-weight:670}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;margin:16px 0;border:1px solid var(--border);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:520px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-family:var(--mono);font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--faint);font-weight:600;background:var(--panel2)}
+tr:last-child td{border-bottom:none}
+td:first-child{font-weight:640}
+
+.footer{grid-column:1/-1;border-top:1px solid var(--border);margin-top:20px;
+  padding:26px 0 50px;color:var(--faint);font-size:.85rem;font-family:var(--mono)}
+
+@media (max-width:900px){
+  .wrap{grid-template-columns:1fr;gap:0}
+  .toc{position:static;max-height:none;border:1px solid var(--border);
+    border-radius:12px;padding:16px;margin-bottom:24px;background:var(--panel)}
+  .masthead{padding-top:28px}
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brand">
+      <div class="mark">S</div>
+      <div>
+        <h1>ShopSell</h1>
+        <span class="sub">seller guide · v1</span>
+      </div>
+    </div>
+    <h2>Everything you can do in ShopSell</h2>
+    <p>A plain-language walkthrough of your store, from first sign-up to shipping a package — plus an honest list of the buttons that aren't wired up yet, so nothing surprises you.</p>
+    <div class="legend">
+      <span class="row"><span class="dot live"></span> <strong>Live</strong> — works end to end</span>
+      <span class="row"><span class="dot beta"></span> <strong>Partial</strong> — works, with limits</span>
+      <span class="row"><span class="dot soon"></span> <strong>Not yet</strong> — placeholder for now</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Contents">
+    <p class="ey">Contents</p>
+    <ol>
+      <li><a href="#start">Get started</a></li>
+      <li><a href="#dashboard">Your dashboard</a></li>
+      <li><a href="#store">Build your store</a></li>
+      <li><a href="#address">Your store's web address</a></li>
+      <li><a href="#pay">Get paid — connect Stripe</a></li>
+      <li><a href="#channels">Sell on marketplaces</a></li>
+      <li><a href="#shipping">Ship your orders</a></li>
+      <li><a href="#returns">Returns</a></li>
+      <li><a href="#buyer">What your customers see</a></li>
+      <li><a href="#billing">Plans &amp; billing</a></li>
+      <li><a href="#limits">Not wired up yet</a></li>
+      <li><a href="#tips">Tips &amp; troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- 1 -->
+    <section id="start">
+      <p class="eyebrow"><span class="n">01</span> Get started</p>
+      <h3 class="sec">Create your store <span class="chip live"><span class="dot live"></span>Live</span></h3>
+      <p class="lead">Signing up takes a couple of minutes and starts a free trial — no credit card needed.</p>
+      <ol class="steps">
+        <li>Go to <code>/signup</code> and enter your name, email, and a password. The password box shows five requirements (8+ characters, upper, lower, number, symbol) that turn green as you type — the <b>eye icon</b> reveals what you typed.</li>
+        <li>Pick your <b>store name</b> and a <b>store URL slug</b> (this becomes part of your web address — lowercase letters, numbers, and dashes only). It's suggested for you from the store name; you can edit it.</li>
+        <li>Choose a plan tile (Starter / Growth / Pro) and click <b>Create my store</b>. Your <b>14-day free trial</b> begins immediately.</li>
+      </ol>
+      <div class="note key"><p class="h">Logging back in</p><p>Use <code>/login</code>. Forgot your password? Click <b>Forgot password</b> — a reset link is emailed to you (this now works; it used to fail silently). The link is good for one hour.</p></div>
+    </section>
+
+    <!-- 2 -->
+    <section id="dashboard">
+      <p class="eyebrow"><span class="n">02</span> Your dashboard</p>
+      <h3 class="sec">Finding your way around</h3>
+      <p class="lead">After signing in you land on the dashboard. The left sidebar is your map; clicking an item swaps the main panel — it's all one page, so it's fast.</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Section</th><th>What it's for</th></tr></thead>
+        <tbody>
+          <tr><td>Overview</td><td>Your last-30-days snapshot: revenue, orders, customers, a sales chart, recent orders, top products.</td></tr>
+          <tr><td>Orders</td><td>Every order across all your sales channels. Search, filter, refund.</td></tr>
+          <tr><td>Products / Add product</td><td>Your catalog — create, edit, duplicate, and delete products.</td></tr>
+          <tr><td>Customers</td><td>People who've bought from you, with order counts and totals.</td></tr>
+          <tr><td>Storefront</td><td>The About / FAQ / Privacy / Terms text shown on your public store.</td></tr>
+          <tr><td>Discounts</td><td>Create coupon codes.</td></tr>
+          <tr><td>Domain</td><td>Your free store address, and where you connect your own domain.</td></tr>
+          <tr><td>Stripe setup / Payouts</td><td>Connect your Stripe account so you can take payments.</td></tr>
+          <tr><td>Shipping / OMS / WMS</td><td>The shipping suite and warehouse tools (see section 7). Opens in its own screen.</td></tr>
+          <tr><td>Settings / My subscription</td><td>Store details, return address, and your ShopSell plan.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Top-right you'll find <b>View store</b> (opens your live storefront in a new tab — now fixed; it used to open a blank page) and <b>+ Add product</b>.</p>
+    </section>
+
+    <!-- 3 -->
+    <section id="store">
+      <p class="eyebrow"><span class="n">03</span> Build your store</p>
+      <h3 class="sec">Products, photos &amp; storefront pages <span class="chip live"><span class="dot live"></span>Live</span></h3>
+
+      <h4>Add a product</h4>
+      <p>Open <b>Add product</b> and fill in the essentials — name, description, category, SKU (there's an <b>Auto-generate</b> button), price, and quantity. As you set price and cost, ShopSell shows your margin live.</p>
+      <ul>
+        <li><b>Options &amp; variants</b> — add up to three options (e.g. Size, Color) and ShopSell builds a row for every combination, each with its own price, SKU, and stock.</li>
+        <li><b>Images</b> — drag and drop up to six photos (or click to browse). The first one is your main photo. They're shrunk automatically so your store stays fast.</li>
+        <li><b>Returns policy</b> — mark an item returnable, set a return window, and an optional restocking fee.</li>
+        <li>Click <b>Publish product</b> to make it live.</li>
+      </ul>
+      <div class="note warn"><p class="h">Heads-up: use “Publish”, not “Save draft”</p><p>The <b>Save draft</b> button doesn't store anything yet — it just shows a message. To keep a product, use <b>Publish product</b> (you can set its status to Draft in the form if you don't want it public).</p></div>
+
+      <h4>Storefront pages &amp; discounts</h4>
+      <p>Under <b>Storefront</b>, fill in your contact email and your About / FAQ / Privacy / Terms text — these appear in your store's footer. Under <b>Discounts</b>, create a code (percentage or fixed amount), optionally with a minimum order, usage limit, or expiry date.</p>
+    </section>
+
+    <!-- 4 -->
+    <section id="address">
+      <p class="eyebrow"><span class="n">04</span> Your store's web address</p>
+      <h3 class="sec">Where customers find your store</h3>
+      <p class="lead">Every store can be reached three ways. You don't have to set anything up to start — the preview works immediately.</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Address</th><th>Status</th><th>When to use</th></tr></thead>
+        <tbody>
+          <tr><td>Preview link<br><code>…/?store=your-slug</code></td><td><span class="chip live"><span class="dot live"></span>Live</span></td><td>Works right now, on any device. This is what <b>View store</b> opens. Great for showing your store before a domain is set up.</td></tr>
+          <tr><td>Free subdomain<br><code>your-slug.nextlao.com</code></td><td><span class="chip beta"><span class="dot beta"></span>Needs DNS</span></td><td>Your permanent free address — becomes live once the platform's wildcard DNS is pointed at the server.</td></tr>
+          <tr><td>Your own domain<br><code>shop.yourbrand.com</code></td><td><span class="chip live"><span class="dot live"></span>Live</span></td><td>Connect it under <b>Domain</b>: enter the domain, add the CNAME + TXT records it shows you, then click Verify.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 5 -->
+    <section id="pay">
+      <p class="eyebrow"><span class="n">05</span> Get paid</p>
+      <h3 class="sec">Connect your Stripe account <span class="chip live"><span class="dot live"></span>Live</span></h3>
+      <p class="lead">ShopSell doesn't hold your money — customer payments go straight into <strong>your own</strong> Stripe account. You connect it once.</p>
+      <ol class="steps">
+        <li>In Stripe, open <b>Developers → API keys</b> and copy your <b>Secret key</b> and <b>Publishable key</b>.</li>
+        <li>In ShopSell, open <b>Stripe setup</b>, paste both keys, and click <b>Save keys</b>. Use <b>Test connection</b> to confirm they work.</li>
+        <li>Copy the <b>Webhook endpoint URL</b> ShopSell shows you into Stripe (Developers → Webhooks), then paste the <b>signing secret</b> Stripe gives back into ShopSell.</li>
+      </ol>
+      <div class="note tip"><p class="h">Test mode vs live mode</p><p>Stripe gives you <b>test</b> keys and <b>live</b> keys. Test keys let you place practice orders with Stripe's test cards (like <code>4242 4242 4242 4242</code>) — no real money moves. Switch to your <b>live</b> keys when you're ready for real customers.</p></div>
+      <p>Until you connect Stripe, your storefront checkout shows “Payment is not configured for this store.”</p>
+    </section>
+
+    <!-- 6 -->
+    <section id="channels">
+      <p class="eyebrow"><span class="n">06</span> Sell on marketplaces</p>
+      <h3 class="sec">Bring in orders from eBay, Shopify &amp; more</h3>
+      <p class="lead">Connect the marketplaces you already sell on, and their orders flow into ShopSell so you can ship them all from one place.</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Channel</th><th>Status</th><th>How you connect</th></tr></thead>
+        <tbody>
+          <tr><td>eBay</td><td><span class="chip live"><span class="dot live"></span>Live</span></td><td>Click Connect → sign in on eBay → approve. Fully set up and tested.</td></tr>
+          <tr><td>Amazon</td><td><span class="chip beta"><span class="dot beta"></span>Built · needs setup</span></td><td>Paste your Seller Central SP-API credentials, then Connect &amp; verify.</td></tr>
+          <tr><td>Walmart</td><td><span class="chip beta"><span class="dot beta"></span>Built · needs setup</span></td><td>Paste your Client ID + Secret from Walmart Seller Center → Developer Portal, then Connect &amp; verify.</td></tr>
+          <tr><td>Shopify</td><td><span class="chip beta"><span class="dot beta"></span>Built · needs setup</span></td><td>Register a Shopify app + set its credentials, then one-click Connect.</td></tr>
+          <tr><td>Etsy</td><td><span class="chip beta"><span class="dot beta"></span>Built · needs setup</span></td><td>Register an Etsy app (one API key), then Connect.</td></tr>
+          <tr><td>TikTok Shop</td><td><span class="chip beta"><span class="dot beta"></span>Built · needs setup</span></td><td>Register a TikTok Shop app, then Connect.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note key"><p class="h">What “Built · needs setup” means</p><p>The code for these channels is done — but, exactly like eBay was, each marketplace needs its own <b>developer-app registration + credentials</b> and a one-time <b>connection test</b> before it works. Turning one on is the same short process we did for eBay. Only eBay is fully live today.</p></div>
+      <p>You'll find these in the <b>Shipping</b> screen under “Sales channels.” Once connected, click <b>Sync</b> on a channel to pull in its unshipped orders. Re-syncing is safe — orders won't duplicate. When you buy a shipping label for one of those orders, ShopSell marks it shipped back on the marketplace automatically.</p>
+    </section>
+
+    <!-- 7 -->
+    <section id="shipping">
+      <p class="eyebrow"><span class="n">07</span> Ship your orders</p>
+      <h3 class="sec">The shipping suite</h3>
+      <p class="lead">Open <b>Shipping</b> from the dashboard. This is where you connect carriers, compare rates, buy labels, and track packages.</p>
+
+      <h4>Connect your carriers <span class="chip live"><span class="dot live"></span>Live</span></h4>
+      <p>Under <b>Settings</b> in the shipping screen, add your own <b>UPS</b>, <b>FedEx</b>, and/or <b>USPS</b> account credentials and click Save &amp; verify. As with Stripe, you bring your own carrier accounts.</p>
+
+      <h4>Buy a label — use Quick Ship <span class="chip live"><span class="dot live"></span>Live</span></h4>
+      <p><b>Quick Ship</b> is the real, end-to-end label flow. This is the one to use.</p>
+      <ol class="steps">
+        <li>Pick who it ships <b>from</b>, then enter the recipient (typing a ZIP auto-fills city/state).</li>
+        <li>Choose a box size (or enter dimensions) and the weight.</li>
+        <li>Click <b>Compare rates</b> to price-shop your connected carriers live — cheapest first — and pick one.</li>
+        <li>Click <b>Generate shipping label</b>. ShopSell validates the address, buys a real label with real tracking, saves it to History, and prints it.</li>
+      </ol>
+      <div class="note warn"><p class="h">Buy labels in Quick Ship</p><p>On the Orders list, the per-order <b>Create + Print Label</b> and <b>Get rate</b> buttons, and the top-bar <b>Print</b>, now send you to Quick Ship. (They used to fake a tracking number without actually buying anything — that's fixed, but the real purchase happens in Quick Ship.)</p></div>
+
+      <h4>Other shipping tools</h4>
+      <ul>
+        <li><b>Batch labels</b> <span class="chip live"><span class="dot live"></span>Live</span> — tick several orders, choose “cheapest” or a fixed service, and buy them all at once, then print one merged PDF.</li>
+        <li><b>Packing slips &amp; pick lists</b> <span class="chip live"><span class="dot live"></span>Live</span> — generate real PDFs for one order or a whole batch.</li>
+        <li><b>Tracking</b> <span class="chip live"><span class="dot live"></span>Live</span> — paste a tracking number to see live status and history.</li>
+        <li><b>History</b> <span class="chip live"><span class="dot live"></span>Live</span> — every label you've bought: reprint, void, or export to CSV.</li>
+        <li><b>Pickup &amp; Automation</b> <span class="chip live"><span class="dot live"></span>Live</span> — schedule carrier pickups and set rules (e.g. “orders under 1 lb → USPS”).</li>
+        <li><b>Thermal printer</b> <span class="chip live"><span class="dot live"></span>Live</span> — a wizard sets up a Zebra 4×6 label printer.</li>
+      </ul>
+    </section>
+
+    <!-- 8 -->
+    <section id="returns">
+      <p class="eyebrow"><span class="n">08</span> Returns</p>
+      <h3 class="sec">Let customers print a return label <span class="chip live"><span class="dot live"></span>Live</span></h3>
+      <p class="lead">Your customers handle returns themselves through the return portal — you don't have to do anything per return, beyond setting your return address.</p>
+      <ol class="steps">
+        <li>Set your <b>return address</b> once (dashboard → Settings) and make sure a carrier is connected.</li>
+        <li>A customer goes to <code>/returns</code>, enters their order number and email, and picks the items to send back.</li>
+        <li>ShopSell generates a prepaid return label on your carrier account and emails it to them.</li>
+      </ol>
+      <div class="note warn"><p class="h">Two different “Returns” screens</p><p>The customer-facing portal at <code>/returns</code> is the real one. The <b>Returns</b> tab inside the Shipping suite currently shows sample data only — don't manage real returns from there yet.</p></div>
+    </section>
+
+    <!-- 9 -->
+    <section id="buyer">
+      <p class="eyebrow"><span class="n">09</span> What your customers see</p>
+      <h3 class="sec">The shopping experience</h3>
+      <p class="lead">Here's the buyer's side, so you know what you're offering.</p>
+      <ul>
+        <li><b>Browse</b> — a storefront with your products, categories, sorting, and search; each product opens a detail view with photos, variants, quantity, and reviews.</li>
+        <li><b>Cart &amp; checkout</b> — add to cart, then check out with contact info, shipping address, and a card. Checkout now offers <b>all US states + Canadian/UK/Australian regions</b> and requires name, a valid email, and a full address before charging (recent fixes — it used to allow blank/wrong addresses).</li>
+        <li><b>Accounts</b> — customers can create an account to see their order history; past guest orders link automatically by email.</li>
+      </ul>
+      <div class="note tip"><p class="h">Good to know</p><p>Payment on your storefront runs on <b>your</b> Stripe account. Reviews, order confirmation emails, and shipping-notification emails are all wired up and working.</p></div>
+    </section>
+
+    <!-- 10 -->
+    <section id="billing">
+      <p class="eyebrow"><span class="n">10</span> Plans &amp; billing</p>
+      <h3 class="sec">Your ShopSell subscription <span class="chip beta"><span class="dot beta"></span>Partial</span></h3>
+      <p>You picked a plan at signup (Starter / Growth / Pro) and you're on a 14-day free trial. Your plan and history live under <b>My subscription</b>.</p>
+      <div class="note warn"><p class="h">During beta</p><p>The upgrade / change-plan / cancel buttons on this page are placeholders right now. While you're pre-launch and testing, that's fine — subscription billing runs in Stripe test mode, so no one is charged real money.</p></div>
+    </section>
+
+    <!-- 11 -->
+    <section id="limits">
+      <p class="eyebrow"><span class="n">11</span> Not wired up yet</p>
+      <h3 class="sec">Buttons that look real but aren't — yet</h3>
+      <p class="lead">Being upfront so nothing trips you (or a beta tester) up. These show a success message but don't save or do the thing. Everything here is on the fix list.</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Where</th><th>What's not wired up</th><th>Do this instead</th></tr></thead>
+        <tbody>
+          <tr><td>Dashboard → Settings</td><td><b>Save changes</b> on store info doesn't persist.</td><td>Your store name/slug from signup is what's used for now.</td></tr>
+          <tr><td>Add product</td><td><b>Save draft</b> saves nothing.</td><td>Use <b>Publish product</b> (set status to Draft if needed).</td></tr>
+          <tr><td>Dashboard → Payouts</td><td>Balance &amp; history are sample numbers.</td><td>Check real balances in your Stripe dashboard.</td></tr>
+          <tr><td>Dashboard → Orders</td><td><b>Export CSV</b> doesn't download.</td><td>Use Shipping → History → Export CSV for a real file.</td></tr>
+          <tr><td>Dashboard top bar</td><td><b>Test / Live</b> toggle is cosmetic; the “new orders” badge is a fixed number.</td><td>Ignore for now.</td></tr>
+          <tr><td>Dashboard → Modules</td><td><b>Add module</b> / upgrade buttons are placeholders.</td><td>—</td></tr>
+          <tr><td>Shipping → Orders/top bar</td><td>Per-order label buttons, top-bar Print, bulk “Mark as shipped,” Export CSV.</td><td>Buy labels in <b>Quick Ship</b>; export from <b>History</b>.</td></tr>
+          <tr><td>Shipping → Returns tab</td><td>Shows sample return requests.</td><td>Customers use the <code>/returns</code> portal.</td></tr>
+          <tr><td>Store account</td><td>Buyer Wishlist / Addresses / Payment methods.</td><td>Marked “coming soon” to shoppers.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note key"><p class="h">The short version</p><p>The <b>core loop is solid</b>: create products → connect Stripe &amp; carriers → connect eBay → sync orders → buy real labels in Quick Ship → customers check out and can return items. The placeholders above are mostly reporting/settings polish.</p></div>
+    </section>
+
+    <!-- 12 -->
+    <section id="tips">
+      <p class="eyebrow"><span class="n">12</span> Tips &amp; troubleshooting</p>
+      <h3 class="sec">Handy to know</h3>
+      <ul>
+        <li><b>Store looks empty?</b> The storefront needs a store context. <b>View store</b> handles this for you; a bare link without <code>?store=your-slug</code> will look blank.</li>
+        <li><b>Checkout says payment isn't configured?</b> Connect Stripe (section 5).</li>
+        <li><b>Return portal says returns aren't available?</b> Set your return address in Settings and connect a carrier.</li>
+        <li><b>Didn't get the password-reset email?</b> Check spam on the first one from a new store, then mark it “not spam.”</li>
+        <li><b>Practice safely.</b> With Stripe in test mode, use test card <code>4242 4242 4242 4242</code>, any future expiry, any CVC — nothing is charged.</li>
+      </ul>
+    </section>
+
+  </main>
+
+  <footer class="footer">ShopSell seller guide · reflects the app as deployed · buy real labels in Quick Ship</footer>
+</div>
+</body>
+</html>

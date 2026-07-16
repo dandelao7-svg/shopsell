@@ -573,6 +573,12 @@ app.get('/privacy', (req, res) => {
   res.sendFile(path.join(__dirname, 'privacy.html'));
 });
 
+// Public seller guide / user manual — a shareable link (noindex; for beta
+// testers and onboarding, not meant to be a Google-indexed marketing page).
+app.get('/guide', (req, res) => {
+  res.sendFile(path.join(__dirname, 'guide.html'));
+});
+
 // robots.txt — let crawlers index public pages, keep the app/API out of search.
 // Served per-host so the Sitemap line matches whatever domain is being crawled.
 app.get('/robots.txt', (req, res) => {
