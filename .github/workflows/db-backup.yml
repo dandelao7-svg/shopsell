@@ -43,16 +43,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Install latest PostgreSQL client
-        # Pull pg_dump from the official PGDG apt repo so its major version is
-        # >= the server's (an older pg_dump refuses to dump a newer server).
-        run: |
-          set -euo pipefail
-          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
-
       - name: Dump, compress, and encrypt
         env:
           DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
@@ -65,8 +55,15 @@ jobs:
           fi
           STAMP=$(date -u +%Y%m%d-%H%M%S)
           FILE="shopsell-${STAMP}.sql.gz.gpg"
-          # --no-owner/--no-privileges keep the dump portable across roles.
-          pg_dump --no-owner --no-privileges "$DATABASE_PUBLIC_URL" \
+          # Run pg_dump inside the official postgres:17 image (Docker is
+          # preinstalled on the runner). This guarantees the client version is
+          # >= the Railway server — an older pg_dump refuses a newer server —
+          # and sidesteps apt repo conflicts on the runner. The connection
+          # string is passed as a container env var (not a command arg) so it
+          # never lands in a process listing. --no-owner/--no-privileges keep
+          # the dump portable across roles.
+          docker run --rm -e PGCONN="$DATABASE_PUBLIC_URL" postgres:17-alpine \
+            sh -c 'pg_dump --no-owner --no-privileges "$PGCONN"' \
             | gzip -9 \
             | gpg --batch --yes --symmetric --cipher-algo AES256 \
                   --passphrase "$BACKUP_PASSPHRASE" -o "$FILE"
