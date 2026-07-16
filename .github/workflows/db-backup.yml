@@ -62,7 +62,7 @@ jobs:
           # string is passed as a container env var (not a command arg) so it
           # never lands in a process listing. --no-owner/--no-privileges keep
           # the dump portable across roles.
-          docker run --rm -e PGCONN="$DATABASE_PUBLIC_URL" postgres:17-alpine \
+          docker run --rm -e PGCONN="$DATABASE_PUBLIC_URL" postgres:18-alpine \
             sh -c 'pg_dump --no-owner --no-privileges "$PGCONN"' \
             | gzip -9 \
             | gpg --batch --yes --symmetric --cipher-algo AES256 \
