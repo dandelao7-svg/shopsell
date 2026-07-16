@@ -1104,6 +1104,32 @@ async function getReturnsByOrder(orderId) {
   return camelizeAll(rows);
 }
 
+// All returns for a seller, joined with the originating order so the seller
+// dashboard can show the order number + customer name without a second lookup.
+async function getReturnsBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT r.*, o.customer_info AS order_customer_info
+       FROM returns r
+       JOIN orders o ON o.id = r.order_id
+      WHERE r.seller_id = $1
+      ORDER BY r.created_at DESC`,
+    [sellerId]
+  );
+  return camelizeAll(rows);
+}
+
+// Update a return's status (e.g. seller marks it 'received' or 'refunded').
+// Scoped by seller_id so one seller can never touch another's returns.
+async function updateReturnStatus(id, sellerId, status) {
+  const { rows } = await pool.query(
+    `UPDATE returns SET status = $3
+       WHERE id = $1 AND seller_id = $2
+     RETURNING *`,
+    [id, sellerId, status]
+  );
+  return rows[0] ? camelize(rows[0]) : null;
+}
+
 // Purge shipments older than N days (UPS stops tracking after 120 days anyway)
 async function purgeOldShipments(retentionDays = 120) {
   const { rowCount } = await pool.query(
@@ -1490,6 +1516,8 @@ module.exports = {
   setSellerReturnAddress,
   createReturn,
   getReturnsByOrder,
+  getReturnsBySeller,
+  updateReturnStatus,
 
   // Storefront content
   getSellerStorefrontContent,

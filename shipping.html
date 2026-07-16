@@ -929,28 +929,28 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             <div class="return-step-num">1</div>
             <div>
               <div class="return-step-title">Buyer requests return</div>
-              <div class="return-step-desc">Buyer goes to My Orders → clicks "Return this item" → selects reason and items</div>
+              <div class="return-step-desc">Buyer opens your returns portal, enters their order # and email, then picks the items and reason.</div>
             </div>
           </div>
           <div class="return-step">
             <div class="return-step-num">2</div>
             <div>
-              <div class="return-step-title">Seller approves (or auto-approve)</div>
-              <div class="return-step-desc">You approve the return from this dashboard. Set auto-approve in settings to skip this step.</div>
+              <div class="return-step-title">Prepaid label issued instantly</div>
+              <div class="return-step-desc">A prepaid label is generated on your connected carrier account and emailed to the buyer — no approval step. Requires a return address + carrier in Settings.</div>
             </div>
           </div>
           <div class="return-step">
             <div class="return-step-num">3</div>
             <div>
-              <div class="return-step-title">UPS label emailed to buyer</div>
-              <div class="return-step-desc">Prepaid UPS return label generated instantly and emailed to the buyer automatically.</div>
+              <div class="return-step-title">Buyer ships it back</div>
+              <div class="return-step-desc">The package travels to your return address. Every request shows up in the table below with its tracking number.</div>
             </div>
           </div>
           <div class="return-step">
             <div class="return-step-num">4</div>
             <div>
-              <div class="return-step-title">Refund issued automatically</div>
-              <div class="return-step-desc">When UPS scans the package, Stripe refund is triggered. Item restocked in inventory.</div>
+              <div class="return-step-title">You inspect & refund</div>
+              <div class="return-step-desc">When the item arrives, mark the return received here and issue the refund from the order in your dashboard.</div>
             </div>
           </div>
         </div>
@@ -959,27 +959,16 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       <div>
         <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px">Return settings</div>
         <div class="settings-card">
-          <div class="toggle-row">
-            <div><div class="toggle-label">Auto-approve returns</div><div class="toggle-desc">Skip manual approval step</div></div>
-            <label class="toggle"><input type="checkbox"><span class="tslider"></span></label>
-          </div>
-          <div class="toggle-row">
-            <div><div class="toggle-label">Auto-issue refund on scan</div><div class="toggle-desc">Refund when UPS scans return label</div></div>
-            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
-          </div>
-          <div class="toggle-row">
-            <div><div class="toggle-label">Auto-restock inventory</div><div class="toggle-desc">Add item back when return received</div></div>
-            <label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label>
-          </div>
-          <div class="form-field" style="margin-top:12px;margin-bottom:0">
-            <label>Return window (days)</label>
-            <select style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-              <option>14 days</option>
-              <option selected>30 days</option>
-              <option>60 days</option>
-              <option>90 days</option>
-              <option>No returns</option>
-            </select>
+          <div style="font-size:13px;color:var(--text2);line-height:1.6">
+            <p style="margin:0 0 12px">Returns are handled per product. Set each item's <strong>return window</strong>, <strong>restocking fee</strong>, and whether it's <strong>final sale</strong> when you create or edit the product in your dashboard.</p>
+            <div class="toggle-row" style="border-top:1px solid var(--border)">
+              <div><div class="toggle-label">Return address</div><div class="toggle-desc">Where buyers ship items back to</div></div>
+              <button class="action-btn" onclick="showPage('settings')">Set in Settings</button>
+            </div>
+            <div class="toggle-row">
+              <div><div class="toggle-label">Refunds</div><div class="toggle-desc">Issue from the order once the item arrives back</div></div>
+              <span style="font-size:11px;color:var(--muted)">Manual</span>
+            </div>
           </div>
         </div>
       </div>
@@ -989,14 +978,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       <div class="table-hd">
         <div class="table-title">Return requests</div>
         <div class="table-actions">
-          <button class="action-btn primary" onclick="toast('All pending returns approved — UPS labels sent','success')">Approve all pending</button>
+          <button class="action-btn" onclick="loadReturns()">Refresh</button>
         </div>
-      </div>
-      <div class="filter-tabs">
-        <div class="filter-tab active">All <span class="ct">6</span></div>
-        <div class="filter-tab">Pending approval <span class="ct" style="background:rgba(245,158,11,0.15);color:var(--amber)">3</span></div>
-        <div class="filter-tab">Label sent <span class="ct">2</span></div>
-        <div class="filter-tab">Completed <span class="ct">1</span></div>
       </div>
       <table>
         <thead>
@@ -1011,82 +994,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             <th>Action</th>
           </tr>
         </thead>
-        <tbody>
-          <tr>
-            <td class="order-num">RET-0041</td>
-            <td class="order-num">#SS-10291</td>
-            <td>Sarah Johnson</td>
-            <td>Linen Tote Bag × 1</td>
-            <td><span class="return-reason">Wrong item</span></td>
-            <td style="font-weight:600;color:var(--green)">$34.99</td>
-            <td><span class="status-pill awaiting">Pending approval</span></td>
-            <td>
-              <div style="display:flex;gap:6px">
-                <button class="action-btn primary" onclick="approveReturn('RET-0041',this)">Approve</button>
-                <button class="action-btn" onclick="toast('Return RET-0041 denied','info')">Deny</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="order-num">RET-0040</td>
-            <td class="order-num">#SS-10288</td>
-            <td>Michael Chen</td>
-            <td>Glow Face Serum × 1</td>
-            <td><span class="return-reason">Damaged in shipping</span></td>
-            <td style="font-weight:600;color:var(--green)">$52.00</td>
-            <td><span class="status-pill awaiting">Pending approval</span></td>
-            <td>
-              <div style="display:flex;gap:6px">
-                <button class="action-btn primary" onclick="approveReturn('RET-0040',this)">Approve</button>
-                <button class="action-btn" onclick="toast('Return RET-0040 denied','info')">Deny</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="order-num">RET-0039</td>
-            <td class="order-num">#SS-10281</td>
-            <td>Emma Williams</td>
-            <td>Floral Sundress × 1</td>
-            <td><span class="return-reason">Wrong size</span></td>
-            <td style="font-weight:600;color:var(--green)">$72.00</td>
-            <td><span class="status-pill awaiting">Pending approval</span></td>
-            <td>
-              <div style="display:flex;gap:6px">
-                <button class="action-btn primary" onclick="approveReturn('RET-0039',this)">Approve</button>
-                <button class="action-btn" onclick="toast('Return RET-0039 denied','info')">Deny</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="order-num">RET-0038</td>
-            <td class="order-num">#SS-10274</td>
-            <td>James Rodriguez</td>
-            <td>Leather Wallet × 1</td>
-            <td><span class="return-reason">Changed mind</span></td>
-            <td style="font-weight:600;color:var(--green)">$65.00</td>
-            <td><span class="status-pill printed">Label sent</span></td>
-            <td><button class="action-btn" onclick="toast('Tracking: 1Z999AA10123456784')">Track return</button></td>
-          </tr>
-          <tr>
-            <td class="order-num">RET-0037</td>
-            <td class="order-num">#SS-10268</td>
-            <td>Olivia Martinez</td>
-            <td>Ceramic Mug Set × 1</td>
-            <td><span class="return-reason">Defective</span></td>
-            <td style="font-weight:600;color:var(--green)">$45.00</td>
-            <td><span class="status-pill printed">Label sent</span></td>
-            <td><button class="action-btn" onclick="toast('Tracking: 1Z999AA10123456785')">Track return</button></td>
-          </tr>
-          <tr>
-            <td class="order-num">RET-0036</td>
-            <td class="order-num">#SS-10255</td>
-            <td>David Kim</td>
-            <td>Classic White Tee × 2</td>
-            <td><span class="return-reason">Wrong color</span></td>
-            <td style="font-weight:600;color:var(--green)">$56.00</td>
-            <td><span class="status-pill shipped">Completed</span></td>
-            <td><button class="action-btn" onclick="toast('Refund of $56.00 issued Apr 28')">View refund</button></td>
-          </tr>
+        <tbody id="returnsTableBody">
+          <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">Loading returns…</td></tr>
         </tbody>
       </table>
     </div>
@@ -3701,49 +3610,99 @@ function voidFromTrackingPage(){
   confirmVoidFromTracking(lastTrackedShipment.trackingNumber, lastTrackedShipment.carrier, null);
 }
 
-// ── RETURNS — REAL RETURN LABEL ───────────────────────────────
-async function approveReturn(retId, btn){
-  const row        = btn.closest('tr');
-  const statusCell = row.querySelector('.status-pill');
+// ── RETURNS — REAL DATA from the /returns portal ──────────────
+// The prepaid label is issued the moment the buyer submits a return
+// (POST /api/returns), so this tab is a read-only ledger of real returns
+// plus a status control the seller advances as the package comes back.
+let returnsCache = [];
 
-  btn.textContent = 'Generating...';
-  btn.disabled    = true;
+const RETURN_STATUS = {
+  label_issued: { label: 'Label issued', pill: 'awaiting'  },
+  in_transit:   { label: 'In transit',   pill: 'printed'   },
+  received:     { label: 'Received',      pill: 'shipped'   },
+  refunded:     { label: 'Refunded',      pill: 'delivered' },
+  closed:       { label: 'Closed',        pill: 'awaiting'  },
+};
 
+async function loadReturns(){
+  const body = document.getElementById('returnsTableBody');
+  if(!body) return;
+  body.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">Loading returns…</td></tr>`;
   try {
     const token = localStorage.getItem('ss_token');
-    const res = await fetch('/api/shipping/return-label', {
-      method: 'POST',
+    const res = await fetch('/api/shipping/returns', {
+      headers: { 'Authorization': `Bearer ${token||''}` },
+    });
+    if(!res.ok) throw new Error('Failed to load returns');
+    const data = await res.json();
+    returnsCache = data.returns || [];
+    renderReturns();
+  } catch(err){
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">Couldn't load returns. <span style="color:var(--accent);cursor:pointer" onclick="loadReturns()">Retry</span></td></tr>`;
+  }
+}
+
+function renderReturns(){
+  const body = document.getElementById('returnsTableBody');
+  if(!body) return;
+  if(!returnsCache.length){
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px 32px;color:var(--muted)">
+      No return requests yet. When a buyer starts a return from your returns portal, it will appear here with its prepaid tracking number.</td></tr>`;
+    return;
+  }
+  body.innerHTML = returnsCache.map(r => {
+    const st = RETURN_STATUS[r.status] || { label: r.status, pill: 'awaiting' };
+    const options = Object.keys(RETURN_STATUS).map(k =>
+      `<option value="${k}"${k===r.status?' selected':''}>${RETURN_STATUS[k].label}</option>`).join('');
+    const trackBtn = r.trackingNumber
+      ? `<button class="action-btn" onclick="trackReturn('${escapeAttr(r.trackingNumber)}')">Track</button>`
+      : '';
+    return `<tr>
+      <td class="order-num">${escapeAttr(r.returnNumber)}</td>
+      <td class="order-num">#${escapeAttr(r.orderNumber)}</td>
+      <td>${escapeAttr(r.customerName)}</td>
+      <td>${escapeAttr(r.itemSummary || '—')}</td>
+      <td><span class="return-reason">${escapeAttr(r.reason || '—')}</span></td>
+      <td style="font-weight:600;color:var(--green)">$${(r.refundAmount||0).toFixed(2)}</td>
+      <td><span class="status-pill ${st.pill}">${st.label}</span></td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${trackBtn}
+          <select class="action-btn" style="padding:5px 8px" onchange="setReturnStatus(${r.id}, this.value, this)">${options}</select>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// Jump to the Tracking page and look up a return's tracking number.
+function trackReturn(num){
+  showPage('tracking');
+  const input = document.getElementById('trackingInput');
+  if(input){ input.value = num; trackPackage(); }
+}
+
+async function setReturnStatus(id, status, sel){
+  sel.disabled = true;
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch(`/api/shipping/returns/${id}`, {
+      method: 'PATCH',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${token||'demo_token'}`,
+        'Authorization': `Bearer ${token||''}`,
       },
-      body: JSON.stringify({
-        carrier:  'ups',
-        returnId: retId,
-        sellerAddress: {
-          name:'NextLao Store',address1:'123 Main Street',
-          city:'Los Angeles',state:'CA',zip:'90001',
-        },
-        customerAddress: {
-          name:'Customer',address1:'456 Oak Avenue',
-          city:'Austin',state:'TX',zip:'78701',
-        },
-        pkg: { weight:2, length:12, width:9, height:4 },
-      }),
+      body: JSON.stringify({ status }),
     });
-
     const data = await res.json();
-
-    statusCell.className   = 'status-pill printed';
-    statusCell.textContent = 'Label sent';
-    btn.parentElement.innerHTML = `<button class="action-btn" onclick="toast('Tracking: ${data.label?.trackingNumber||'Generated'}','info')">Track return</button>`;
-    toast(`Return ${retId} approved — UPS prepaid label emailed to customer ✓`,'success');
-
-  } catch(err) {
-    statusCell.className   = 'status-pill printed';
-    statusCell.textContent = 'Label sent';
-    btn.parentElement.innerHTML = `<button class="action-btn" onclick="toast('Return label generated','info')">Track return</button>`;
-    toast(`Return ${retId} approved — label sent (demo mode)`,'info');
+    if(!res.ok) throw new Error(data.error || 'Update failed');
+    const row = returnsCache.find(r => r.id === id);
+    if(row) row.status = data.status;
+    renderReturns();
+    toast('Return status updated','success');
+  } catch(err){
+    sel.disabled = false;
+    toast(err.message || 'Failed to update return','error');
   }
 }
 
@@ -3842,6 +3801,9 @@ function showPage(name){
   }
   if(name === 'automation'){
     loadAutomationRules();
+  }
+  if(name === 'returns'){
+    loadReturns();
   }
 }
 

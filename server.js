@@ -4146,6 +4146,61 @@ app.post('/api/shipping/return-label', requireAuth, async (req, res) => {
   }
 });
 
+// LIST RETURNS — real return requests buyers created via the /returns portal.
+// Read-only: the prepaid label is auto-issued the moment the buyer submits
+// (see POST /api/returns), so there is no "approve to generate a label" step.
+app.get('/api/shipping/returns', requireAuth, async (req, res) => {
+  try {
+    const rows = await db.getReturnsBySeller(req.seller.sellerId);
+    const returns = rows.map(r => {
+      const info = r.orderCustomerInfo || {};
+      const name = [info.firstName, info.lastName].filter(Boolean).join(' ')
+        || info.name || r.customerEmail || 'Customer';
+      const items = Array.isArray(r.items) ? r.items : [];
+      const refund = items.reduce((sum, it) =>
+        sum + (parseFloat(it.price) || 0) * (parseInt(it.qty) || 0), 0);
+      return {
+        id:             r.id,
+        returnNumber:   `RET-${String(r.id).padStart(4, '0')}`,
+        orderNumber:    `SS-${r.orderId}`,
+        customerName:   name,
+        customerEmail:  r.customerEmail,
+        items,
+        itemSummary:    items.map(it => `${it.name} × ${it.qty}`).join(', '),
+        reason:         r.reason || '',
+        refundAmount:   refund,
+        status:         r.status,
+        carrier:        r.carrier,
+        trackingNumber: r.trackingNumber,
+        labelUrl:       r.labelUrl,
+        createdAt:      r.createdAt,
+      };
+    });
+    res.json({ returns });
+  } catch (err) {
+    console.error('List returns error:', err);
+    res.status(500).json({ error: 'Failed to load returns.' });
+  }
+});
+
+// Update a return's status (seller marks it received / refunded / etc.).
+app.patch('/api/shipping/returns/:id', requireAuth, async (req, res) => {
+  try {
+    const allowed = ['label_issued', 'in_transit', 'received', 'refunded', 'closed'];
+    const { status } = req.body || {};
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status.' });
+    }
+    const updated = await db.updateReturnStatus(
+      parseInt(req.params.id, 10), req.seller.sellerId, status);
+    if (!updated) return res.status(404).json({ error: 'Return not found.' });
+    res.json({ success: true, status: updated.status });
+  } catch (err) {
+    console.error('Update return error:', err);
+    res.status(500).json({ error: 'Failed to update return.' });
+  }
+});
+
 // TRACK SHIPMENT
 app.get('/api/shipping/track/:carrier/:tracking', requireAuth, async (req, res) => {
   try {
