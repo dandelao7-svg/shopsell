@@ -546,6 +546,11 @@ async function getSellerByStripeCustomerId(stripeCustomerId) {
 
 async function updateSeller(id, fields) {
   const map = {
+    firstName:          'first_name',
+    lastName:           'last_name',
+    email:              'email',
+    phone:              'phone',
+    storeName:          'store_name',
     plan:               'plan',
     subscriptionStatus: 'subscription_status',
     storeActive:        'store_active',

@@ -1193,17 +1193,21 @@ tr:hover td{background:#fafaf7}
     <div style="max-width:640px">
       <div class="form-card">
         <div class="form-section-hd">Store information</div>
-        <div class="field"><label>Store name</label><input type="text" value="Jane's Boutique"></div>
-        <div class="field"><label>Store URL</label>
-          <div style="display:flex;align-items:center;border:1.5px solid var(--border);border-radius:9px;overflow:hidden">
-            <input type="text" value="janesboutique" style="border:none;flex:1">
-            <span style="padding:10px 12px;background:#fafaf7;font-size:12px;color:var(--muted);border-left:1px solid var(--border)">.shopsell.com</span>
-          </div>
+        <div class="field"><label>Store name</label><input type="text" id="setStoreName" placeholder="Your store name"></div>
+        <div class="two-col">
+          <div class="field"><label>First name</label><input type="text" id="setFirstName" placeholder="First name"></div>
+          <div class="field"><label>Last name</label><input type="text" id="setLastName" placeholder="Last name"></div>
         </div>
-        <div class="field"><label>Store description</label><textarea>Handcrafted goods and curated essentials for modern living.</textarea></div>
-        <div class="field"><label>Business email</label><input type="email" value="jane@janesboutique.com"></div>
-        <div class="field"><label>Support phone (optional)</label><input type="tel" value="+1 (555) 000-0000"></div>
-        <button class="btn primary" onclick="toast('Settings saved!')">Save changes</button>
+        <div class="field"><label>Store URL</label>
+          <div style="display:flex;align-items:center;border:1.5px solid var(--border);border-radius:9px;overflow:hidden;background:#fafaf7">
+            <input type="text" id="setStoreSlug" readonly title="Your store URL can't be changed — it's tied to your storefront address and connected domains." style="border:none;flex:1;background:transparent;color:var(--muted)">
+            <span id="setSlugSuffix" style="padding:10px 12px;background:#f2f2ec;font-size:12px;color:var(--muted);border-left:1px solid var(--border)">.nextlao.com</span>
+          </div>
+          <div class="hint" style="margin-top:4px">Your store URL is fixed. To use your own domain, set one up under <a href="#" onclick="showDash('domain');return false" style="color:var(--accent)">Domain</a>.</div>
+        </div>
+        <div class="field"><label>Business email</label><input type="email" id="setEmail" placeholder="you@yourstore.com"></div>
+        <div class="field"><label>Support phone (optional)</label><input type="tel" id="setPhone" placeholder="+1 (555) 000-0000"></div>
+        <button class="btn primary" id="setSaveBtn" onclick="saveSettings()">Save changes</button>
       </div>
       <div class="form-card">
         <div class="form-section-hd">Store preferences</div>
@@ -1462,6 +1466,36 @@ tr:hover td{background:#fafaf7}
   </div>
 </div>
 
+<!-- MARK AS SHIPPED MODAL -->
+<div class="modal-backdrop" id="shipModal">
+  <div class="modal-panel" style="max-width:440px">
+    <div class="modal-hd">
+      <div class="modal-hd-title" id="shipModalTitle">Mark as shipped</div>
+      <button class="modal-close" onclick="closeShipModal()" title="Close">×</button>
+    </div>
+    <div class="alert info" style="font-size:12px;margin-bottom:1rem">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Marking this order shipped emails the buyer their tracking info. To buy a real label, use the <strong>Shipping</strong> suite instead.
+    </div>
+    <div class="field"><label>Carrier</label>
+      <select id="shipCarrier">
+        <option value="ups">UPS</option>
+        <option value="usps">USPS</option>
+        <option value="fedex">FedEx</option>
+        <option value="dhl">DHL</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="field"><label>Tracking number (optional)</label><input type="text" id="shipTracking" placeholder="e.g. 1Z999AA10123456784"></div>
+    <div class="modal-actions">
+      <button class="btn secondary sm" onclick="closeShipModal()">Cancel</button>
+      <div class="right-group">
+        <button class="btn primary sm" id="shipSaveBtn" onclick="confirmShip()">Mark shipped</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toastEl"></div>
 
@@ -1583,6 +1617,68 @@ if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', loadReturnAddress);
 } else {
   loadReturnAddress();
+}
+
+// ── STORE SETTINGS (profile) ─────────────────────────────────
+async function loadSettings(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try {
+    const res = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
+    if(!res.ok) return;
+    const s = await res.json();
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ''; };
+    set('setStoreName', s.storeName);
+    set('setFirstName', s.firstName);
+    set('setLastName',  s.lastName);
+    set('setStoreSlug', s.storeSlug);
+    set('setEmail',     s.email);
+    set('setPhone',     s.phone);
+  } catch(e){ /* not fatal */ }
+}
+
+async function saveSettings(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const payload = {
+    storeName: document.getElementById('setStoreName').value.trim(),
+    firstName: document.getElementById('setFirstName').value.trim(),
+    lastName:  document.getElementById('setLastName').value.trim(),
+    email:     document.getElementById('setEmail').value.trim(),
+    phone:     document.getElementById('setPhone').value.trim(),
+  };
+  if(!payload.storeName || !payload.firstName || !payload.lastName || !payload.email){
+    toast('Store name, name, and email are required');
+    return;
+  }
+
+  const btn = document.getElementById('setSaveBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/seller/settings', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body:    JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ toast(data.error || 'Failed to save'); return; }
+    // Keep the cached seller + sidebar name/email in sync with the save.
+    try {
+      const cached = JSON.parse(localStorage.getItem('ss_seller') || '{}');
+      Object.assign(cached, { storeName: data.storeName, firstName: data.firstName, lastName: data.lastName, email: data.email, phone: data.phone });
+      localStorage.setItem('ss_seller', JSON.stringify(cached));
+    } catch(e){}
+    const nameEl  = document.getElementById('sellerName');
+    const emailEl = document.getElementById('sellerEmail');
+    if(nameEl)  nameEl.textContent  = `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email;
+    if(emailEl) emailEl.textContent = data.email;
+    toast('✓ Settings saved');
+  } catch(err){
+    toast('Network error — could not save');
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
 }
 
 // ── STOREFRONT CONTENT ──────────────────────────────────────
@@ -1875,13 +1971,15 @@ function transformOrder(row){
     : '—';
   const total = row.total != null ? '$' + parseFloat(row.total).toFixed(2) : '—';
   return {
-    id:       `SS-${row.id}`,
+    id:              `SS-${row.id}`,
     date,
     customer,
     email,
-    items:    itemsSummary,
+    items:           itemsSummary,
     total,
-    status:   row.status || 'processing',
+    status:          row.status || 'processing',
+    trackingNumber:  row.trackingNumber || '',
+    trackingCarrier: row.trackingCarrier || '',
   };
 }
 
@@ -1965,6 +2063,7 @@ function showDash(name){
   if(name === 'overview') loadAnalytics();
   if(name === 'customers') loadCustomers();
   if(name === 'domain') loadDomain();
+  if(name === 'settings') loadSettings();
 }
 
 // ── MODE TOGGLE ──
@@ -2105,12 +2204,21 @@ function renderOrders(filter='all',search=''){
       <td><strong>${o.customer}</strong><br><span style="font-size:11px;color:var(--muted)">${o.email}</span></td>
       <td style="color:var(--muted);font-size:12px">${o.items}</td>
       <td style="font-weight:600">${o.total}</td>
-      <td><span class="status-pill ${o.status}">${cap(o.status)}</span></td>
       <td>
-        <div style="display:flex;gap:4px">
+        <span class="status-pill ${o.status}">${cap(o.status)}</span>
+        ${o.trackingNumber ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;font-family:monospace" title="${o.trackingCarrier ? o.trackingCarrier.toUpperCase()+' ' : ''}${o.trackingNumber}">${o.trackingCarrier ? o.trackingCarrier.toUpperCase()+' · ' : ''}${o.trackingNumber}</div>` : ''}
+      </td>
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${o.status==='processing'
+            ? `<button class="btn primary sm" onclick="openShipModal('${o.id}')">Mark shipped</button>` : ''}
+          ${o.status==='shipped'
+            ? `<button class="btn secondary sm" onclick="openShipModal('${o.id}')">Edit tracking</button>
+               <button class="btn primary sm" onclick="markDelivered('${o.id}')">Mark delivered</button>` : ''}
           ${['processing','shipped','delivered'].includes(o.status)
             ? `<button class="btn secondary sm" onclick="refundOrder('${o.id}','${o.total}')">Refund</button>`
-            : (o.status==='refunded' ? '<span style="font-size:12px;color:var(--muted)">Refunded</span>' : '')}
+            : (o.status==='refunded' ? '<span style="font-size:12px;color:var(--muted)">Refunded</span>'
+              : (o.status==='cancelled' ? '<span style="font-size:12px;color:var(--muted)">Cancelled</span>' : ''))}
         </div>
       </td>
     </tr>`).join('');
@@ -2129,6 +2237,64 @@ async function refundOrder(orderId, totalLabel){
     toast('✓ Refunded '+orderId);
     await loadOrders();   // refresh order statuses
   } catch(e){ toast('Network error — refund not completed'); }
+}
+
+// ── ORDER FULFILLMENT (mark shipped / delivered) ─────────────
+let shippingOrderId = null;
+
+function openShipModal(orderId){
+  shippingOrderId = orderId;
+  const o = ORDERS.find(x => x.id === orderId);
+  document.getElementById('shipModalTitle').textContent =
+    (o && o.status === 'shipped') ? `Edit tracking — #${orderId}` : `Mark shipped — #${orderId}`;
+  document.getElementById('shipCarrier').value  = (o && o.trackingCarrier) || 'ups';
+  document.getElementById('shipTracking').value = (o && o.trackingNumber) || '';
+  document.getElementById('shipSaveBtn').textContent = (o && o.status === 'shipped') ? 'Save tracking' : 'Mark shipped';
+  document.getElementById('shipModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeShipModal(){
+  document.getElementById('shipModal').classList.remove('show');
+  document.body.style.overflow = '';
+  shippingOrderId = null;
+}
+
+async function confirmShip(){
+  if(!shippingOrderId) return;
+  const body = {
+    status:          'shipped',
+    trackingCarrier: document.getElementById('shipCarrier').value,
+    trackingNumber:  document.getElementById('shipTracking').value.trim(),
+  };
+  const btn = document.getElementById('shipSaveBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const ok = await patchOrder(shippingOrderId, body, '✓ Order marked shipped — buyer notified');
+  btn.disabled = false; btn.textContent = orig;
+  if(ok) closeShipModal();
+}
+
+async function markDelivered(orderId){
+  if(!confirm('Mark order '+orderId+' as delivered?')) return;
+  await patchOrder(orderId, { status: 'delivered' }, '✓ Order marked delivered');
+}
+
+async function patchOrder(orderId, body, successMsg){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return false; }
+  try {
+    const res = await fetch('/api/seller/orders/'+encodeURIComponent(orderId), {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+token },
+      body:    JSON.stringify(body),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Update failed'); return false; }
+    toast(successMsg);
+    await loadOrders();   // refresh statuses + tracking
+    return true;
+  } catch(e){ toast('Network error — order not updated'); return false; }
 }
 
 function filterOrders(filter,btn){

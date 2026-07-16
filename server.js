@@ -872,12 +872,69 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       firstName: seller.firstName,
       lastName:  seller.lastName,
       email:     seller.email,
+      phone:     seller.phone,
       storeName: seller.storeName,
       storeSlug: seller.storeSlug,
       plan:      seller.plan,
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load account.' });
+  }
+});
+
+// Update the seller's own store profile (name, contact email, phone, store
+// name). The store slug is immutable here — it drives storefront URLs, custom
+// domains, and Stripe/channel metadata, so it stays read-only.
+app.put('/api/seller/settings', requireAuth, async (req, res) => {
+  try {
+    const { firstName, lastName, email, phone, storeName } = req.body || {};
+
+    const fields = {};
+    if (firstName !== undefined) {
+      if (!String(firstName).trim()) return res.status(400).json({ error: 'First name cannot be empty.' });
+      fields.firstName = String(firstName).trim();
+    }
+    if (lastName !== undefined) {
+      if (!String(lastName).trim()) return res.status(400).json({ error: 'Last name cannot be empty.' });
+      fields.lastName = String(lastName).trim();
+    }
+    if (storeName !== undefined) {
+      if (!String(storeName).trim()) return res.status(400).json({ error: 'Store name cannot be empty.' });
+      fields.storeName = String(storeName).trim();
+    }
+    if (phone !== undefined) {
+      fields.phone = String(phone).trim() || null;
+    }
+    if (email !== undefined) {
+      const e = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+        return res.status(400).json({ error: 'Enter a valid email address.' });
+      }
+      // Email is UNIQUE — reject if another seller already uses it.
+      const existing = await db.getSellerByEmail(e);
+      if (existing && existing.id !== req.seller.sellerId) {
+        return res.status(409).json({ error: 'That email is already in use by another account.' });
+      }
+      fields.email = e;
+    }
+
+    if (!Object.keys(fields).length) {
+      return res.status(400).json({ error: 'Nothing to update.' });
+    }
+
+    const updated = await db.updateSeller(req.seller.sellerId, fields);
+    res.json({
+      message:   'Settings saved!',
+      firstName: updated.firstName,
+      lastName:  updated.lastName,
+      email:     updated.email,
+      phone:     updated.phone,
+      storeName: updated.storeName,
+      storeSlug: updated.storeSlug,
+    });
+  } catch (err) {
+    console.error('Update settings error:', err);
+    res.status(500).json({ error: 'Failed to save settings.' });
   }
 });
 
