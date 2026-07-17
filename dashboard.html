@@ -1265,49 +1265,23 @@ tr:hover td{background:#fafaf7}
     <div style="max-width:640px">
       <div class="form-card">
         <div class="form-section-hd">Current plan</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--light);border-radius:10px;margin-bottom:1rem">
-          <div>
-            <div style="font-size:14px;font-weight:600">Growth Plan</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">500 products · Instagram sync · Analytics · Priority support</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:var(--accent)">$119/mo</div>
-            <div style="font-size:11px;color:var(--muted)">Next bill: May 14, 2026</div>
-          </div>
+        <div id="billingPlanBox" style="padding:14px;background:var(--light);border-radius:10px;margin-bottom:1rem">
+          <div style="color:var(--muted);font-size:13px">Loading your plan…</div>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn primary sm" onclick="toast('Redirecting to plan upgrade...')">Upgrade to Pro — $149/mo</button>
-          <button class="btn secondary sm" onclick="toast('Downgrade options coming soon')">Change plan</button>
+          <button class="btn primary sm" onclick="openPlanModal()">Change plan</button>
         </div>
       </div>
       <div class="form-card">
-        <div class="form-section-hd">Payment method on file</div>
-        <div style="display:flex;align-items:center;gap:14px;padding:12px;background:var(--light);border-radius:10px;margin-bottom:1rem">
-          <div style="width:44px;height:28px;background:#fff;border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#1a1f71">VISA</div>
-          <div>
-            <div style="font-size:13px;font-weight:500">Visa ending in 4821</div>
-            <div style="font-size:11px;color:var(--muted)">Expires 09/28</div>
-          </div>
-          <button class="btn secondary sm" style="margin-left:auto" onclick="toast('Update card coming soon')">Update</button>
-        </div>
-        <div class="alert info" style="font-size:12px">
+        <div class="form-section-hd">Payment &amp; invoices</div>
+        <div class="alert info" style="font-size:12px;margin-bottom:1rem">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          Your subscription billing is secured by Stripe. Card numbers are never stored on our servers.
+          Your subscription is billed by Stripe. Update your card and download invoices in Stripe's secure portal — card numbers never touch our servers.
         </div>
-      </div>
-      <div class="form-card">
-        <div class="form-section-hd">Billing history</div>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Date</th><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Plan</th><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Amount</th><th style="text-align:left;padding:0 0 10px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Receipt</th></tr></thead>
-          <tbody>
-            <tr><td style="padding:10px 0;border-bottom:1px solid var(--border)">Apr 14, 2026</td><td style="padding:10px 0;border-bottom:1px solid var(--border)">Growth</td><td style="padding:10px 0;border-bottom:1px solid var(--border);font-weight:600">$119.00</td><td style="padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--accent);cursor:pointer;font-size:12px" onclick="toast('Downloading receipt...')">Download PDF</span></td></tr>
-            <tr><td style="padding:10px 0;border-bottom:1px solid var(--border)">Mar 14, 2026</td><td style="padding:10px 0;border-bottom:1px solid var(--border)">Growth</td><td style="padding:10px 0;border-bottom:1px solid var(--border);font-weight:600">$119.00</td><td style="padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--accent);cursor:pointer;font-size:12px" onclick="toast('Downloading receipt...')">Download PDF</span></td></tr>
-            <tr><td style="padding:10px 0">Feb 14, 2026</td><td style="padding:10px 0">Starter → Growth</td><td style="padding:10px 0;font-weight:600">$119.00</td><td style="padding:10px 0"><span style="color:var(--accent);cursor:pointer;font-size:12px" onclick="toast('Downloading receipt...')">Download PDF</span></td></tr>
-          </tbody>
-        </table>
+        <button class="btn secondary sm" id="billingPortalBtn" onclick="openBillingPortal()">Manage billing in Stripe →</button>
       </div>
       <div style="text-align:center;margin-top:1rem">
-        <span style="font-size:12px;color:var(--muted);cursor:pointer" onclick="toast('Are you sure? Your store will be deactivated.')">Cancel subscription</span>
+        <span id="cancelSubLink" style="font-size:12px;color:var(--muted);cursor:pointer" onclick="cancelSubscription()">Cancel subscription</span>
       </div>
     </div>
   </div>
@@ -1496,6 +1470,27 @@ tr:hover td{background:#fafaf7}
   </div>
 </div>
 
+<!-- CHANGE PLAN MODAL -->
+<div class="modal-backdrop" id="planModal">
+  <div class="modal-panel" style="max-width:520px">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Change plan</div>
+      <button class="modal-close" onclick="closePlanModal()" title="Close">×</button>
+    </div>
+    <div id="planOptions" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="alert info" style="font-size:12px;margin-top:12px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Switching plans takes effect immediately and Stripe prorates the difference on your next invoice.
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary sm" onclick="closePlanModal()">Cancel</button>
+      <div class="right-group">
+        <button class="btn primary sm" id="planSaveBtn" onclick="confirmPlanChange()">Switch plan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toastEl"></div>
 
@@ -1679,6 +1674,148 @@ async function saveSettings(){
   } finally {
     btn.disabled = false; btn.textContent = original;
   }
+}
+
+// ── BILLING / SUBSCRIPTION ───────────────────────────────────
+const PLANS = {
+  starter: { name:'Starter', price:19, features:'Storefront &amp; checkout · 1 sales channel · Full shipping suite · Bring your own Stripe &amp; carriers' },
+  growth:  { name:'Growth',  price:49, features:'Everything in Starter · All sales channels · Automation &amp; batch labels · Custom domain + SSL' },
+  pro:     { name:'Pro',     price:99, features:'Everything in Growth · Higher order volume · Advanced reports · Priority support' },
+};
+let currentPlanKey = null;
+
+async function loadBilling(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  const box = document.getElementById('billingPlanBox');
+  // Plan name is always known from the account; Stripe details are best-effort.
+  let plan = 'starter';
+  try { plan = JSON.parse(localStorage.getItem('ss_seller')||'{}').plan || 'starter'; } catch(e){}
+  currentPlanKey = PLANS[plan] ? plan : 'starter';
+
+  let sub = null;
+  try {
+    const res = await fetch('/api/seller/subscription', { headers:{ 'Authorization':'Bearer '+token } });
+    if(res.ok) sub = await res.json();
+    if(sub && PLANS[sub.plan]) currentPlanKey = sub.plan;
+  } catch(e){ /* Stripe details optional */ }
+
+  const p = PLANS[currentPlanKey];
+  let billLine = '';
+  if(sub){
+    const end = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : null;
+    const endStr = end ? end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : null;
+    if(sub.cancelAtPeriodEnd && endStr){
+      billLine = `<div style="font-size:11px;color:var(--danger,#c0392b);margin-top:2px">Cancels on ${endStr}</div>`;
+    } else if(endStr){
+      billLine = `<div style="font-size:11px;color:var(--muted);margin-top:2px">Next bill: ${endStr}</div>`;
+    }
+    if(sub.status && sub.status !== 'active' && sub.status !== 'trialing'){
+      billLine += `<div style="font-size:11px;color:var(--muted);margin-top:2px">Status: ${cap(sub.status)}</div>`;
+    }
+  }
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="max-width:70%">
+        <div style="font-size:14px;font-weight:600">${p.name} plan</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${p.features}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:var(--accent)">$${p.price}/mo</div>
+        ${billLine}
+      </div>
+    </div>`;
+
+  // Reflect cancellation state on the cancel link.
+  const cancelLink = document.getElementById('cancelSubLink');
+  if(cancelLink){
+    if(sub && sub.cancelAtPeriodEnd){
+      cancelLink.textContent = 'Subscription set to cancel at period end';
+      cancelLink.style.cursor = 'default';
+      cancelLink.onclick = null;
+    } else {
+      cancelLink.textContent = 'Cancel subscription';
+      cancelLink.style.cursor = 'pointer';
+      cancelLink.onclick = cancelSubscription;
+    }
+  }
+}
+
+function openPlanModal(){
+  const wrap = document.getElementById('planOptions');
+  wrap.innerHTML = Object.keys(PLANS).map(key => {
+    const p = PLANS[key];
+    const isCurrent = key === currentPlanKey;
+    return `<label class="plan-choice" style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer">
+      <input type="radio" name="planChoice" value="${key}" ${isCurrent?'checked':''} style="margin-top:3px">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${p.name} — $${p.price}/mo ${isCurrent?'<span style=\"font-size:11px;color:var(--muted);font-weight:400\">(current)</span>':''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${p.features}</div>
+      </div>
+    </label>`;
+  }).join('');
+  document.getElementById('planModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closePlanModal(){
+  document.getElementById('planModal').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+async function confirmPlanChange(){
+  const sel = document.querySelector('input[name="planChoice"]:checked');
+  if(!sel){ toast('Pick a plan'); return; }
+  const newPlan = sel.value;
+  if(newPlan === currentPlanKey){ toast('That\'s already your current plan'); return; }
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+  const btn = document.getElementById('planSaveBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Switching…';
+  try {
+    const res = await fetch('/api/seller/subscription/upgrade', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ newPlan }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Could not change plan'); return; }
+    // Keep the cached plan in sync so the page reflects the new plan.
+    try { const s = JSON.parse(localStorage.getItem('ss_seller')||'{}'); s.plan = newPlan; localStorage.setItem('ss_seller', JSON.stringify(s)); } catch(e){}
+    toast('✓ '+(data.message || 'Plan changed'));
+    closePlanModal();
+    loadBilling();
+  } catch(e){ toast('Network error — plan not changed'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function cancelSubscription(){
+  if(!confirm('Cancel your subscription? Your store stays active until the end of the current billing period, then deactivates.')) return;
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+  try {
+    const res = await fetch('/api/seller/subscription/cancel', { method:'POST', headers:{ 'Authorization':'Bearer '+token } });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Could not cancel'); return; }
+    toast('✓ '+(data.message || 'Subscription will cancel at period end'));
+    loadBilling();
+  } catch(e){ toast('Network error — not cancelled'); }
+}
+
+async function openBillingPortal(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in'); return; }
+  const btn = document.getElementById('billingPortalBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Opening…';
+  try {
+    const res = await fetch('/api/seller/billing-portal', { method:'POST', headers:{ 'Authorization':'Bearer '+token } });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data.url){ toast(data.error || 'Billing portal unavailable'); return; }
+    window.location.href = data.url;
+  } catch(e){ toast('Network error — could not open billing portal'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 // ── STOREFRONT CONTENT ──────────────────────────────────────
@@ -2064,6 +2201,7 @@ function showDash(name){
   if(name === 'customers') loadCustomers();
   if(name === 'domain') loadDomain();
   if(name === 'settings') loadSettings();
+  if(name === 'billing') loadBilling();
 }
 
 // ── MODE TOGGLE ──
@@ -2562,7 +2700,8 @@ function collectOptionsAndVariants(){
   return { options: opts, variants };
 }
 
-async function publishProduct(){
+async function publishProduct(overrideStatus){
+  const isDraft = overrideStatus === 'draft';
   const name = document.getElementById('pName').value.trim();
   const price = document.getElementById('pPrice').value;
   const sku = document.getElementById('pSKU').value.trim();
@@ -2592,16 +2731,16 @@ async function publishProduct(){
     height:           parseFloat(document.getElementById('pHeight').value)  || null,
     options,
     variants,
-    status:           document.getElementById('pStatus').value || 'active',
+    status:           isDraft ? 'draft' : (document.getElementById('pStatus').value || 'active'),
     imageUrls:        uploadedImages.slice(),
     returnable:       document.getElementById('pReturnable').checked,
     returnWindowDays: parseInt(document.getElementById('pReturnDays').value)  || 30,
     restockingFeePct: parseFloat(document.getElementById('pRestockFee').value) || 0,
   };
 
-  const btn = document.querySelector('[onclick="publishProduct()"]');
+  const btn = document.querySelector(isDraft ? '[onclick="saveDraft()"]' : '[onclick="publishProduct()"]');
   const originalLabel = btn ? btn.innerHTML : '';
-  if(btn){ btn.disabled = true; btn.innerHTML = 'Publishing…'; }
+  if(btn){ btn.disabled = true; btn.innerHTML = isDraft ? 'Saving…' : 'Publishing…'; }
 
   try {
     const res = await fetch('/api/seller/products', {
@@ -2615,27 +2754,30 @@ async function publishProduct(){
     const data = await res.json().catch(() => ({}));
 
     if(!res.ok){
-      toast(data.error || 'Failed to publish product');
+      toast(data.error || (isDraft ? 'Failed to save draft' : 'Failed to publish product'));
       return;
     }
 
-    const successEl = document.getElementById('productSuccess');
-    successEl.style.display='flex';
-    successEl.scrollIntoView({behavior:'smooth'});
-    toast('✓ '+name+' published to your store!');
-    setTimeout(()=>successEl.style.display='none',5000);
+    if(isDraft){
+      // Drafts are hidden from the storefront; just confirm and refresh the grid.
+      toast('✓ '+name+' saved as draft');
+      loadProducts();
+    } else {
+      const successEl = document.getElementById('productSuccess');
+      successEl.style.display='flex';
+      successEl.scrollIntoView({behavior:'smooth'});
+      toast('✓ '+name+' published to your store!');
+      setTimeout(()=>successEl.style.display='none',5000);
+    }
   } catch(err){
-    console.error('Publish product error:', err);
+    console.error('Save product error:', err);
     toast('Network error — could not reach server');
   } finally {
     if(btn){ btn.disabled = false; btn.innerHTML = originalLabel; }
   }
 }
 
-function saveDraft(){
-  const name = document.getElementById('pName').value.trim()||'Untitled product';
-  toast('Draft saved: '+name);
-}
+function saveDraft(){ publishProduct('draft'); }
 
 // ── STRIPE ──
 function validateStripeKey(inputId,statusId,testPrefix,livePrefix){

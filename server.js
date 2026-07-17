@@ -2460,6 +2460,28 @@ app.post('/api/seller/subscription/cancel', requireAuth, async (req, res) => {
   }
 });
 
+// Open a Stripe-hosted Billing Portal session so the seller can update their
+// card and download invoices in Stripe's secure UI (no card data touches us).
+// Requires the portal to be activated once in the Stripe dashboard; if it
+// isn't, Stripe errors and we surface a clear message rather than a fake UI.
+app.post('/api/seller/billing-portal', requireAuth, async (req, res) => {
+  try {
+    const seller = await db.getSellerById(req.seller.sellerId);
+    if (!seller?.stripeCustomerId) {
+      return res.status(400).json({ error: 'No billing account is set up yet.' });
+    }
+    const base = (process.env.ALLOWED_ORIGIN || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const session = await stripe.billingPortal.sessions.create({
+      customer:   seller.stripeCustomerId,
+      return_url: `${base}/dashboard`,
+    });
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('Billing portal error:', err);
+    res.status(500).json({ error: 'The billing portal isn\'t available yet. Please try again later or contact support.' });
+  }
+});
+
 /* ============================================================
    ── SELLER RETURN ADDRESS ────────────────────────────────────
    GET /api/seller/return-address
