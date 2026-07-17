@@ -277,10 +277,14 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .orders-table th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;padding:0 8px 10px;border-bottom:1px solid var(--border)}
 .orders-table td{padding:11px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
 .orders-table tr:last-child td{border-bottom:none}
-.status-pill{padding:3px 9px;border-radius:10px;font-size:11px;font-weight:600}
+.status-pill{padding:3px 9px;border-radius:10px;font-size:11px;font-weight:600;text-transform:capitalize}
 .status-pill.delivered{background:var(--green-bg);color:var(--green)}
+.status-pill.paid{background:var(--green-bg);color:var(--green)}
 .status-pill.shipped{background:#dbeafe;color:#1e40af}
 .status-pill.processing{background:#fef3c7;color:#92400e}
+.status-pill.pending{background:#f3f4f6;color:#4b5563}
+.status-pill.cancelled{background:#fee2e2;color:#991b1b}
+.status-pill.refunded{background:#ede9fe;color:#6d28d9}
 
 /* FOOTER */
 .site-footer{background:var(--brand);color:rgba(255,255,255,0.55);padding:2.5rem 1.5rem 1.5rem;margin-top:3rem}
@@ -416,11 +420,11 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 <div class="page" id="page-shop">
   <div class="cat-strip">
     <div class="cat-strip-inner" id="shopCatStrip">
-      <div class="cat-tab active" onclick="setShopCat('all',this)">All</div>
-      <div class="cat-tab" onclick="setShopCat('clothing',this)">Clothing</div>
-      <div class="cat-tab" onclick="setShopCat('accessories',this)">Accessories</div>
-      <div class="cat-tab" onclick="setShopCat('home',this)">Home & Living</div>
-      <div class="cat-tab" onclick="setShopCat('beauty',this)">Beauty</div>
+      <div class="cat-tab active" data-cat="all" onclick="setShopCat('all',this)">All</div>
+      <div class="cat-tab" data-cat="clothing" onclick="setShopCat('clothing',this)">Clothing</div>
+      <div class="cat-tab" data-cat="accessories" onclick="setShopCat('accessories',this)">Accessories</div>
+      <div class="cat-tab" data-cat="home" onclick="setShopCat('home',this)">Home & Living</div>
+      <div class="cat-tab" data-cat="beauty" onclick="setShopCat('beauty',this)">Beauty</div>
     </div>
   </div>
   <div class="shop-section">
@@ -866,11 +870,22 @@ function setHomeSort(v){homeSort=v;renderGrid('homeGrid','homeCount',homeCat,hom
 function setShopCat(cat,btn){
   shopCat=cat;
   document.querySelectorAll('#shopCatStrip .cat-tab').forEach(t=>t.classList.remove('active'));
-  if(btn) btn.classList.add('active');
+  // btn is passed when a tab is clicked directly; footer links call this
+  // without a btn, so fall back to matching the tab by its data-cat.
+  const active = btn || document.querySelector(`#shopCatStrip .cat-tab[data-cat="${cat}"]`);
+  if(active) active.classList.add('active');
   renderGrid('shopGrid','shopCount',shopCat,shopSort);
 }
 function setShopSort(v){shopSort=v;renderGrid('shopGrid','shopCount',shopCat,shopSort)}
-function searchProducts(q){renderGrid('homeGrid','homeCount',homeCat,homeSort,q)}
+function searchProducts(q){
+  // The search box lives in the global header. Jump to Home (where the results
+  // grid is) so matches are visible from any page, not silently updated behind
+  // the Shop or Account view.
+  if(q && q.trim() && !document.getElementById('page-home').classList.contains('active')){
+    navTo('home');
+  }
+  renderGrid('homeGrid','homeCount',homeCat,homeSort,q);
+}
 
 // ── MODAL ─────────────────────────────────────────────────────
 function openModal(id){
@@ -1154,7 +1169,29 @@ function removeItem(key){delete cart[key];updateCartUI()}
 function cartTotal(){return Object.values(cart).reduce((s,i)=>s+unitPrice(i)*i.qty,0)}
 function cartCount(){return Object.values(cart).reduce((s,i)=>s+i.qty,0)}
 
+// ── CART PERSISTENCE ──────────────────────────────────────────
+// Cart is kept per store (keyed by slug) so different storefronts don't share
+// one basket. Saved on every change; restored once products are loaded.
+const CART_KEY = () => 'ss_cart_' + (STORE_SLUG || 'default');
+function saveCart(){
+  try { localStorage.setItem(CART_KEY(), JSON.stringify(cart)); } catch(e){ /* quota/private mode */ }
+}
+function loadCart(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(CART_KEY()) || '{}');
+    const valid = {};
+    // Drop items whose product no longer exists (deleted/unpublished) so the
+    // cart never references a missing product and crashes the render.
+    Object.keys(saved).forEach(k => {
+      const it = saved[k];
+      if(it && PRODUCTS.find(p => p.id === it.id)) valid[k] = it;
+    });
+    cart = valid;
+  } catch(e){ cart = {}; }
+}
+
 function updateCartUI(){
+  saveCart();
   const count=cartCount(), total=cartTotal(), keys=Object.keys(cart);
   ['cartBadge','bnBadge'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=count});
   document.getElementById('cartCount').textContent=count;
@@ -1935,8 +1972,9 @@ async function loadStorefront(){
   }
 }
 
-loadStorefront();
-updateCartUI();
+// Restore the saved cart once products are loaded (so pruning can check
+// against the live catalog), regardless of whether the load succeeded.
+loadStorefront().finally(() => { loadCart(); updateCartUI(); });
 </script>
 </body>
 </html>

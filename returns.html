@@ -166,6 +166,18 @@ main{max-width:640px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
 let lookupResult = null; // { orderId, orderNumber, items, returnsEnabled }
 let labelResult  = null; // { carrier, trackingNumber, labelImage, labelUrl, labelFormat }
 
+// Preserve the store context (?store=slug) on the "back to store" links so a
+// buyer returns to the storefront they came from instead of a blank root.
+// On a store's own subdomain there's no ?store param and "/" already resolves
+// to that store, so this only rewrites when a slug is present.
+(function(){
+  const slug = new URLSearchParams(location.search).get('store');
+  if(slug){
+    const dest = '/?store=' + encodeURIComponent(slug);
+    document.querySelectorAll('.logo, .back-link').forEach(a => a.setAttribute('href', dest));
+  }
+})();
+
 function setStep(n){
   document.getElementById('step1').className = 'step ' + (n > 1 ? 'done' : 'active');
   document.getElementById('step2').className = 'step ' + (n > 2 ? 'done' : n === 2 ? 'active' : '');
