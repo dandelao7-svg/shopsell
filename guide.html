@@ -253,6 +253,15 @@ td:first-child{font-weight:640}
       </ul>
       <div class="note warn"><p class="h">Heads-up: use “Publish”, not “Save draft”</p><p>The <b>Save draft</b> button doesn't store anything yet — it just shows a message. To keep a product, use <b>Publish product</b> (you can set its status to Draft in the form if you don't want it public).</p></div>
 
+      <h4>Import a whole catalog from a spreadsheet</h4>
+      <p>Moving from another store? On the <b>Products</b> page click <b>Import products</b> to bring in many products at once from a CSV (spreadsheet) file.</p>
+      <ul>
+        <li><b>Download CSV template</b> — start from the template so the column names are right. Fill one row per product; only <b>name, category, price, sku</b> are required, and each SKU must be unique.</li>
+        <li>Upload the file, check the preview, then click <b>Import products</b>. You'll get a summary showing how many were <b>created</b>, <b>skipped</b>, or had an <b>error</b> — with the reason for each. Re-importing the same file is safe: products whose SKU already exists are skipped, not duplicated.</li>
+        <li><b>Variants aren't supported here yet</b> — each row becomes one simple product. Add options/variants afterward on the Edit product screen.</li>
+      </ul>
+      <div class="note"><p class="h">About photos in an import</p><p>Photos are added as <b>web links, not uploaded files</b>. In the <code>imageUrls</code> column paste a public image address (e.g. <code>https://…/photo.jpg</code>) — easy if your products are already on Shopify, eBay, Etsy or a website (right-click a photo → “Copy image address”). Put several in one cell separated by a space or <code>|</code>, or leave it blank and add photos later. To upload photo <i>files</i> straight from your computer, use the normal <b>Add product</b> screen instead.</p></div>
+
       <h4>Storefront pages &amp; discounts</h4>
       <p>Under <b>Storefront</b>, fill in your contact email and your About / FAQ / Privacy / Terms text — these appear in your store's footer. Under <b>Discounts</b>, create a code (percentage or fixed amount), optionally with a minimum order, usage limit, or expiry date.</p>
     </section>
