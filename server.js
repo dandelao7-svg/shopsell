@@ -579,6 +579,13 @@ app.get('/guide', (req, res) => {
   res.sendFile(path.join(__dirname, 'guide.html'));
 });
 
+// Operator admin console. The HTML shell is public, but every byte of data
+// comes from /api/admin/* which is gated by requireAdmin — so the page shows
+// nothing without an admin login.
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
 // robots.txt — let crawlers index public pages, keep the app/API out of search.
 // Served per-host so the Sitemap line matches whatever domain is being crawled.
 app.get('/robots.txt', (req, res) => {
@@ -586,6 +593,7 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(
 `User-agent: *
 Disallow: /api/
+Disallow: /admin
 Disallow: /dashboard
 Disallow: /shipping
 Disallow: /login
@@ -665,6 +673,30 @@ function requireBuyerAuth(req, res, next) {
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+  }
+}
+
+// ── ADMIN GATE ────────────────────────────────────────────────
+// Runs AFTER requireAuth. Only sellers whose email is listed in the
+// ADMIN_EMAILS env var (comma-separated) get through. Fails CLOSED: if
+// ADMIN_EMAILS is unset, nobody is an admin — so a missing config can never
+// accidentally expose the console.
+async function requireAdmin(req, res, next) {
+  try {
+    const allow = (process.env.ADMIN_EMAILS || '')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (!allow.length) {
+      return res.status(403).json({ error: 'Admin console is not configured.' });
+    }
+    const seller = await db.getSellerById(req.seller.sellerId);
+    if (!seller || !allow.includes((seller.email || '').toLowerCase())) {
+      return res.status(403).json({ error: 'Admin access only.' });
+    }
+    req.adminSeller = seller;
+    next();
+  } catch (err) {
+    console.error('Admin gate error:', err);
+    res.status(500).json({ error: 'Admin check failed.' });
   }
 }
 
@@ -2281,6 +2313,24 @@ app.post('/api/seller/stripe/test', requireAuth, async (req, res) => {
     });
   } catch (err) {
     res.status(400).json({ success: false, error: 'Connection failed: '+err.message });
+  }
+});
+
+/* ============================================================
+   ── ADMIN / OPERATOR CONSOLE ─────────────────────────────────
+   Internal, operator-only. Gated by requireAuth + requireAdmin
+   (email must be in ADMIN_EMAILS). GET /api/admin/overview.
+   ============================================================ */
+app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [stats, recentSellers] = await Promise.all([
+      db.getAdminStats(),
+      db.getRecentSellers(50),
+    ]);
+    res.json({ stats, recentSellers, admin: req.adminSeller.email });
+  } catch (err) {
+    console.error('Admin overview error:', err);
+    res.status(500).json({ error: 'Failed to load admin data.' });
   }
 });
 

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>ShopSell — Operator Admin</title>
+<style>
+  :root{
+    --bg:#0f1117; --card:#181b24; --border:#262a36; --text:#e7e9ee; --text2:#aab0be;
+    --muted:#6b7280; --accent:#e63946; --green:#22c55e; --blue:#3b82f6; --amber:#f59e0b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Outfit',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);padding:24px;line-height:1.5}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+  h1{font-size:20px;font-weight:700;letter-spacing:-0.01em}
+  h1 .tag{font-size:11px;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:2px 7px;margin-left:8px;vertical-align:middle}
+  .who{font-size:12px;color:var(--muted)}
+  .who a{color:var(--accent);text-decoration:none}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .card .val{font-size:26px;font-weight:700;letter-spacing:-0.02em}
+  .card .lbl{font-size:12px;color:var(--text2);margin-top:2px}
+  .card .sub{font-size:11px;color:var(--muted);margin-top:6px}
+  .section{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px}
+  .section h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin-bottom:14px}
+  .plans{display:flex;gap:10px;flex-wrap:wrap}
+  .plan{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 16px;min-width:110px}
+  .plan .p-n{font-size:12px;color:var(--text2);text-transform:capitalize}
+  .plan .p-v{font-size:20px;font-weight:700;margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);padding:0 0 10px;border-bottom:1px solid var(--border)}
+  td{padding:11px 0;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .email{color:var(--text2);font-size:12px}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:8px}
+  .pill.active{background:rgba(34,197,94,0.15);color:var(--green)}
+  .pill.inactive{background:rgba(107,114,128,0.2);color:var(--muted)}
+  .pill.plan{background:rgba(59,130,246,0.15);color:var(--blue);text-transform:capitalize}
+  .state{text-align:center;padding:64px 20px;color:var(--muted)}
+  .state h2{font-size:16px;color:var(--text);margin-bottom:8px}
+  .state code{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:12px;color:var(--amber)}
+  .scroll{overflow-x:auto}
+  @media(max-width:600px){ .card .val{font-size:22px} body{padding:14px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="loading" class="state">Loading…</div>
+
+  <div id="denied" class="state" style="display:none">
+    <h2 id="deniedTitle">Access denied</h2>
+    <div id="deniedMsg">This console is restricted to the operator account.</div>
+  </div>
+
+  <div id="content" style="display:none">
+    <header>
+      <h1>ShopSell <span class="tag">OPERATOR</span></h1>
+      <div class="who">Signed in as <span id="adminEmail"></span> · <a href="/dashboard">Dashboard</a> · <a href="#" onclick="location.reload();return false">Refresh</a></div>
+    </header>
+
+    <div class="grid" id="statGrid"></div>
+
+    <div class="section">
+      <h2>Plan breakdown</h2>
+      <div class="plans" id="planBox"></div>
+    </div>
+
+    <div class="section">
+      <h2>Recent signups</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Store</th><th>Owner</th><th>Plan</th><th>Billing</th><th>Store</th><th>Joined</th></tr></thead>
+          <tbody id="sellersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const token = localStorage.getItem('ss_token');
+
+function money(v){ return '$' + Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function num(v){ return Number(v||0).toLocaleString('en-US'); }
+function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+function fmtDate(s){ return s ? new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'; }
+
+function showDenied(title, msg){
+  $('loading').style.display = 'none';
+  $('content').style.display = 'none';
+  $('denied').style.display = 'block';
+  if(title) $('deniedTitle').textContent = title;
+  if(msg)   $('deniedMsg').innerHTML = msg;
+}
+
+async function load(){
+  if(!token){
+    location.replace('/login?next=' + encodeURIComponent('/admin'));
+    return;
+  }
+  let res, data;
+  try {
+    res = await fetch('/api/admin/overview', { headers: { 'Authorization': 'Bearer ' + token } });
+    data = await res.json().catch(()=>({}));
+  } catch(e){
+    showDenied('Network error', 'Could not reach the server. Try refreshing.');
+    return;
+  }
+
+  if(res.status === 401){
+    location.replace('/login?next=' + encodeURIComponent('/admin'));
+    return;
+  }
+  if(res.status === 403){
+    showDenied('Access denied',
+      (data.error && data.error.includes('not configured'))
+        ? 'The admin console isn\'t enabled yet. Set the <code>ADMIN_EMAILS</code> environment variable (comma-separated) to your account email, then reload.'
+        : 'This console is restricted to the operator account. You\'re signed in, but your email isn\'t on the admin list.');
+    return;
+  }
+  if(!res.ok){
+    showDenied('Something went wrong', esc(data.error || 'Failed to load admin data.'));
+    return;
+  }
+
+  render(data);
+}
+
+function render(data){
+  const s = data.stats || {};
+  $('adminEmail').textContent = data.admin || '';
+
+  const cards = [
+    { val: num(s.totalSellers),  lbl: 'Total sellers',  sub: `+${num(s.new7d)} this week` },
+    { val: num(s.activeStores),  lbl: 'Active stores',   sub: `${num(s.new30d)} joined in 30d` },
+    { val: num(s.totalOrders),   lbl: 'Orders (all stores)', sub: '' },
+    { val: money(s.gmv),         lbl: 'GMV (paid)',      sub: 'Across all stores' },
+    { val: num(s.totalBuyers),   lbl: 'Buyer accounts',  sub: '' },
+    { val: num(s.totalProducts), lbl: 'Products listed', sub: '' },
+  ];
+  $('statGrid').innerHTML = cards.map(c =>
+    `<div class="card"><div class="val">${c.val}</div><div class="lbl">${c.lbl}</div>${c.sub?`<div class="sub">${c.sub}</div>`:''}</div>`
+  ).join('');
+
+  const plans = s.plans || [];
+  $('planBox').innerHTML = plans.length
+    ? plans.map(p => `<div class="plan"><div class="p-n">${esc(p.plan)}</div><div class="p-v">${num(p.count)}</div></div>`).join('')
+    : '<div style="color:var(--muted);font-size:13px">No sellers yet.</div>';
+
+  const rows = data.recentSellers || [];
+  $('sellersBody').innerHTML = rows.length
+    ? rows.map(r => {
+        const name = [r.firstName, r.lastName].filter(Boolean).join(' ') || '—';
+        const billing = r.subscriptionStatus ? esc(r.subscriptionStatus) : '—';
+        return `<tr>
+          <td><strong>${esc(r.storeName||'—')}</strong><div class="email">${esc(r.storeSlug||'')}</div></td>
+          <td>${esc(name)}<div class="email">${esc(r.email||'')}</div></td>
+          <td><span class="pill plan">${esc(r.plan||'—')}</span></td>
+          <td style="text-transform:capitalize">${billing}</td>
+          <td><span class="pill ${r.storeActive?'active':'inactive'}">${r.storeActive?'Active':'Off'}</span></td>
+          <td>${fmtDate(r.createdAt)}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted)">No signups yet.</td></tr>';
+
+  $('loading').style.display = 'none';
+  $('content').style.display = 'block';
+}
+
+load();
+</script>
+</body>
+</html>

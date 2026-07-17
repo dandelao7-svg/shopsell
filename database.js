@@ -1109,6 +1109,47 @@ async function getReturnsByOrder(orderId) {
   return camelizeAll(rows);
 }
 
+// ── ADMIN / OPERATOR ─────────────────────────────────────────
+// Platform-wide rollups for the operator's internal admin console.
+async function getAdminStats() {
+  const sellers = await pool.query(`
+    SELECT
+      count(*)::int                                                         AS total_sellers,
+      count(*) FILTER (WHERE store_active)::int                             AS active_stores,
+      count(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int   AS new_7d,
+      count(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days')::int  AS new_30d
+    FROM sellers`);
+  const plans = await pool.query(
+    `SELECT plan, count(*)::int AS n FROM sellers GROUP BY plan ORDER BY plan`);
+  const orders = await pool.query(`
+    SELECT count(*)::int AS total_orders,
+           COALESCE(SUM(total) FILTER (WHERE paid_at IS NOT NULL), 0)::float AS gmv
+    FROM orders`);
+  const buyers   = await pool.query(`SELECT count(*)::int AS n FROM buyers`);
+  const products = await pool.query(`SELECT count(*)::int AS n FROM products`);
+  const s = sellers.rows[0];
+  return {
+    totalSellers:  s.total_sellers,
+    activeStores:  s.active_stores,
+    new7d:         s.new_7d,
+    new30d:        s.new_30d,
+    plans:         plans.rows.map(r => ({ plan: r.plan, count: r.n })),
+    totalOrders:   orders.rows[0].total_orders,
+    gmv:           orders.rows[0].gmv || 0,
+    totalBuyers:   buyers.rows[0].n,
+    totalProducts: products.rows[0].n,
+  };
+}
+
+// Most-recent sellers for the admin signups table (no secrets).
+async function getRecentSellers(limit = 50) {
+  const { rows } = await pool.query(`
+    SELECT id, first_name, last_name, email, store_name, store_slug, plan,
+           subscription_status, store_active, created_at
+      FROM sellers ORDER BY created_at DESC LIMIT $1`, [Math.min(parseInt(limit) || 50, 200)]);
+  return camelizeAll(rows);
+}
+
 // All returns for a seller, joined with the originating order so the seller
 // dashboard can show the order number + customer name without a second lookup.
 async function getReturnsBySeller(sellerId) {
@@ -1523,6 +1564,8 @@ module.exports = {
   getReturnsByOrder,
   getReturnsBySeller,
   updateReturnStatus,
+  getAdminStats,
+  getRecentSellers,
 
   // Storefront content
   getSellerStorefrontContent,
