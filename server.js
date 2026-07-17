@@ -596,15 +596,31 @@ Sitemap: ${base}/sitemap.xml
 `);
 });
 
-// sitemap.xml — the public pages for this host. (Per-store product URLs are a
-// future enhancement; this gets the brand/marketing pages discoverable now.)
-app.get('/sitemap.xml', (req, res) => {
-  const base = `https://${req.hostname}`;
+// sitemap.xml — host-aware. A seller storefront lists its own store root; any
+// platform host (umbrella / ShopSell marketing) emits the canonical brand pages
+// across subdomains. Because those subdomains all live under nextlao.com, a
+// single Google Search Console DOMAIN property covers them from one submission.
+// (Per-store product URLs are a future enhancement — they're client-rendered.)
+app.get('/sitemap.xml', async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
-  const urls = [
-    { loc: `${base}/`,        priority: '1.0' },
-    { loc: `${base}/privacy`, priority: '0.3' },
-  ];
+  let urls;
+  try {
+    const seller = await resolveStoreByHost(req.hostname);
+    if (seller) {
+      const base = `https://${req.hostname}`;
+      urls = [{ loc: `${base}/`, priority: '1.0' }];
+    } else {
+      const www  = `https://www.${PLATFORM_DOMAIN}`;
+      const shop = `https://shopsell.${PLATFORM_DOMAIN}`;
+      urls = [
+        { loc: `${www}/`,        priority: '1.0' },  // NextLao umbrella
+        { loc: `${shop}/`,       priority: '0.9' },  // ShopSell marketing site
+        { loc: `${www}/privacy`, priority: '0.3' },  // shared privacy policy
+      ];
+    }
+  } catch (e) {
+    urls = [{ loc: `https://${req.hostname}/`, priority: '1.0' }];
+  }
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
     urls.map(u => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>${u.priority}</priority></url>`).join('\n') +
