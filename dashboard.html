@@ -935,35 +935,33 @@ tr:hover td{background:#fafaf7}
         <div class="page-hd-sub">Your Stripe balance and payout history</div>
       </div>
     </div>
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div id="payoutsNotice" style="display:none;margin-bottom:1rem"></div>
+    <div class="stats-grid" id="payoutsStats" style="grid-template-columns:repeat(3,1fr)">
       <div class="stat-card green">
         <div class="stat-icon green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2d6a4f" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
-        <div class="stat-val">$2,140.00</div>
+        <div class="stat-val" id="poAvailable">—</div>
         <div class="stat-label">Available balance</div>
-        <div class="stat-change up">Next payout in 2 days</div>
+        <div class="stat-change">Ready to pay out</div>
       </div>
       <div class="stat-card blue">
         <div class="stat-icon blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#635bff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-        <div class="stat-val">$680.00</div>
+        <div class="stat-val" id="poPending">—</div>
         <div class="stat-label">Pending (in transit)</div>
-        <div class="stat-change up">Clears in 1–2 days</div>
+        <div class="stat-change">Still clearing from recent sales</div>
       </div>
       <div class="stat-card amber">
         <div class="stat-icon amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-        <div class="stat-val">$18,420.00</div>
-        <div class="stat-label">Total paid out (all time)</div>
-        <div class="stat-change up">↑ Since launch</div>
+        <div class="stat-val" id="poPaidOut">—</div>
+        <div class="stat-label">Paid out (recent)</div>
+        <div class="stat-change">Across your last 12 payouts</div>
       </div>
     </div>
     <div class="table-card">
       <div class="table-hd"><div class="table-title">Payout history</div></div>
       <table>
-        <thead><tr><th>Date</th><th>Amount</th><th>Bank account</th><th>Status</th></tr></thead>
-        <tbody>
-          <tr><td>Apr 28, 2026</td><td style="font-weight:600">$1,240.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
-          <tr><td>Apr 21, 2026</td><td style="font-weight:600">$980.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
-          <tr><td>Apr 14, 2026</td><td style="font-weight:600">$1,560.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
-          <tr><td>Apr 7, 2026</td><td style="font-weight:600">$820.00</td><td>Chase ••••4821</td><td><span class="status-pill delivered">Paid</span></td></tr>
+        <thead><tr><th>Arrival date</th><th>Amount</th><th>Bank account</th><th>Status</th></tr></thead>
+        <tbody id="payoutsTableBody">
+          <tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted)">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -1818,6 +1816,53 @@ async function openBillingPortal(){
   finally { btn.disabled = false; btn.textContent = orig; }
 }
 
+// ── PAYOUTS ──────────────────────────────────────────────────
+async function loadPayouts(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  const notice = document.getElementById('payoutsNotice');
+  const stats  = document.getElementById('payoutsStats');
+  const tbody  = document.getElementById('payoutsTableBody');
+  notice.style.display = 'none';
+  stats.style.display = '';
+  tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted)">Loading…</td></tr>`;
+  try {
+    const res = await fetch('/api/seller/payouts', { headers:{ 'Authorization':'Bearer '+token } });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted)">${data.error||'Could not load payouts.'}</td></tr>`;
+      return;
+    }
+    if(data.notConnected){
+      stats.style.display = 'none';
+      notice.style.display = 'block';
+      notice.innerHTML = `<div class="alert info" style="font-size:13px">Connect your Stripe account under <span style="color:var(--accent);cursor:pointer;font-weight:600" onclick="showDash('stripe')">Stripe payment setup</span> to see your balance and payouts here.</div>`;
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted)">—</td></tr>`;
+      return;
+    }
+    const money = v => '$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    document.getElementById('poAvailable').textContent = money(data.available);
+    document.getElementById('poPending').textContent   = money(data.pending);
+    document.getElementById('poPaidOut').textContent   = money(data.paidOut);
+
+    const payouts = data.payouts || [];
+    if(!payouts.length){
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted)">
+        No payouts yet. Once you add a bank account in your <a href="https://dashboard.stripe.com/settings/payouts" target="_blank" rel="noopener" style="color:var(--accent)">Stripe dashboard</a>, Stripe automatically pays out your available balance on a rolling schedule.</td></tr>`;
+      return;
+    }
+    const pillClass = { paid:'paid', in_transit:'shipped', pending:'pending', canceled:'failed', failed:'failed' };
+    const pillLabel = { paid:'Paid', in_transit:'In transit', pending:'Pending', canceled:'Canceled', failed:'Failed' };
+    tbody.innerHTML = payouts.map(p => {
+      const d = p.arrivalDate ? new Date(p.arrivalDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      const bank = p.bankLast4 ? `${p.bankName||'Bank'} ••••${p.bankLast4}` : '—';
+      return `<tr><td>${d}</td><td style="font-weight:600">$${p.amount}</td><td>${bank}</td><td><span class="status-pill ${pillClass[p.status]||'pending'}">${pillLabel[p.status]||cap(p.status)}</span></td></tr>`;
+    }).join('');
+  } catch(e){
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted)">Network error loading payouts.</td></tr>`;
+  }
+}
+
 // ── STOREFRONT CONTENT ──────────────────────────────────────
 async function loadStorefrontContent(){
   const token = localStorage.getItem('ss_token');
@@ -2202,6 +2247,7 @@ function showDash(name){
   if(name === 'domain') loadDomain();
   if(name === 'settings') loadSettings();
   if(name === 'billing') loadBilling();
+  if(name === 'payouts') loadPayouts();
 }
 
 // ── MODE TOGGLE ──

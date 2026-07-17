@@ -2301,6 +2301,54 @@ app.get('/api/seller/stripe/balance', requireAuth, async (req, res) => {
   }
 });
 
+// Payouts dashboard data — the seller's own Stripe balance + real payout
+// history. Works with no bank connected (balance shows, payout list is empty).
+// notConnected:true lets the UI prompt the seller to connect Stripe first.
+app.get('/api/seller/payouts', requireAuth, async (req, res) => {
+  try {
+    const config = await loadStripeKeys(req.seller.sellerId);
+    if (!config) return res.json({ notConnected: true });
+
+    const sellerStripe = require('stripe')(config.secretKey);
+    const [balance, payoutList] = await Promise.all([
+      sellerStripe.balance.retrieve(),
+      // Expand the destination so we can show the bank name + last4 per payout.
+      sellerStripe.payouts.list({ limit: 12, expand: ['data.destination'] }),
+    ]);
+
+    const sumCents = arr => arr.reduce((s, b) => s + b.amount, 0);
+    const currency = (balance.available[0]?.currency || 'usd').toUpperCase();
+
+    const payouts = payoutList.data.map(p => {
+      const dest = (p.destination && typeof p.destination === 'object') ? p.destination : null;
+      return {
+        amount:      (p.amount / 100).toFixed(2),
+        currency:    p.currency.toUpperCase(),
+        status:      p.status, // paid | pending | in_transit | canceled | failed
+        arrivalDate: p.arrival_date ? new Date(p.arrival_date * 1000).toISOString() : null,
+        bankName:    dest ? (dest.bank_name || 'Bank') : null,
+        bankLast4:   dest ? (dest.last4 || null) : null,
+      };
+    });
+
+    // Sum of completed payouts in the fetched window (recent, not all-time).
+    const paidOut = payoutList.data
+      .filter(p => p.status === 'paid')
+      .reduce((s, p) => s + p.amount, 0) / 100;
+
+    res.json({
+      currency,
+      available: (sumCents(balance.available) / 100).toFixed(2),
+      pending:   (sumCents(balance.pending)   / 100).toFixed(2),
+      paidOut:   paidOut.toFixed(2),
+      payouts,
+    });
+  } catch (err) {
+    console.error('Payouts error:', err);
+    res.status(500).json({ error: 'Failed to load payouts.' });
+  }
+});
+
 /* ============================================================
    ── SELLER CARRIER ACCOUNT ROUTES (bring-your-own-account) ────
    GET    /api/seller/carriers            — connection status per carrier
