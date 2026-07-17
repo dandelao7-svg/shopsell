@@ -587,7 +587,10 @@ tr:hover td{background:#fafaf7}
         <div class="page-hd-title">Products</div>
         <div class="page-hd-sub" id="productCountLabel">12 products in your catalog</div>
       </div>
-      <button class="btn primary" onclick="showDash('add-product')">+ Add product</button>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn secondary" onclick="openImportModal()">Import products</button>
+        <button class="btn primary" onclick="showDash('add-product')">+ Add product</button>
+      </div>
     </div>
     <div class="filter-bar">
       <button class="filter-pill active" onclick="filterProducts('all',this)">All</button>
@@ -1484,6 +1487,48 @@ tr:hover td{background:#fafaf7}
       <button class="btn secondary sm" onclick="closePlanModal()">Cancel</button>
       <div class="right-group">
         <button class="btn primary sm" id="planSaveBtn" onclick="confirmPlanChange()">Switch plan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT PRODUCTS MODAL -->
+<div class="modal-backdrop" id="importModal">
+  <div class="modal-panel" style="max-width:640px">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Import products from CSV</div>
+      <button class="modal-close" onclick="closeImportModal()" title="Close">×</button>
+    </div>
+
+    <div class="alert info" style="font-size:12px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div>Bulk-add products from a spreadsheet. Each row becomes one product. Existing SKUs are skipped, so re-importing is safe. Variants aren't supported yet — one row = one simple product.</div>
+    </div>
+
+    <div class="field" style="margin-top:14px">
+      <label>Step 1 — Get the template</label>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Columns: <code>name, description, category, price, sku, quantity, compareAtPrice, brand, weight, imageUrls, status</code>. Only <b>name, category, price, sku</b> are required. Put multiple image URLs in one cell separated by spaces or <code>|</code>.</div>
+      <button class="btn secondary sm" onclick="downloadCsvTemplate()">Download CSV template</button>
+    </div>
+
+    <div class="field" style="margin-top:14px">
+      <label>Step 2 — Upload your file</label>
+      <input type="file" id="importFile" accept=".csv,text/csv" onchange="handleImportFile(event)">
+    </div>
+
+    <div id="importPreview" style="display:none;margin-top:14px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px" id="importPreviewLabel"></div>
+      <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px" id="importPreviewTable"></table>
+      </div>
+    </div>
+
+    <div id="importResult" style="display:none;margin-top:14px"></div>
+
+    <div class="modal-actions">
+      <button class="btn secondary sm" onclick="closeImportModal()">Cancel</button>
+      <div class="right-group">
+        <button class="btn primary sm" id="importRunBtn" onclick="runImport()" disabled>Import products</button>
       </div>
     </div>
   </div>
@@ -2824,6 +2869,166 @@ async function publishProduct(overrideStatus){
 }
 
 function saveDraft(){ publishProduct('draft'); }
+
+// ── CSV PRODUCT IMPORT ──
+const IMPORT_COLUMNS = ['name','description','category','price','sku','quantity','compareAtPrice','brand','weight','imageUrls','status'];
+let importRows = [];   // parsed row objects, keyed by canonical column name
+
+function openImportModal(){
+  importRows = [];
+  document.getElementById('importFile').value = '';
+  document.getElementById('importPreview').style.display = 'none';
+  document.getElementById('importResult').style.display = 'none';
+  document.getElementById('importRunBtn').disabled = true;
+  document.getElementById('importModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeImportModal(){
+  document.getElementById('importModal').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+function downloadCsvTemplate(){
+  const header = IMPORT_COLUMNS.join(',');
+  const sample = [
+    'Hand-poured Soy Candle,"Lavender & vanilla, 8oz",home,18.00,CANDLE-LAV-8,25,24.00,Nextlao Home,0.6,https://example.com/candle.jpg,active',
+    'Cotton Tote Bag,Natural canvas tote,accessories,12.50,TOTE-NAT,100,,,0.3,,active',
+  ].join('\n');
+  const blob = new Blob([header + '\n' + sample + '\n'], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'shopsell-product-template.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
+// Minimal RFC-4180-ish CSV parser: handles quoted fields, escaped "" quotes,
+// commas and newlines inside quotes, and \r\n line endings. Returns rows of
+// string cells.
+function parseCSV(text){
+  const rows = []; let row = []; let field = ''; let inQuotes = false;
+  text = text.replace(/^﻿/, '');   // strip BOM
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (inQuotes){
+      if (c === '"'){
+        if (text[i+1] === '"'){ field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ','){ row.push(field); field = ''; }
+      else if (c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r'){ /* ignore, handled by \n */ }
+      else field += c;
+    }
+  }
+  if (field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+function handleImportFile(ev){
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try { buildImportRows(String(reader.result || '')); }
+    catch(e){ console.error(e); toast('Could not read that CSV file'); }
+  };
+  reader.onerror = () => toast('Could not read that file');
+  reader.readAsText(file);
+}
+
+function buildImportRows(text){
+  const grid = parseCSV(text).filter(r => r.some(c => String(c).trim() !== ''));
+  if (grid.length < 2){ toast('That file has no data rows'); return; }
+
+  // Map headers → canonical column names (case/space/underscore-insensitive).
+  const norm = s => String(s).toLowerCase().replace(/[\s_-]+/g,'');
+  const canon = {}; IMPORT_COLUMNS.forEach(c => canon[norm(c)] = c);
+  canon[norm('images')] = 'imageUrls';
+  canon[norm('qty')] = 'quantity';
+  const headers = grid[0].map(h => canon[norm(h)] || null);
+
+  if (!headers.includes('name') || !headers.includes('sku')){
+    toast('CSV needs at least "name" and "sku" columns — download the template');
+    return;
+  }
+
+  importRows = grid.slice(1).map(cells => {
+    const obj = {};
+    headers.forEach((key, idx) => { if (key) obj[key] = (cells[idx] != null ? String(cells[idx]).trim() : ''); });
+    return obj;
+  });
+
+  renderImportPreview();
+  document.getElementById('importResult').style.display = 'none';
+  document.getElementById('importRunBtn').disabled = importRows.length === 0;
+}
+
+function renderImportPreview(){
+  const cols = ['name','category','price','sku','quantity'];
+  const head = '<tr>' + cols.map(c => `<th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card,#fff)">${c}</th>`).join('') + '</tr>';
+  const body = importRows.slice(0, 50).map(r => '<tr>' + cols.map(c =>
+    `<td style="padding:6px 10px;border-bottom:1px solid var(--border)">${escImport(r[c] || '')}</td>`).join('') + '</tr>').join('');
+  document.getElementById('importPreviewTable').innerHTML = head + body;
+  const extra = importRows.length > 50 ? ` (showing first 50)` : '';
+  document.getElementById('importPreviewLabel').textContent = `${importRows.length} product${importRows.length===1?'':'s'} ready to import${extra}`;
+  document.getElementById('importPreview').style.display = 'block';
+}
+
+function escImport(s){ return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+async function runImport(){
+  if (!importRows.length) return;
+  const token = localStorage.getItem('ss_token');
+  if (!token){ toast('Please log in'); return; }
+  const btn = document.getElementById('importRunBtn');
+  btn.disabled = true; const label = btn.innerHTML; btn.innerHTML = 'Importing…';
+  try {
+    const res = await fetch('/api/seller/products/import', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+      body: JSON.stringify({ rows: importRows }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok){ toast(data.error || 'Import failed'); btn.disabled = false; btn.innerHTML = label; return; }
+    showImportResult(data);
+    if (data.summary && data.summary.created > 0){
+      toast(`✓ Imported ${data.summary.created} product${data.summary.created===1?'':'s'}`);
+      loadProducts();
+    }
+  } catch(err){
+    console.error('Import error:', err);
+    toast('Network error — could not reach server');
+  } finally {
+    btn.disabled = false; btn.innerHTML = label;
+  }
+}
+
+function showImportResult(data){
+  const s = data.summary || {};
+  const problems = (data.results || []).filter(r => r.status !== 'created');
+  const rowsHtml = problems.slice(0, 100).map(r =>
+    `<tr><td style="padding:4px 8px">${r.row}</td><td style="padding:4px 8px;font-family:monospace">${escImport(r.sku||'')}</td>`
+    + `<td style="padding:4px 8px;color:${r.status==='error'?'#c0392b':'var(--muted)'}">${r.status}</td>`
+    + `<td style="padding:4px 8px;color:var(--muted)">${escImport(r.reason||'')}</td></tr>`).join('');
+  const detail = problems.length
+    ? `<div style="margin-top:10px;max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+         <table style="width:100%;border-collapse:collapse;font-size:12px">
+           <tr><th style="text-align:left;padding:4px 8px">Row</th><th style="text-align:left;padding:4px 8px">SKU</th><th style="text-align:left;padding:4px 8px">Result</th><th style="text-align:left;padding:4px 8px">Reason</th></tr>
+           ${rowsHtml}
+         </table></div>`
+    : '';
+  const el = document.getElementById('importResult');
+  el.innerHTML = `<div class="alert ${s.errored ? 'info' : 'success'}" style="font-size:13px">
+      <div><strong>${s.created||0} created</strong> · ${s.skipped||0} skipped · ${s.errored||0} errored (of ${s.total||0} rows)</div>
+    </div>${detail}`;
+  el.style.display = 'block';
+  // Clear the pending set so the button can't double-submit the same file.
+  importRows = [];
+  document.getElementById('importRunBtn').disabled = true;
+}
 
 // ── STRIPE ──
 function validateStripeKey(inputId,statusId,testPrefix,livePrefix){

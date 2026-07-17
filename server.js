@@ -1429,6 +1429,106 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
   }
 });
 
+// Bulk product import (CSV v1 — flat products, no variants). Takes an array of
+// rows already parsed client-side into objects, validates each one, and creates
+// the valid ones. Returns a per-row result so the seller sees exactly what
+// happened. Honors the same rules as single-create: required name/category/sku
+// (+price), SKU uniqueness per seller, and the plan product limit.
+const IMPORT_MAX_ROWS = 2000;
+
+app.post('/api/seller/products/import', requireAuth, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : null;
+    if (!rows) return res.status(400).json({ error: 'Expected a "rows" array.' });
+    if (!rows.length) return res.status(400).json({ error: 'No rows to import.' });
+    if (rows.length > IMPORT_MAX_ROWS) {
+      return res.status(400).json({ error: `Too many rows — import up to ${IMPORT_MAX_ROWS} at a time.` });
+    }
+
+    const PLAN_LIMITS = { starter: 50, growth: 500, pro: Infinity };
+    const limit = PLAN_LIMITS[req.seller.plan] || 50;
+    let count = await db.getProductCountBySeller(req.seller.sellerId);
+
+    // Existing SKUs (lowercased). As each row is created its SKU is added here,
+    // so duplicates *within* the file are caught too. Compared case-insensitively.
+    const existing = await db.getSkusBySeller(req.seller.sellerId);
+
+    const results = [];
+    let created = 0, skipped = 0, errored = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const raw = rows[i] || {};
+      const rowNum = i + 1;
+      const record = (status, reason, sku) => {
+        results.push({ row: rowNum, sku: sku || (raw.sku || '').toString().trim(), status, reason });
+        if (status === 'created') created++; else if (status === 'skipped') skipped++; else errored++;
+      };
+
+      const name     = String(raw.name || '').trim();
+      const category = String(raw.category || '').trim();
+      const sku      = String(raw.sku || '').trim();
+      const price    = parseFloat(raw.price);
+
+      if (!name)     { record('error', 'Missing name'); continue; }
+      if (!category) { record('error', 'Missing category'); continue; }
+      if (!sku)      { record('error', 'Missing SKU'); continue; }
+      if (!(price > 0)) { record('error', 'Missing or invalid price'); continue; }
+
+      const skuKey = sku.toLowerCase();
+      if (existing.has(skuKey)) { record('skipped', 'SKU already exists', sku); continue; }
+
+      if (count >= limit) {
+        record('skipped', `Plan limit reached (${limit} products)`, sku);
+        continue;
+      }
+
+      // Optional numeric fields — blank/invalid become null (or 0 for quantity).
+      const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+      const imageUrls = String(raw.imageUrls || raw.images || '')
+        .split(/[\s|,]+/).map(s => s.trim())
+        .filter(u => /^https?:\/\//i.test(u))
+        .slice(0, 8);
+
+      try {
+        await db.createProduct({
+          sellerId:       req.seller.sellerId,
+          name,
+          description:    String(raw.description || '').trim(),
+          category,
+          brand:          String(raw.brand || '').trim() || null,
+          price,
+          compareAtPrice: num(raw.compareAtPrice),
+          costPerItem:    num(raw.costPerItem),
+          sku,
+          quantity:       Math.max(0, parseInt(raw.quantity, 10) || 0),
+          weight:         num(raw.weight),
+          length:         num(raw.length),
+          width:          num(raw.width),
+          height:         num(raw.height),
+          options:        [],
+          variants:       [],
+          status:         String(raw.status || '').trim().toLowerCase() === 'draft' ? 'draft' : 'active',
+          imageUrls,
+        });
+        existing.add(skuKey);
+        count++;
+        record('created', null, sku);
+      } catch (err) {
+        console.error(`Import row ${rowNum} failed:`, err);
+        record('error', 'Could not save — server error', sku);
+      }
+    }
+
+    res.json({
+      summary: { total: rows.length, created, skipped, errored, plan: req.seller.plan, limit: Number.isFinite(limit) ? limit : null },
+      results,
+    });
+  } catch (err) {
+    console.error('Import products error:', err);
+    res.status(500).json({ error: 'Failed to import products.' });
+  }
+});
+
 app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
   try {
     const product = await db.getProductById(req.params.id);

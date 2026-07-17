@@ -679,6 +679,16 @@ async function checkSKUExists(sellerId, sku) {
   return rows.length > 0;
 }
 
+// All existing SKUs for a seller, as a lowercased Set — used for bulk import
+// dedup so we check uniqueness once instead of one query per row.
+async function getSkusBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT sku FROM products WHERE seller_id = $1 AND sku IS NOT NULL`,
+    [sellerId]
+  );
+  return new Set(rows.map(r => String(r.sku).toLowerCase()));
+}
+
 async function createProduct(data) {
   const { rows } = await pool.query(
     `INSERT INTO products
@@ -1536,6 +1546,7 @@ module.exports = {
   getProductsBySeller,
   getProductCountBySeller,
   checkSKUExists,
+  getSkusBySeller,
   createProduct,
   getProductById,
   updateProduct,
