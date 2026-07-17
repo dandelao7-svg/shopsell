@@ -324,6 +324,21 @@ async function initSchema() {
     // One code per seller, case-insensitive.
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_discount_seller_code ON discount_codes (seller_id, UPPER(code));`);
 
+    // COMP CODES — operator-issued signup codes that waive the seller's monthly
+    // subscription (100%-off forever). Platform-wide, not per-seller.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS comp_codes (
+        id           SERIAL PRIMARY KEY,
+        code         TEXT NOT NULL,
+        description  TEXT,
+        max_uses     INTEGER,                        -- NULL = unlimited
+        used_count   INTEGER NOT NULL DEFAULT 0,
+        active       BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_comp_code ON comp_codes (UPPER(code));`);
+
     // Orders carry the applied code + dollars discounted (for receipts/reporting).
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_code TEXT;`);
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;`);
@@ -1141,6 +1156,46 @@ async function getAdminStats() {
   };
 }
 
+// ── COMP CODES (operator-issued free-subscription codes) ─────
+async function createCompCode({ code, description, maxUses }) {
+  const { rows } = await pool.query(
+    `INSERT INTO comp_codes (code, description, max_uses)
+     VALUES ($1,$2,$3) RETURNING *`,
+    [String(code).trim().toUpperCase(), description || null,
+     (maxUses == null || maxUses === '' ? null : parseInt(maxUses))]
+  );
+  return camelize(rows[0]);
+}
+
+async function getCompCodes() {
+  const { rows } = await pool.query(`SELECT * FROM comp_codes ORDER BY created_at DESC`);
+  return camelizeAll(rows);
+}
+
+async function getCompCodeByCode(code) {
+  const { rows } = await pool.query(
+    `SELECT * FROM comp_codes WHERE UPPER(code) = UPPER($1) LIMIT 1`, [String(code).trim()]);
+  return rows[0] ? camelize(rows[0]) : null;
+}
+
+// Atomically redeem a comp code: increments used_count only if it's active and
+// still has uses left. Returns true if redeemed, false if invalid/exhausted.
+async function redeemCompCode(code) {
+  const { rowCount } = await pool.query(
+    `UPDATE comp_codes
+        SET used_count = used_count + 1
+      WHERE UPPER(code) = UPPER($1) AND active = TRUE
+        AND (max_uses IS NULL OR used_count < max_uses)`,
+    [String(code).trim()]);
+  return rowCount > 0;
+}
+
+async function setCompCodeActive(id, active) {
+  const { rows } = await pool.query(
+    `UPDATE comp_codes SET active = $2 WHERE id = $1 RETURNING *`, [id, !!active]);
+  return rows[0] ? camelize(rows[0]) : null;
+}
+
 // Most-recent sellers for the admin signups table (no secrets).
 async function getRecentSellers(limit = 50) {
   const { rows } = await pool.query(`
@@ -1566,6 +1621,11 @@ module.exports = {
   updateReturnStatus,
   getAdminStats,
   getRecentSellers,
+  createCompCode,
+  getCompCodes,
+  getCompCodeByCode,
+  redeemCompCode,
+  setCompCodeActive,
 
   // Storefront content
   getSellerStorefrontContent,

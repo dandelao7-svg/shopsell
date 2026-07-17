@@ -283,6 +283,12 @@ button.submit:disabled{opacity:0.5;cursor:not-allowed}
       </div>
     </div>
 
+    <div class="field">
+      <label>Invite code <span style="color:var(--muted,#94a3b8);font-weight:400">(optional)</span></label>
+      <input type="text" id="compCode" placeholder="Have a beta invite code?" autocomplete="off">
+      <div class="hint">If you were given an invite code, enter it to waive your subscription.</div>
+    </div>
+
     <button type="submit" class="submit" id="submitBtn">Create my store →</button>
   </form>
 
@@ -389,6 +395,7 @@ async function handleSignup(e){
     storeName: document.getElementById('storeName').value.trim(),
     storeSlug: document.getElementById('storeSlug').value.trim().toLowerCase(),
     plan:      selectedPlan,
+    compCode:  document.getElementById('compCode').value.trim(),
   };
 
   // Basic validation

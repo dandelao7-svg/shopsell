@@ -68,6 +68,25 @@
     </div>
 
     <div class="section">
+      <h2>Comp codes <span style="text-transform:none;font-weight:400;color:var(--muted)">— invite codes that waive the subscription</span></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+        <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Code</div>
+          <input id="ccCode" placeholder="BETA-LORENE" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;text-transform:uppercase"></div>
+        <div style="flex:1;min-width:140px"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Description (optional)</div>
+          <input id="ccDesc" placeholder="Niece beta test" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+        <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Max uses</div>
+          <input id="ccMax" type="number" min="1" placeholder="∞" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+        <button onclick="createComp()" id="ccBtn" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">Create code</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Code</th><th>Description</th><th>Uses</th><th>Status</th><th></th></tr></thead>
+          <tbody id="compBody"><tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Recent signups</h2>
       <div class="scroll">
         <table>
@@ -168,6 +187,60 @@ function render(data){
 
   $('loading').style.display = 'none';
   $('content').style.display = 'block';
+  loadCompCodes();
+}
+
+async function loadCompCodes(){
+  const body = $('compBody');
+  try {
+    const res = await fetch('/api/admin/comp-codes', { headers: { 'Authorization': 'Bearer ' + token } });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">${esc(data.error||'Could not load codes.')}</td></tr>`; return; }
+    const codes = data.codes || [];
+    if(!codes.length){ body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">No comp codes yet. Create one above.</td></tr>`; return; }
+    body.innerHTML = codes.map(c => {
+      const uses = c.maxUses == null ? `${num(c.usedCount)} / ∞` : `${num(c.usedCount)} / ${num(c.maxUses)}`;
+      return `<tr>
+        <td><strong style="font-family:monospace">${esc(c.code)}</strong></td>
+        <td class="email">${esc(c.description||'—')}</td>
+        <td>${uses}</td>
+        <td><span class="pill ${c.active?'active':'inactive'}">${c.active?'Active':'Off'}</span></td>
+        <td style="text-align:right"><span style="color:var(--accent);cursor:pointer;font-size:12px" onclick="toggleComp(${c.id}, ${!c.active})">${c.active?'Deactivate':'Reactivate'}</span></td>
+      </tr>`;
+    }).join('');
+  } catch(e){ body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">Network error.</td></tr>`; }
+}
+
+async function createComp(){
+  const code = $('ccCode').value.trim();
+  const description = $('ccDesc').value.trim();
+  const maxUses = $('ccMax').value.trim();
+  if(!code){ alert('Enter a code'); return; }
+  const btn = $('ccBtn'); btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const res = await fetch('/api/admin/comp-codes', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ code, description, maxUses: maxUses || null }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ alert(data.error || 'Could not create code'); return; }
+    $('ccCode').value=''; $('ccDesc').value=''; $('ccMax').value='';
+    loadCompCodes();
+  } catch(e){ alert('Network error'); }
+  finally { btn.disabled = false; btn.textContent = 'Create code'; }
+}
+
+async function toggleComp(id, active){
+  try {
+    const res = await fetch('/api/admin/comp-codes/' + id, {
+      method:'PATCH',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ active }),
+    });
+    if(!res.ok){ const d = await res.json().catch(()=>({})); alert(d.error||'Update failed'); return; }
+    loadCompCodes();
+  } catch(e){ alert('Network error'); }
 }
 
 load();

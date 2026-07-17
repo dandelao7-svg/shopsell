@@ -720,9 +720,26 @@ function requirePlan(...allowedPlans) {
    GET  /api/auth/me       — get current seller info
    ============================================================ */
 
+// A single reusable platform Stripe coupon that zeroes a subscription forever.
+// Retrieve-or-create by a fixed id so comp signups never pile up duplicate
+// coupons. Lives on the platform account (test coupon while Stripe is in test).
+let _compCouponId = null;
+async function getCompCoupon() {
+  if (_compCouponId) return _compCouponId;
+  const id = 'shopsell_comp_100';
+  try {
+    _compCouponId = (await stripe.coupons.retrieve(id)).id;
+  } catch (e) {
+    _compCouponId = (await stripe.coupons.create({
+      id, percent_off: 100, duration: 'forever', name: 'Beta comp (100% off)',
+    })).id;
+  }
+  return _compCouponId;
+}
+
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { firstName, lastName, email, password, phone, storeName, storeSlug, plan } = req.body;
+    const { firstName, lastName, email, password, phone, storeName, storeSlug, plan, compCode } = req.body;
 
     if (!firstName || !lastName || !email || !password || !storeName || !storeSlug || !plan) {
       return res.status(400).json({ error: 'All required fields must be filled in.' });
@@ -736,13 +753,27 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
+    // If a comp code was entered, validate it BEFORE creating anything so a bad
+    // code fails loudly (rather than silently charging the tester). Actual
+    // redemption (the usage increment) happens after the account is created.
+    let compValid = false;
+    const compCodeClean = (compCode || '').trim();
+    if (compCodeClean) {
+      const cc = await db.getCompCodeByCode(compCodeClean);
+      const exhausted = cc && cc.maxUses != null && cc.usedCount >= cc.maxUses;
+      if (!cc || !cc.active || exhausted) {
+        return res.status(400).json({ error: 'That invite code is invalid or has already been used up.' });
+      }
+      compValid = true;
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
 
     const stripeCustomer = await stripe.customers.create({
       email,
       name: `${firstName} ${lastName}`,
       phone,
-      metadata: { storeName, storeSlug, plan },
+      metadata: { storeName, storeSlug, plan, comped: compValid ? 'yes' : 'no' },
     });
 
     const PLAN_PRICE_IDS = {
@@ -751,12 +782,20 @@ app.post('/api/auth/signup', async (req, res) => {
       pro:     process.env.STRIPE_PRICE_PRO,
     };
 
-    const subscription = await stripe.subscriptions.create({
+    const subParams = {
       customer:          stripeCustomer.id,
       items:             [{ price: PLAN_PRICE_IDS[plan] }],
       trial_period_days: 14,
       metadata:          { sellerId: storeSlug },
-    });
+    };
+    // A valid comp code attaches a 100%-off-forever coupon, so every invoice
+    // after the trial is $0 — the tester is never charged.
+    if (compValid) {
+      subParams.coupon = await getCompCoupon();
+      subParams.metadata.comped = 'yes';
+    }
+
+    const subscription = await stripe.subscriptions.create(subParams);
 
     const seller = await db.createSeller({
       firstName,
@@ -771,6 +810,12 @@ app.post('/api/auth/signup', async (req, res) => {
       stripeSubscriptionId: subscription.id,
     });
 
+    // Consume one use of the comp code now that the account exists. Best-effort:
+    // a race that loses the last slot doesn't undo the already-created account.
+    if (compValid) {
+      db.redeemCompCode(compCodeClean).catch(e => console.error('Comp redeem failed:', e.message));
+    }
+
     const token = jwt.sign(
       { sellerId: seller.id, email: seller.email, plan: seller.plan },
       process.env.JWT_SECRET,
@@ -778,7 +823,9 @@ app.post('/api/auth/signup', async (req, res) => {
     );
 
     res.status(201).json({
-      message: 'Account created! Your 14-day free trial has started.',
+      message: compValid
+        ? 'Account created! Your beta invite is applied — no subscription charge.'
+        : 'Account created! Your 14-day free trial has started.',
       token,
       seller: {
         id:        seller.id,
@@ -2331,6 +2378,45 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Admin overview error:', err);
     res.status(500).json({ error: 'Failed to load admin data.' });
+  }
+});
+
+// Comp codes — operator-issued invite codes that waive the subscription.
+app.get('/api/admin/comp-codes', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    res.json({ codes: await db.getCompCodes() });
+  } catch (err) {
+    console.error('List comp codes error:', err);
+    res.status(500).json({ error: 'Failed to load comp codes.' });
+  }
+});
+
+app.post('/api/admin/comp-codes', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { code, description, maxUses } = req.body || {};
+    const clean = (code || '').trim();
+    if (!/^[A-Za-z0-9-]{3,40}$/.test(clean)) {
+      return res.status(400).json({ error: 'Code must be 3–40 letters, numbers, or dashes.' });
+    }
+    if (await db.getCompCodeByCode(clean)) {
+      return res.status(409).json({ error: 'That code already exists.' });
+    }
+    const created = await db.createCompCode({ code: clean, description, maxUses });
+    res.status(201).json({ code: created });
+  } catch (err) {
+    console.error('Create comp code error:', err);
+    res.status(500).json({ error: 'Failed to create comp code.' });
+  }
+});
+
+app.patch('/api/admin/comp-codes/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const updated = await db.setCompCodeActive(parseInt(req.params.id, 10), !!req.body.active);
+    if (!updated) return res.status(404).json({ error: 'Comp code not found.' });
+    res.json({ code: updated });
+  } catch (err) {
+    console.error('Update comp code error:', err);
+    res.status(500).json({ error: 'Failed to update comp code.' });
   }
 });
 
