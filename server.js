@@ -33,6 +33,7 @@ const bcrypt       = require('bcryptjs');
 const jwt          = require('jsonwebtoken');
 const stripe       = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const path         = require('path');
+const fs           = require('fs');
 const PDFDocument  = require('pdfkit');
 const db           = require('./database');
 const carriers     = require('./carriers');
@@ -538,6 +539,108 @@ app.get('/', async (req, res) => {
   }
 });
 
+// ── Server-rendered product pages (SEO) ───────────────────────
+// The storefront is a SPA that opens products in modals, so product pages had
+// no crawlable URLs. /product/:id serves the same storefront HTML but with the
+// <head> (title, description, canonical, Open Graph) and schema.org/Product
+// JSON-LD injected server-side, plus a <noscript> fallback — so search engines
+// index each product without running JS. The client JS reads the URL and opens
+// the matching product modal.
+let _indexHtmlCache = null;
+function indexHtml() {
+  if (_indexHtmlCache == null) _indexHtmlCache = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  return _indexHtmlCache;
+}
+function htmlEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+// Canonical public base for a store: its verified custom domain, else its
+// <slug>.PLATFORM_DOMAIN subdomain. Keeps product URLs single-canonical even
+// when reached via ?store= preview on another host.
+function storeCanonicalBase(seller) {
+  if (seller.customDomain && seller.customDomainVerified) return `https://${seller.customDomain}`;
+  return `https://${seller.storeSlug}.${PLATFORM_DOMAIN}`;
+}
+
+app.get('/product/:id', async (req, res) => {
+  try {
+    let seller = await resolveStoreByHost(req.hostname);
+    if (!seller && req.query.store) seller = await db.getSellerBySlug(String(req.query.store));
+    const id = parseInt(req.params.id, 10);
+    const product = (seller && Number.isInteger(id)) ? await db.getProductById(id) : null;
+    const valid = seller && product && product.sellerId === seller.id && product.status === 'active';
+
+    const html = indexHtml();
+    if (!valid) {
+      // Unknown/inactive product → serve the storefront but tell crawlers not to
+      // index this URL, and return 404 so it doesn't pollute the index.
+      const head = `<title>Product not found</title>\n<meta name="robots" content="noindex">`;
+      return res.status(404).send(
+        html.replace(/<!--SEO_START-->[\s\S]*?<!--SEO_END-->/, `<!--SEO_START-->${head}<!--SEO_END-->`)
+            .replace('<!--SSR_BODY-->', '')
+      );
+    }
+
+    const base   = storeCanonicalBase(seller);
+    const url    = `${base}/product/${product.id}`;
+    const name   = product.name || 'Product';
+    const desc   = String(product.description || `${name} from ${seller.storeName}`).replace(/\s+/g, ' ').trim().slice(0, 155);
+    const images = (Array.isArray(product.imageUrls) ? product.imageUrls : []).filter(u => /^https?:\/\//i.test(u));
+    const price  = (Number(product.price) || 0).toFixed(2);
+    const inStock = (product.quantity || 0) > 0 || (Array.isArray(product.variants) && product.variants.length > 0);
+    const title  = `${name} — ${seller.storeName}`;
+
+    const ld = {
+      '@context': 'https://schema.org', '@type': 'Product',
+      name, description: desc, sku: product.sku || undefined,
+      image: images.length ? images : undefined,
+      brand: product.brand ? { '@type': 'Brand', name: product.brand } : undefined,
+      offers: {
+        '@type': 'Offer', price, priceCurrency: 'USD',
+        availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        url,
+      },
+    };
+    if (product.reviewCount > 0 && product.rating > 0) {
+      ld.aggregateRating = { '@type': 'AggregateRating', ratingValue: Number(product.rating).toFixed(1), reviewCount: product.reviewCount };
+    }
+    // Escape </ so the JSON-LD can't break out of the <script> element.
+    const ldJson = JSON.stringify(ld).replace(/</g, '\\u003c');
+
+    const head =
+`<title>${htmlEsc(title)}</title>
+<meta name="description" content="${htmlEsc(desc)}">
+<link rel="canonical" href="${htmlEsc(url)}">
+<meta property="og:type" content="product">
+<meta property="og:site_name" content="${htmlEsc(seller.storeName)}">
+<meta property="og:title" content="${htmlEsc(name)}">
+<meta property="og:description" content="${htmlEsc(desc)}">
+<meta property="og:url" content="${htmlEsc(url)}">
+${images[0] ? `<meta property="og:image" content="${htmlEsc(images[0])}">` : ''}
+<meta property="product:price:amount" content="${price}">
+<meta property="product:price:currency" content="USD">
+<meta name="twitter:card" content="${images[0] ? 'summary_large_image' : 'summary'}">
+<script type="application/ld+json">${ldJson}</script>`;
+
+    const noscript =
+`<noscript><article style="max-width:640px;margin:24px auto;padding:0 16px;font-family:sans-serif">
+<h1>${htmlEsc(name)}</h1>
+${images[0] ? `<img src="${htmlEsc(images[0])}" alt="${htmlEsc(name)}" style="max-width:100%">` : ''}
+<p>${htmlEsc(product.description || '')}</p>
+<p><strong>$${price}</strong> — ${inStock ? 'In stock' : 'Out of stock'}</p>
+<p><a href="${htmlEsc(base)}/">Visit ${htmlEsc(seller.storeName)}</a></p>
+</article></noscript>`;
+
+    res.send(
+      html.replace(/<!--SEO_START-->[\s\S]*?<!--SEO_END-->/, `<!--SEO_START-->${head}<!--SEO_END-->`)
+          .replace('<!--SSR_BODY-->', noscript)
+    );
+  } catch (err) {
+    console.error('Product SSR error:', err);
+    res.sendFile(path.join(__dirname, 'index.html'));
+  }
+});
+
 // Serve seller signup page
 app.get('/signup', (req, res) => {
   res.sendFile(path.join(__dirname, 'signup.html'));
@@ -608,7 +711,7 @@ Sitemap: ${base}/sitemap.xml
 // platform host (umbrella / ShopSell marketing) emits the canonical brand pages
 // across subdomains. Because those subdomains all live under nextlao.com, a
 // single Google Search Console DOMAIN property covers them from one submission.
-// (Per-store product URLs are a future enhancement — they're client-rendered.)
+// A seller storefront also lists its server-rendered /product/:id pages.
 app.get('/sitemap.xml', async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   let urls;
@@ -617,6 +720,11 @@ app.get('/sitemap.xml', async (req, res) => {
     if (seller) {
       const base = `https://${req.hostname}`;
       urls = [{ loc: `${base}/`, priority: '1.0' }];
+      // List each active product so search engines discover the SSR product pages.
+      try {
+        const products = await db.getActiveProducts(seller.storeSlug);
+        for (const p of products) urls.push({ loc: `${base}/product/${p.id}`, priority: '0.8' });
+      } catch (_) { /* store root alone is still a valid sitemap */ }
     } else {
       const www  = `https://www.${PLATFORM_DOMAIN}`;
       const shop = `https://shopsell.${PLATFORM_DOMAIN}`;
