@@ -616,10 +616,11 @@ app.get('/product/:id', async (req, res) => {
 <meta property="og:title" content="${htmlEsc(name)}">
 <meta property="og:description" content="${htmlEsc(desc)}">
 <meta property="og:url" content="${htmlEsc(url)}">
-${images[0] ? `<meta property="og:image" content="${htmlEsc(images[0])}">` : ''}
+<meta property="og:image" content="${htmlEsc(images[0] || 'https://shopsell.nextlao.com/og.png')}">
 <meta property="product:price:amount" content="${price}">
 <meta property="product:price:currency" content="USD">
-<meta name="twitter:card" content="${images[0] ? 'summary_large_image' : 'summary'}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${htmlEsc(images[0] || 'https://shopsell.nextlao.com/og.png')}">
 <script type="application/ld+json">${ldJson}</script>`;
 
     const noscript =
