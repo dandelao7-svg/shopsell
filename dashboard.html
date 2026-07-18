@@ -1506,8 +1506,8 @@ tr:hover td{background:#fafaf7}
     </div>
 
     <div class="field" style="margin-top:14px">
-      <label>Step 1 — Get the template</label>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Columns: <code>name, description, category, price, sku, quantity, compareAtPrice, brand, weight, imageUrls, status</code>. Only <b>name, category, price, sku</b> are required.</div>
+      <label>Step 1 — Get the template <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Optional — any CSV works, since you'll match columns in Step 3. Template columns: <code>name, description, category, price, sku, quantity, compareAtPrice, brand, weight, imageUrls, status</code>. Only <b>name, category, price, sku</b> are required.</div>
       <div class="alert info" style="font-size:12px;margin-bottom:8px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
         <div><b>Photos are added as web links, not files.</b> In the <code>imageUrls</code> column paste a public image address (e.g. <code>https://…/photo.jpg</code>) — handy if your products are already on Shopify, eBay, Etsy or a website (right-click a photo → “Copy image address”). Put several in one cell separated by a space or <code>|</code>. Leave it blank to add photos later. To upload photo <i>files</i> from your computer, use the normal <b>Add product</b> screen instead.</div>
@@ -1518,6 +1518,14 @@ tr:hover td{background:#fafaf7}
     <div class="field" style="margin-top:14px">
       <label>Step 2 — Upload your file</label>
       <input type="file" id="importFile" accept=".csv,text/csv" onchange="handleImportFile(event)">
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Any CSV works — you'll match its columns to ShopSell's fields in the next step, so you don't need to rename anything.</div>
+    </div>
+
+    <div id="importMapping" style="display:none;margin-top:16px">
+      <label style="font-weight:600;font-size:13px">Step 3 — Match your columns</label>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 10px">We auto-matched what we could. Fix any that look wrong. Fields marked * are required.</div>
+      <div id="importMapGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px"></div>
+      <div id="importMapWarn" class="alert info" style="display:none;font-size:12px;margin-top:10px"></div>
     </div>
 
     <div id="importPreview" style="display:none;margin-top:14px">
@@ -2876,11 +2884,33 @@ function saveDraft(){ publishProduct('draft'); }
 
 // ── CSV PRODUCT IMPORT ──
 const IMPORT_COLUMNS = ['name','description','category','price','sku','quantity','compareAtPrice','brand','weight','imageUrls','status'];
-let importRows = [];   // parsed row objects, keyed by canonical column name
+// Target fields + synonyms used to auto-guess which CSV column maps to each.
+const IMPORT_FIELDS = [
+  { key:'name',           label:'Name',             required:true,  aliases:['title','productname','producttitle','item','itemname'] },
+  { key:'category',       label:'Category',         required:true,  aliases:['type','producttype','department','collection'] },
+  { key:'price',          label:'Price',            required:true,  aliases:['amount','sellingprice','unitprice','saleprice','retailprice'] },
+  { key:'sku',            label:'SKU',              required:true,  aliases:['skuid','itemid','variantsku','code','itemnumber','mpn'] },
+  { key:'description',    label:'Description',      required:false, aliases:['desc','details','body','bodyhtml','longdescription'] },
+  { key:'quantity',       label:'Quantity',         required:false, aliases:['qty','stock','inventory','inventoryquantity','onhand','available'] },
+  { key:'compareAtPrice', label:'Compare-at price', required:false, aliases:['compareat','compareatprice','msrp','rrp','wasprice','listprice','originalprice'] },
+  { key:'brand',          label:'Brand',            required:false, aliases:['maker','vendor','manufacturer'] },
+  { key:'weight',         label:'Weight',           required:false, aliases:['wt','shippingweight','itemweight'] },
+  { key:'imageUrls',      label:'Image URLs',       required:false, aliases:['image','images','imageurl','imageurls','photo','photos','imagesrc','imagelink','picture'] },
+  { key:'status',         label:'Status',           required:false, aliases:['state','published','visibility'] },
+];
+const IMPORT_CATEGORIES = ['clothing','accessories','home','beauty','art','digital','other'];
+let importRows = [];             // final row objects, built from the current mapping
+let IMPORT_RAW_HEADERS = [];     // header cells from the uploaded file
+let IMPORT_RAW_ROWS = [];        // data rows (arrays of cells) from the uploaded file
+
+function normHead(s){ return String(s).toLowerCase().replace(/[\s_-]+/g,''); }
 
 function openImportModal(){
-  importRows = [];
+  importRows = []; IMPORT_RAW_HEADERS = []; IMPORT_RAW_ROWS = [];
   document.getElementById('importFile').value = '';
+  document.getElementById('importMapGrid').innerHTML = '';
+  document.getElementById('importMapping').style.display = 'none';
+  document.getElementById('importMapWarn').style.display = 'none';
   document.getElementById('importPreview').style.display = 'none';
   document.getElementById('importResult').style.display = 'none';
   document.getElementById('importRunBtn').disabled = true;
@@ -2936,38 +2966,95 @@ function handleImportFile(ev){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    try { buildImportRows(String(reader.result || '')); }
+    try { loadImportCsv(String(reader.result || '')); }
     catch(e){ console.error(e); toast('Could not read that CSV file'); }
   };
   reader.onerror = () => toast('Could not read that file');
   reader.readAsText(file);
 }
 
-function buildImportRows(text){
+// Parse the file into raw headers + rows, then show the column-mapping step.
+function loadImportCsv(text){
   const grid = parseCSV(text).filter(r => r.some(c => String(c).trim() !== ''));
   if (grid.length < 2){ toast('That file has no data rows'); return; }
+  IMPORT_RAW_HEADERS = grid[0].map(h => String(h == null ? '' : h).trim());
+  IMPORT_RAW_ROWS = grid.slice(1);
+  renderMappingUI();
+  document.getElementById('importMapping').style.display = 'block';
+  applyMapping();
+}
 
-  // Map headers → canonical column names (case/space/underscore-insensitive).
-  const norm = s => String(s).toLowerCase().replace(/[\s_-]+/g,'');
-  const canon = {}; IMPORT_COLUMNS.forEach(c => canon[norm(c)] = c);
-  canon[norm('images')] = 'imageUrls';
-  canon[norm('qty')] = 'quantity';
-  const headers = grid[0].map(h => canon[norm(h)] || null);
+// Build the field → column dropdowns, auto-selecting the best-guess column for
+// each ShopSell field (exact header match, then a synonym), never reusing a
+// column for two fields.
+function renderMappingUI(){
+  const headers = IMPORT_RAW_HEADERS;
+  const normHeaders = headers.map(normHead);
+  const used = new Set();
+  const guess = (f) => {
+    for (const cand of [f.key, ...(f.aliases || [])].map(normHead)){
+      const i = normHeaders.findIndex((h, idx) => !used.has(idx) && h === cand);
+      if (i >= 0){ used.add(i); return i; }
+    }
+    return -1;
+  };
+  const optionsFor = (sel) =>
+    `<option value=""${sel < 0 ? ' selected' : ''}>— Skip —</option>` +
+    headers.map((h, i) => `<option value="${i}"${sel === i ? ' selected' : ''}>${escImport(h || ('Column ' + (i + 1)))}</option>`).join('');
+  const selStyle = 'font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;background:#fff';
 
-  if (!headers.includes('name') || !headers.includes('sku')){
-    toast('CSV needs at least "name" and "sku" columns — download the template');
-    return;
-  }
+  let html = IMPORT_FIELDS.map(f => {
+    const g = guess(f);
+    return `<div style="font-size:12px;align-self:center">${f.label}${f.required ? ' <span style="color:#c0392b">*</span>' : ''}</div>`
+      + `<select data-field="${f.key}" onchange="applyMapping()" style="${selStyle}">${optionsFor(g)}</select>`;
+  }).join('');
 
-  importRows = grid.slice(1).map(cells => {
+  // Fallback category applied to any row whose category cell is blank (or when
+  // Category isn't mapped at all) — so imports work even if the file has no
+  // category column.
+  html += `<div style="font-size:12px;align-self:center;color:var(--muted)">Default category</div>`
+    + `<select id="importDefaultCat" onchange="applyMapping()" style="${selStyle}">`
+    + IMPORT_CATEGORIES.map(c => `<option value="${c}"${c === 'other' ? ' selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('')
+    + `</select>`;
+
+  document.getElementById('importMapGrid').innerHTML = html;
+}
+
+// Read the current mapping, build importRows from the raw data, validate that
+// required fields resolve, and refresh the preview.
+function applyMapping(){
+  const mapping = {};
+  document.querySelectorAll('#importMapGrid select[data-field]').forEach(el => {
+    mapping[el.dataset.field] = el.value === '' ? -1 : parseInt(el.value, 10);
+  });
+  const defCatEl = document.getElementById('importDefaultCat');
+  const defCat = defCatEl ? defCatEl.value : '';
+
+  importRows = IMPORT_RAW_ROWS.map(cells => {
     const obj = {};
-    headers.forEach((key, idx) => { if (key) obj[key] = (cells[idx] != null ? String(cells[idx]).trim() : ''); });
+    IMPORT_FIELDS.forEach(f => {
+      const idx = mapping[f.key];
+      if (idx != null && idx >= 0) obj[f.key] = cells[idx] != null ? String(cells[idx]).trim() : '';
+    });
+    if (!obj.category && defCat) obj.category = defCat;   // fill blank/unmapped category
     return obj;
   });
 
-  renderImportPreview();
+  const missing = IMPORT_FIELDS.filter(f => f.required && f.key !== 'category' && mapping[f.key] < 0);
+  const warn = document.getElementById('importMapWarn');
+  const runBtn = document.getElementById('importRunBtn');
   document.getElementById('importResult').style.display = 'none';
-  document.getElementById('importRunBtn').disabled = importRows.length === 0;
+
+  if (missing.length){
+    warn.textContent = 'Please pick a column for: ' + missing.map(f => f.label).join(', ') + '.';
+    warn.style.display = 'block';
+    document.getElementById('importPreview').style.display = 'none';
+    runBtn.disabled = true;
+  } else {
+    warn.style.display = 'none';
+    renderImportPreview();
+    runBtn.disabled = importRows.length === 0;
+  }
 }
 
 function renderImportPreview(){
