@@ -919,7 +919,19 @@ function renderFeatured(){
   if(!enabled || !featured.length){ rail.hidden = true; return; }
   document.getElementById('featuredTrack').innerHTML = featured.map(cardHTML).join('');
   rail.hidden = false;
+  requestAnimationFrame(updateFeaturedArrows);
 }
+
+// Show the ‹ › arrows only when the rail's content actually overflows the visible
+// width — otherwise they look broken (clicking does nothing because nothing is
+// off-screen). Re-checked on load and on window resize.
+function updateFeaturedArrows(){
+  const track = document.getElementById('featuredTrack');
+  const nav = document.querySelector('#featuredRail .featured-rail-nav');
+  if(!track || !nav) return;
+  nav.style.display = (track.scrollWidth > track.clientWidth + 4) ? 'flex' : 'none';
+}
+window.addEventListener('resize', updateFeaturedArrows);
 
 // Scroll the featured track roughly one card-width per arrow click.
 function scrollFeatured(dir){
