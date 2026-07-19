@@ -89,6 +89,19 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .cat-tab:hover{color:var(--text)}
 .cat-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
+/* FEATURED CAROUSEL */
+.featured-rail{max-width:1100px;margin:0 auto;padding:2rem 1.5rem 0.5rem}
+.featured-rail[hidden]{display:none}
+.featured-rail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.featured-rail-hd h2{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;margin:0}
+.featured-rail-nav{display:flex;gap:8px}
+.featured-arrow{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:20px;line-height:1;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center}
+.featured-arrow:hover{border-color:var(--accent);color:var(--accent)}
+.featured-track{display:flex;gap:1rem;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;padding-bottom:6px;scroll-snap-type:x proximity}
+.featured-track::-webkit-scrollbar{display:none}
+.featured-track .product-card{flex:0 0 220px;scroll-snap-align:start}
+@media(max-width:600px){.featured-track .product-card{flex:0 0 60%}.featured-rail-nav{display:none}}
+
 /* SHOP */
 .shop-section{max-width:1100px;margin:0 auto;padding:2rem 1.5rem}
 .shop-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;gap:10px;flex-wrap:wrap}
@@ -402,6 +415,18 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
       <div><div class="hero-stat-val">4.9★</div><div class="hero-stat-label">Avg. rating</div></div>
     </div>
   </div>
+  <!-- FEATURED CAROUSEL — hidden until the store has featured products AND the
+       seller has the rail enabled (see renderFeatured()). -->
+  <section class="featured-rail" id="featuredRail" hidden>
+    <div class="featured-rail-hd">
+      <h2 id="featuredTitle">Featured</h2>
+      <div class="featured-rail-nav">
+        <button class="featured-arrow" aria-label="Scroll left" onclick="scrollFeatured(-1)">‹</button>
+        <button class="featured-arrow" aria-label="Scroll right" onclick="scrollFeatured(1)">›</button>
+      </div>
+    </div>
+    <div class="featured-track" id="featuredTrack"></div>
+  </section>
   <div class="cat-strip">
     <div class="cat-strip-inner" id="homeCatStrip">
       <div class="cat-tab active" onclick="setHomeCat('all',this)">All</div>
@@ -818,6 +843,7 @@ function normalizeProduct(p) {
     variants:     Array.isArray(p.variants) ? p.variants : [],
     quantity:     p.quantity,
     images:       Array.isArray(p.imageUrls) ? p.imageUrls : [],
+    featured:     !!p.isFeatured,
   };
 }
 
@@ -878,6 +904,27 @@ function renderGrid(gId,cId,cat,sort,search=''){
   const list=getFiltered(cat,sort,search);
   document.getElementById(gId).innerHTML=list.map(cardHTML).join('');
   if(cId) document.getElementById(cId).textContent=list.length+' product'+(list.length!==1?'s':'');
+}
+
+// Homepage "Featured" carousel. Shows only when the seller has the rail enabled
+// (STORE_CONFIG.storefrontContent.featuredRailEnabled, default true) AND at least
+// one product is flagged featured. Reuses the standard product card markup.
+function renderFeatured(){
+  const rail = document.getElementById('featuredRail');
+  if(!rail) return;
+  const enabled = !STORE_CONFIG || !STORE_CONFIG.storefrontContent
+    ? true
+    : STORE_CONFIG.storefrontContent.featuredRailEnabled !== false;
+  const featured = PRODUCTS.filter(p=>p.featured);
+  if(!enabled || !featured.length){ rail.hidden = true; return; }
+  document.getElementById('featuredTrack').innerHTML = featured.map(cardHTML).join('');
+  rail.hidden = false;
+}
+
+// Scroll the featured track roughly one card-width per arrow click.
+function scrollFeatured(dir){
+  const track = document.getElementById('featuredTrack');
+  if(track) track.scrollBy({ left: dir * 240, behavior:'smooth' });
 }
 
 // ── FILTERS ───────────────────────────────────────────────────
@@ -1997,6 +2044,7 @@ async function loadStorefront(){
       return;
     }
 
+    renderFeatured();
     renderGrid('homeGrid','homeCount',homeCat,homeSort);
     renderGrid('shopGrid','shopCount',shopCat,shopSort);
 

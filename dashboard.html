@@ -238,6 +238,8 @@ tr:hover td{background:#fafaf7}
 .product-mgmt-price{font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;color:var(--accent)}
 .product-mgmt-actions{display:flex;gap:4px}
 .action-btn{background:var(--light2);border:none;width:26px;height:26px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all 0.2s}
+.action-btn.featstar{font-size:15px;line-height:1}
+.action-btn.featstar.on{color:var(--gold,#c9a84c);background:#fff8e6}
 .action-btn:hover{background:var(--accent);color:#fff}
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto}
 .modal-backdrop.show{display:flex}
@@ -253,6 +255,8 @@ tr:hover td{background:#fafaf7}
 
 /* ── ORDERS FILTERS ── */
 .filter-bar{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center}
+.featured-rail-ctl{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:1.25rem}
+.featured-rail-ctl .toggle-desc{max-width:640px}
 .filter-pill{border:1.5px solid var(--border);background:var(--card);padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--muted);transition:all 0.2s}
 .filter-pill.active,.filter-pill:hover{border-color:var(--accent);color:var(--accent);background:#fff5f5}
 .search-input{flex:1;max-width:280px;padding:7px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;outline:none;transition:border-color 0.2s}
@@ -590,6 +594,16 @@ tr:hover td{background:#fafaf7}
         <button class="btn secondary" onclick="openImportModal()">Import products</button>
         <button class="btn primary" onclick="showDash('add-product')">+ Add product</button>
       </div>
+    </div>
+    <div class="featured-rail-ctl">
+      <div>
+        <div class="toggle-label">⭐ Featured carousel</div>
+        <div class="toggle-desc">Show a scrolling row of your featured products at the top of your storefront homepage. Star products below to add them.</div>
+      </div>
+      <label class="toggle" title="Toggle the featured carousel on your storefront">
+        <input type="checkbox" id="featuredRailToggle" onchange="setFeaturedRail(this.checked)">
+        <span class="tslider"></span>
+      </label>
     </div>
     <div class="filter-bar">
       <button class="filter-pill active" onclick="filterProducts('all',this)">All</button>
@@ -2256,6 +2270,7 @@ function transformDashProduct(row){
     status: row.status || 'active',
     sku:    row.sku || '—',
     images: Array.isArray(row.imageUrls) ? row.imageUrls : [],
+    featured: !!row.isFeatured,
     _raw:   row,
   };
 }
@@ -2295,6 +2310,7 @@ function showDash(name){
   document.getElementById('topbarTitle').textContent = titles[name]||name;
   window.scrollTo(0,0);
 
+  if(name === 'products') loadFeaturedRailToggle();
   if(name === 'stripe') loadStripeConfig();
   if(name === 'discounts') loadDiscounts();
   if(name === 'add-product') initVariantEditor(ADD_VAR_CTX);
@@ -2571,6 +2587,7 @@ function renderProducts(filter='all'){
         <div class="product-mgmt-footer">
           <div class="product-mgmt-price">$${p.price.toFixed(2)}</div>
           <div class="product-mgmt-actions">
+            <button class="action-btn featstar${p.featured?' on':''}" title="${p.featured?'Featured — click to remove from carousel':'Add to featured carousel'}" onclick="toggleFeatured('${p.id}')">${p.featured?'★':'☆'}</button>
             <button class="action-btn" title="Edit" onclick="openEditProduct('${p.id}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
@@ -2591,6 +2608,56 @@ function filterProducts(filter,btn){
   document.querySelectorAll('#dash-products .filter-pill').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   renderProducts(filter);
+}
+
+// ── FEATURED CAROUSEL ──
+// Star/unstar a single product — flips products.is_featured via the product PUT.
+async function toggleFeatured(id){
+  const p = PRODUCTS_DASH.find(x=>String(x.id)===String(id));
+  if(!p) return;
+  const next = !p.featured;
+  const token = localStorage.getItem('ss_token');
+  try{
+    const res = await fetch('/api/seller/products/'+id, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ isFeatured: next }),
+    });
+    if(!res.ok){ const e=await res.json().catch(()=>({})); toast(e.error||'Could not update product.'); return; }
+    p.featured = next;
+    if(p._raw) p._raw.isFeatured = next;
+    renderProducts(currentProductFilter);
+    toast(next ? '⭐ Added to featured carousel' : 'Removed from featured carousel');
+  }catch(e){ toast('Network error — try again.'); }
+}
+
+// Master on/off for the homepage carousel (stored per store in storefront_content).
+async function setFeaturedRail(enabled){
+  const token = localStorage.getItem('ss_token');
+  const toggle = document.getElementById('featuredRailToggle');
+  try{
+    const res = await fetch('/api/seller/featured-rail', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ enabled: !!enabled }),
+    });
+    if(!res.ok){ const e=await res.json().catch(()=>({})); toast(e.error||'Could not update.'); if(toggle) toggle.checked=!enabled; return; }
+    toast(enabled ? 'Featured carousel is ON' : 'Featured carousel is OFF');
+  }catch(e){ toast('Network error — try again.'); if(toggle) toggle.checked=!enabled; }
+}
+
+// Reflect the saved rail on/off state in the toggle when the Products page opens.
+async function loadFeaturedRailToggle(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try{
+    const res = await fetch('/api/seller/storefront-content', { headers:{'Authorization':`Bearer ${token}`} });
+    if(!res.ok) return;
+    const data = await res.json();
+    const on = !(data.content && data.content.featuredRailEnabled === false);
+    const toggle = document.getElementById('featuredRailToggle');
+    if(toggle) toggle.checked = on;
+  }catch(e){ /* leave default */ }
 }
 
 // ── ADD PRODUCT ──

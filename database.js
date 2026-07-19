@@ -138,6 +138,9 @@ async function initSchema() {
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS length NUMERIC(10,2);`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS width  NUMERIC(10,2);`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS height NUMERIC(10,2);`);
+    // Merchandising: flag a product to appear in the homepage "Featured" carousel.
+    // The rail itself is toggled per-store via sellers.storefront_content.
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT FALSE;`);
 
     // BUYERS — accounts for the buyer storefront. Separate from sellers
     // (different login flow, different JWT claim type).
@@ -747,6 +750,7 @@ async function updateProduct(id, fields) {
     length:           'length',
     width:            'width',
     height:           'height',
+    isFeatured:       'is_featured',
   };
   const sets = [];
   const vals = [];

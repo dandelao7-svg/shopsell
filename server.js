@@ -1712,6 +1712,9 @@ app.get('/api/checkout/config', async (req, res) => {
       privacy:      content.privacy      || '',
       terms:        content.terms        || '',
       contactEmail: content.contactEmail || seller.email || '',
+      // Featured carousel is on by default; the rail only renders when the
+      // store also has products flagged is_featured.
+      featuredRailEnabled: content.featuredRailEnabled !== false,
     };
 
     res.json({
@@ -2947,6 +2950,7 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         privacy:      content.privacy      || '',
         terms:        content.terms        || '',
         contactEmail: content.contactEmail || '',
+        featuredRailEnabled: content.featuredRailEnabled !== false,
       },
     });
   } catch (err) {
@@ -2963,7 +2967,11 @@ app.put('/api/seller/storefront-content', requireAuth, async (req, res) => {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: 'Contact email is not a valid email address.' });
     }
+    // Merge over the existing blob so unrelated keys (e.g. featuredRailEnabled,
+    // set by the merchandising toggle) survive a content-page save.
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
     const content = {
+      ...existing,
       about:        trim(about),
       faq:          trim(faq),
       privacy:      trim(privacy),
@@ -2975,6 +2983,21 @@ app.put('/api/seller/storefront-content', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save storefront content error:', err);
     res.status(500).json({ error: 'Failed to save storefront content.' });
+  }
+});
+
+// Toggle the homepage "Featured" carousel on/off for this store. Stored in the
+// same storefront_content JSONB blob, merged so other keys are preserved.
+app.put('/api/seller/featured-rail', requireAuth, async (req, res) => {
+  try {
+    const enabled = !!(req.body && req.body.enabled);
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    const content = { ...existing, featuredRailEnabled: enabled };
+    await db.setSellerStorefrontContent(req.seller.sellerId, content);
+    res.json({ message: 'Featured carousel updated.', featuredRailEnabled: enabled });
+  } catch (err) {
+    console.error('Toggle featured rail error:', err);
+    res.status(500).json({ error: 'Failed to update the featured carousel.' });
   }
 });
 
