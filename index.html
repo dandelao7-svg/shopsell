@@ -97,7 +97,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .featured-rail-nav{display:flex;gap:8px}
 .featured-arrow{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:20px;line-height:1;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center}
 .featured-arrow:hover{border-color:var(--accent);color:var(--accent)}
-.featured-track{display:flex;gap:1rem;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;padding-bottom:6px;scroll-snap-type:x proximity}
+.featured-track{display:flex;gap:1rem;overflow-x:auto;scrollbar-width:none;padding-bottom:6px;scroll-snap-type:x proximity}
 .featured-track::-webkit-scrollbar{display:none}
 .featured-track .product-card{flex:0 0 220px;scroll-snap-align:start}
 @media(max-width:600px){.featured-track .product-card{flex:0 0 60%}.featured-rail-nav{display:none}}
@@ -933,10 +933,14 @@ function updateFeaturedArrows(){
 }
 window.addEventListener('resize', updateFeaturedArrows);
 
-// Scroll the featured track roughly one card-width per arrow click.
+// Advance the featured track ~85% of the visible width per arrow click.
+// Uses behavior:'auto' — smooth programmatic scroll is unreliable here (busy
+// pages cancel the animation mid-flight, leaving scrollLeft at 0).
 function scrollFeatured(dir){
   const track = document.getElementById('featuredTrack');
-  if(track) track.scrollBy({ left: dir * 240, behavior:'smooth' });
+  if(!track) return;
+  const step = Math.max(220, Math.round(track.clientWidth * 0.85));
+  track.scrollBy({ left: dir * step, behavior:'auto' });
 }
 
 // ── FILTERS ───────────────────────────────────────────────────
