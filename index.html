@@ -100,8 +100,9 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .featured-track{overflow:hidden;padding-bottom:6px}
 .featured-strip{display:flex;width:max-content;transition:transform 0.6s ease;will-change:transform}
 .featured-strip .mq-group{display:contents}
+/* Card width + margin are set per-viewport in JS (layoutFeatured) so a whole
+   number of cards fit exactly; these are just pre-JS fallbacks. */
 .featured-strip .product-card{flex:0 0 220px;margin-right:1rem}
-@media(max-width:600px){.featured-strip .product-card{flex:0 0 60vw}}
 
 /* SHOP */
 .shop-section{max-width:1100px;margin:0 auto;padding:2rem 1.5rem}
@@ -927,41 +928,70 @@ function renderFeatured(){
   startFeaturedRotate();
 }
 
-// Auto-advance the strip one card every 6s (0.6s slide via CSS transition, then
-// dwell). Because the cards are rendered twice, once we pass the last real card
-// we jump back to the start with no transition — a seamless loop. Pauses on
-// hover; holds still for prefers-reduced-motion.
-let FEAT_IDX=0, FEAT_TIMER=null, FEAT_STEP=0, FEAT_N=0;
-function startFeaturedRotate(){
-  clearInterval(FEAT_TIMER); FEAT_TIMER=null;
-  const rail = document.getElementById('featuredRail');
+// Paged auto-advance carousel. Every 6s the strip slides forward one whole PAGE
+// (the number of cards visible at once) so a fresh set of products appears, then
+// dwells. Cards are sized so an exact whole number fit the viewport — no sliced
+// half-card at the edge. The cards are rendered twice, giving a period of one
+// copy width; whenever the offset passes that period we subtract it with no
+// transition. Because the two copies are identical, that shift is invisible, so
+// the loop is seamless for ANY number of featured products. Pauses on hover;
+// holds still for prefers-reduced-motion.
+const FEAT_GAP = 16;                            // must match .product-card margin-right
+let FEAT_TIMER=null, FEAT_POS=0, FEAT_STEP=0, FEAT_SLOT=0, FEAT_PERIOD=0, FEAT_ROTATE=false, FEAT_BOUND=false;
+
+function featuredPerPage(w){ return w>=900 ? 5 : w>=600 ? 3 : 2; }
+
+// Measure the viewport, size the cards to fit a whole page, and reset position.
+function layoutFeatured(){
+  const track = document.getElementById('featuredTrack');
   const strip = document.getElementById('featuredStrip');
-  if(!strip || !rail) return;
-  FEAT_IDX=0;
+  if(!track || !strip) return;
+  const allCards = strip.querySelectorAll('.product-card');
+  const n = Math.floor(allCards.length/2);       // distinct featured products
+  const W = track.clientWidth;
+  let perPage = Math.min(featuredPerPage(W), n);
+  if(perPage < 1) perPage = 1;
+  const cardW = Math.floor((W - (perPage-1)*FEAT_GAP) / perPage);
+  allCards.forEach(c=>{ c.style.flex = '0 0 ' + cardW + 'px'; c.style.marginRight = FEAT_GAP + 'px'; });
+  FEAT_SLOT   = cardW + FEAT_GAP;                 // one card's footprint
+  FEAT_STEP   = perPage * FEAT_SLOT;              // advance a full page each tick
+  FEAT_PERIOD = n * FEAT_SLOT;                    // width of one full copy
+  FEAT_POS    = 0;
   strip.style.transition='none'; strip.style.transform='translateX(0)';
   void strip.offsetWidth; strip.style.transition='';
-  const cards = strip.querySelectorAll('.product-card');
-  FEAT_N = Math.floor(cards.length/2);
-  if(FEAT_N < 2) return;                       // need >=2 featured items to rotate
-  FEAT_STEP = cards[1].getBoundingClientRect().left - cards[0].getBoundingClientRect().left;
-  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; // hold still
-  const play = ()=>{ clearInterval(FEAT_TIMER); FEAT_TIMER=setInterval(featuredAdvance, 6000); };
-  play();
-  rail.onmouseenter = ()=>{ clearInterval(FEAT_TIMER); FEAT_TIMER=null; };
-  rail.onmouseleave = play;
+  FEAT_ROTATE = n > perPage && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
+
+function featuredPlay(){
+  clearInterval(FEAT_TIMER);
+  FEAT_TIMER = FEAT_ROTATE ? setInterval(featuredAdvance, 6000) : null;
+}
+
+function startFeaturedRotate(){
+  const rail = document.getElementById('featuredRail');
+  if(!rail) return;
+  layoutFeatured();
+  featuredPlay();
+  rail.onmouseenter = ()=>{ clearInterval(FEAT_TIMER); FEAT_TIMER=null; };
+  rail.onmouseleave = featuredPlay;
+  if(!FEAT_BOUND){                                // re-fit + restart on window resize
+    FEAT_BOUND = true;
+    window.addEventListener('resize', ()=>{ layoutFeatured(); featuredPlay(); });
+  }
+}
+
 function featuredAdvance(){
   const strip = document.getElementById('featuredStrip');
-  if(!strip) return;
-  FEAT_IDX++;
-  strip.style.transition='';                   // CSS default (0.6s ease)
-  strip.style.transform='translateX(-' + (FEAT_IDX*FEAT_STEP) + 'px)';
-  if(FEAT_IDX >= FEAT_N){                       // reached the duplicate — snap home
+  if(!strip || !FEAT_ROTATE) return;
+  FEAT_POS += FEAT_STEP;
+  strip.style.transition='';                      // CSS default (0.6s ease)
+  strip.style.transform='translateX(-' + FEAT_POS + 'px)';
+  if(FEAT_POS >= FEAT_PERIOD){                     // wrap: shift back one identical copy
     setTimeout(()=>{
+      FEAT_POS -= FEAT_PERIOD;                     // same pixels as the duplicate → invisible
       strip.style.transition='none';
-      strip.style.transform='translateX(0)';
-      FEAT_IDX=0;
-      void strip.offsetWidth;                   // force reflow so the reset sticks
+      strip.style.transform='translateX(-' + FEAT_POS + 'px)';
+      void strip.offsetWidth;
       strip.style.transition='';
     }, 650);
   }
