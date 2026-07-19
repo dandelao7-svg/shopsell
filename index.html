@@ -94,13 +94,18 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .featured-rail[hidden]{display:none}
 .featured-rail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .featured-rail-hd h2{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;margin:0}
-.featured-rail-nav{display:flex;gap:8px}
-.featured-arrow{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:20px;line-height:1;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center}
-.featured-arrow:hover{border-color:var(--accent);color:var(--accent)}
-.featured-track{display:flex;gap:1rem;overflow-x:auto;scrollbar-width:none;padding-bottom:6px;scroll-snap-type:x proximity}
-.featured-track::-webkit-scrollbar{display:none}
-.featured-track .product-card{flex:0 0 220px;scroll-snap-align:start}
-@media(max-width:600px){.featured-track .product-card{flex:0 0 60%}.featured-rail-nav{display:none}}
+.featured-rail-hint{font-size:12px;color:var(--muted)}
+/* Continuous marquee: the cards are rendered twice; the track glides left and at
+   -50% the second copy sits exactly where the first began, so the loop is seamless.
+   Pauses on hover; disabled for users who prefer reduced motion. */
+.featured-track{overflow:hidden;padding-bottom:6px}
+.featured-marquee{display:flex;width:max-content;animation:featured-scroll 40s linear infinite;will-change:transform}
+.featured-marquee .mq-group{display:contents}
+.featured-marquee .product-card{flex:0 0 220px;margin-right:1rem}
+.featured-rail:hover .featured-marquee{animation-play-state:paused}
+@keyframes featured-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.featured-marquee{animation:none}}
+@media(max-width:600px){.featured-marquee .product-card{flex:0 0 60vw}}
 
 /* SHOP */
 .shop-section{max-width:1100px;margin:0 auto;padding:2rem 1.5rem}
@@ -420,10 +425,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
   <section class="featured-rail" id="featuredRail" hidden>
     <div class="featured-rail-hd">
       <h2 id="featuredTitle">Featured</h2>
-      <div class="featured-rail-nav">
-        <button class="featured-arrow" aria-label="Scroll left" onclick="scrollFeatured(-1)">‹</button>
-        <button class="featured-arrow" aria-label="Scroll right" onclick="scrollFeatured(1)">›</button>
-      </div>
+      <span class="featured-rail-hint">Hover to pause</span>
     </div>
     <div class="featured-track" id="featuredTrack"></div>
   </section>
@@ -917,30 +919,17 @@ function renderFeatured(){
     : STORE_CONFIG.storefrontContent.featuredRailEnabled !== false;
   const featured = PRODUCTS.filter(p=>p.featured);
   if(!enabled || !featured.length){ rail.hidden = true; return; }
-  document.getElementById('featuredTrack').innerHTML = featured.map(cardHTML).join('');
+  // Continuous marquee: render the cards TWICE (second copy hidden from screen
+  // readers) so translateX(-50%) loops seamlessly. Duration scales with the
+  // number of cards so the glide speed stays even regardless of how many there are.
+  const cards = featured.map(cardHTML).join('');
+  const dur = Math.max(16, featured.length * 4);
+  document.getElementById('featuredTrack').innerHTML =
+    '<div class="featured-marquee" style="animation-duration:' + dur + 's">' +
+      '<div class="mq-group">' + cards + '</div>' +
+      '<div class="mq-group" aria-hidden="true">' + cards + '</div>' +
+    '</div>';
   rail.hidden = false;
-  requestAnimationFrame(updateFeaturedArrows);
-}
-
-// Show the ‹ › arrows only when the rail's content actually overflows the visible
-// width — otherwise they look broken (clicking does nothing because nothing is
-// off-screen). Re-checked on load and on window resize.
-function updateFeaturedArrows(){
-  const track = document.getElementById('featuredTrack');
-  const nav = document.querySelector('#featuredRail .featured-rail-nav');
-  if(!track || !nav) return;
-  nav.style.display = (track.scrollWidth > track.clientWidth + 4) ? 'flex' : 'none';
-}
-window.addEventListener('resize', updateFeaturedArrows);
-
-// Advance the featured track ~85% of the visible width per arrow click.
-// Uses behavior:'auto' — smooth programmatic scroll is unreliable here (busy
-// pages cancel the animation mid-flight, leaving scrollLeft at 0).
-function scrollFeatured(dir){
-  const track = document.getElementById('featuredTrack');
-  if(!track) return;
-  const step = Math.max(220, Math.round(track.clientWidth * 0.85));
-  track.scrollBy({ left: dir * step, behavior:'auto' });
 }
 
 // ── FILTERS ───────────────────────────────────────────────────
