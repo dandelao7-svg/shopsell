@@ -257,6 +257,14 @@ tr:hover td{background:#fafaf7}
 .filter-bar{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center}
 .featured-rail-ctl{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:1.25rem}
 .featured-rail-ctl .toggle-desc{max-width:640px}
+.theme-picker{display:flex;gap:10px;flex-wrap:wrap}
+.theme-opt{display:flex;align-items:center;gap:8px;padding:9px 14px;border:1.5px solid var(--border);background:var(--card);border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);font-family:'Outfit',sans-serif;transition:all .2s}
+.theme-opt.active{border-color:var(--accent);color:var(--text);box-shadow:0 0 0 2px #fff5f5 inset}
+.theme-opt:hover{border-color:var(--accent)}
+.theme-sw{width:40px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding:4px;flex-shrink:0}
+.theme-sw i{width:11px;height:11px;border-radius:50%;display:block}
+.ap-logo-preview{min-width:120px;height:44px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);background:var(--light);padding:4px;overflow:hidden}
+.ap-logo-preview img{max-height:36px;max-width:150px;object-fit:contain}
 .filter-pill{border:1.5px solid var(--border);background:var(--card);padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--muted);transition:all 0.2s}
 .filter-pill.active,.filter-pill:hover{border-color:var(--accent);color:var(--accent);background:#fff5f5}
 .search-input{flex:1;max-width:280px;padding:7px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;outline:none;transition:border-color 0.2s}
@@ -1059,6 +1067,47 @@ tr:hover td{background:#fafaf7}
       <div class="page-hd-title">Storefront pages</div>
     </div>
     <div style="max-width:720px">
+      <div class="form-card">
+        <div class="form-section-hd">Theme &amp; branding</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Pick a look for your storefront, set your brand accent color, and add a logo. Saved changes apply to your live store.</div>
+
+        <div class="field">
+          <label>Theme preset</label>
+          <div class="theme-picker" id="themePicker">
+            <button type="button" class="theme-opt" data-theme="classic" onclick="selectTheme('classic')">
+              <span class="theme-sw" style="background:#0f0f1a"><i style="background:#e63946"></i></span>Department
+            </button>
+            <button type="button" class="theme-opt" data-theme="boutique" onclick="selectTheme('boutique')">
+              <span class="theme-sw" style="background:#4a2c3a"><i style="background:#b76e79"></i></span>Boutique
+            </button>
+            <button type="button" class="theme-opt" data-theme="minimal" onclick="selectTheme('minimal')">
+              <span class="theme-sw" style="background:#111111"><i style="background:#ffffff;border:1px solid #ccc"></i></span>Minimal
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Accent color</label>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <input type="color" id="apAccent" value="#e63946" oninput="onAccentInput()" style="width:48px;height:34px;padding:2px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+            <button type="button" class="btn secondary" onclick="resetAccent()" style="padding:6px 12px;font-size:12px">Use theme default</button>
+            <span id="apAccentNote" style="font-size:11px;color:var(--muted)"></span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Logo</label>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div id="apLogoPreview" class="ap-logo-preview">No logo</div>
+            <input type="file" accept="image/*" id="apLogoInput" onchange="handleLogoFile(this.files)" style="font-size:12px">
+            <button type="button" class="btn secondary" onclick="removeLogo()" style="padding:6px 12px;font-size:12px">Remove</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">PNG or SVG on a transparent background works best, under ~500KB. With no logo, your store name is shown.</div>
+        </div>
+
+        <button class="btn primary" onclick="saveAppearance()" id="apSaveBtn">Save appearance</button>
+      </div>
+
       <div class="form-card">
         <div class="alert info" style="font-size:12px;margin-bottom:1rem">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -1950,7 +1999,88 @@ async function loadStorefrontContent(){
     set('sfFaq',          c.faq);
     set('sfPrivacy',      c.privacy);
     set('sfTerms',        c.terms);
+    loadAppearanceInto(c);
   } catch(e){ /* not fatal */ }
+}
+
+// ── APPEARANCE (theme presets + accent color + logo) ──
+const AP_THEMES = ['classic','boutique','minimal'];
+const AP_THEME_ACCENT = { classic:'#e63946', boutique:'#b76e79', minimal:'#111111' };
+let apTheme = 'classic';
+let apLogo = '';            // data URL or existing URL, '' = none
+let apAccentCustom = false; // false = follow the theme default
+
+function selectTheme(t){
+  if(!AP_THEMES.includes(t)) t = 'classic';
+  apTheme = t;
+  document.querySelectorAll('#themePicker .theme-opt').forEach(b=>{
+    b.classList.toggle('active', b.dataset.theme === t);
+  });
+  // If the accent is following the theme, update the swatch to the new default.
+  if(!apAccentCustom){ const el=document.getElementById('apAccent'); if(el) el.value = AP_THEME_ACCENT[t]; }
+  setAccentNote();
+}
+function onAccentInput(){ apAccentCustom = true; setAccentNote(); }
+function resetAccent(){
+  apAccentCustom = false;
+  const el=document.getElementById('apAccent'); if(el) el.value = AP_THEME_ACCENT[apTheme];
+  setAccentNote();
+}
+function setAccentNote(){
+  const n=document.getElementById('apAccentNote');
+  if(n) n.textContent = apAccentCustom ? 'Custom accent' : 'Using theme default';
+}
+function handleLogoFile(files){
+  const file = files && files[0];
+  if(!file) return;
+  if(file.size > 512000){ toast('Logo is too large — use an image under 500KB.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => { apLogo = e.target.result; renderLogoPreview(); };
+  reader.readAsDataURL(file);
+}
+function removeLogo(){
+  apLogo = '';
+  const inp=document.getElementById('apLogoInput'); if(inp) inp.value='';
+  renderLogoPreview();
+}
+function renderLogoPreview(){
+  const box=document.getElementById('apLogoPreview');
+  if(!box) return;
+  box.innerHTML = apLogo ? '<img src="'+apLogo+'" alt="logo">' : 'No logo';
+}
+function loadAppearanceInto(c){
+  selectTheme(AP_THEMES.includes(c.theme) ? c.theme : 'classic');
+  if(c.accentColor){ apAccentCustom = true; const el=document.getElementById('apAccent'); if(el) el.value = c.accentColor; }
+  else { apAccentCustom = false; const el=document.getElementById('apAccent'); if(el) el.value = AP_THEME_ACCENT[apTheme]; }
+  setAccentNote();
+  apLogo = c.logoUrl || '';
+  renderLogoPreview();
+}
+async function saveAppearance(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const payload = {
+    theme: apTheme,
+    accentColor: apAccentCustom ? document.getElementById('apAccent').value : '',
+    logoUrl: apLogo,
+  };
+  const btn = document.getElementById('apSaveBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/seller/appearance', {
+      method:'PUT',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Failed to save appearance'); return; }
+    toast('✓ Appearance saved — refresh your storefront to see it');
+  } catch(err){
+    toast('Network error — could not save');
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
 }
 
 async function saveStorefrontContent(){

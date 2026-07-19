@@ -1715,6 +1715,10 @@ app.get('/api/checkout/config', async (req, res) => {
       // Featured carousel is on by default; the rail only renders when the
       // store also has products flagged is_featured.
       featuredRailEnabled: content.featuredRailEnabled !== false,
+      // Appearance: theme preset + optional accent-color / logo overrides.
+      theme:       content.theme       || 'classic',
+      accentColor: content.accentColor || '',
+      logoUrl:     content.logoUrl      || '',
     };
 
     res.json({
@@ -2951,6 +2955,9 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         terms:        content.terms        || '',
         contactEmail: content.contactEmail || '',
         featuredRailEnabled: content.featuredRailEnabled !== false,
+        theme:       content.theme       || 'classic',
+        accentColor: content.accentColor || '',
+        logoUrl:     content.logoUrl      || '',
       },
     });
   } catch (err) {
@@ -2998,6 +3005,58 @@ app.put('/api/seller/featured-rail', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Toggle featured rail error:', err);
     res.status(500).json({ error: 'Failed to update the featured carousel.' });
+  }
+});
+
+// Storefront appearance: theme preset + optional accent-color / logo overrides.
+// Stored (merged) in the storefront_content JSONB blob.
+const APPEARANCE_THEMES = ['classic', 'boutique', 'minimal'];
+const MAX_LOGO_CHARS = 700000; // ~500KB as a data URL — keeps the JSONB row sane
+app.put('/api/seller/appearance', requireAuth, async (req, res) => {
+  try {
+    const { theme, accentColor, logoUrl } = req.body || {};
+
+    const fields = {};
+    if (theme !== undefined) {
+      if (!APPEARANCE_THEMES.includes(theme)) {
+        return res.status(400).json({ error: 'Unknown theme.' });
+      }
+      fields.theme = theme;
+    }
+    if (accentColor !== undefined) {
+      const c = String(accentColor).trim();
+      if (c && !/^#[0-9a-fA-F]{6}$/.test(c)) {
+        return res.status(400).json({ error: 'Accent color must be a hex value like #e63946.' });
+      }
+      fields.accentColor = c; // '' clears back to the theme default
+    }
+    if (logoUrl !== undefined) {
+      const u = String(logoUrl).trim();
+      if (u && !/^(https?:\/\/|data:image\/)/.test(u)) {
+        return res.status(400).json({ error: 'Logo must be an image URL or uploaded image.' });
+      }
+      if (u.length > MAX_LOGO_CHARS) {
+        return res.status(413).json({ error: 'Logo image is too large. Use one under ~500KB.' });
+      }
+      fields.logoUrl = u; // '' removes the logo
+    }
+
+    if (!Object.keys(fields).length) {
+      return res.status(400).json({ error: 'Nothing to update.' });
+    }
+
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    const content = { ...existing, ...fields };
+    await db.setSellerStorefrontContent(req.seller.sellerId, content);
+    res.json({
+      message: 'Appearance saved.',
+      theme:       content.theme       || 'classic',
+      accentColor: content.accentColor || '',
+      logoUrl:     content.logoUrl      || '',
+    });
+  } catch (err) {
+    console.error('Save appearance error:', err);
+    res.status(500).json({ error: 'Failed to save appearance.' });
   }
 });
 
