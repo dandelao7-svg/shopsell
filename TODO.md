@@ -3,14 +3,14 @@
 Running list of pending work. Shipped features live in [FEATURES.md](FEATURES.md).
 
 ## UI polish
-- [ ] **Top bar font too small** — the `.topbar` strip ("Free shipping on every order…" on the left, "My account / Track order / Help" on the right) is 12px and hard to read. Bump the size for legibility. _(reported 2026-07-19 — one-line CSS fix in index.html)_
+- [x] **Top bar font too small** — bumped `.topbar` 12px → 13.5px + lifted contrast. _(done 2026-07-19)_
 
-## Shipping
-- [ ] **Test real shipping labels** on the user's own account — in the past, purchased labels "didn't look right." Buy a real label end-to-end, inspect the output (layout/format/print), and fix rendering issues. _(after email-capture + manual)_
+## Shipping — NEXT UP
+- [ ] **Test real shipping labels** on the user's own account — in the past, purchased labels "didn't look right." Buy a real label end-to-end, inspect the output (layout/format/print), and fix rendering issues.
 
 ## Feature roadmap — "make it yours" + growth
-- [ ] **Email-capture popup (phase 1)** — visitor popup offering a configurable % off for their email → record subscriber → generate a unique single-use welcome code (reuses `discount_codes`) → email it via Resend → dashboard subscriber list + CSV export. _Phase 2:_ bulk marketing send + unsubscribe management.
-- [ ] **Update user manual (`guide.html`)** — add the new customization features (themes, accent color, logo, featured carousel, announcement bar, hero text + background image).
+- [x] **Email-capture popup (phase 1)** — popup → unique single-use welcome code (reuses `discount_codes`) → emailed via Resend → dashboard subscriber list + CSV export. _(done 2026-07-19, deployed + verified)_ **Phase 2 (todo):** bulk marketing send + unsubscribe management.
+- [x] **Update user manual (`guide.html`)** — added themes/branding, homepage/banner, hero + bg image, featured carousel, email capture. _(done 2026-07-19)_
 - [ ] **Section show/hide + reorder** — let tenants toggle/reorder homepage sections (hero, category tiles, featured rail, etc.).
 - [ ] **Footer social links** — Instagram / TikTok / Facebook icons.
 - [ ] **Custom font pairings** beyond the theme defaults.

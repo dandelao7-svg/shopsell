@@ -27,9 +27,10 @@ A running inventory of what the platform does, for pitching to prospects and kee
 - **Logo** upload (image) or store-name wordmark.
 - **Featured products carousel** — auto-advancing, paged, toggle on/off, star products to feature.
 - **Announcement bar** — the top sale/free-shipping ticker (text + link + on/off).
-- **Hero customization** — eyebrow, headline, subtext, both button labels, and a **background image**.
+- **Hero customization** — eyebrow, headline, subtext, both button labels, and a **background image** (auto dark overlay).
+- **Email-capture popup** — offer a configurable % off for an email; the visitor gets a **unique one-time discount code** by email (works at checkout) and joins the seller's **subscriber list** (CSV export).
 - **Footer content pages** — About, FAQ, Privacy, Terms, contact.
-- _Roadmap:_ section show/hide + reorder, footer social links, custom fonts, **email-capture popup** (email → welcome discount → marketing list), visual editor.
+- _Roadmap:_ section show/hide + reorder, footer social links, custom fonts, bulk marketing email send + unsubscribe (email-capture phase 2), visual editor.
 
 ## 3. Seller dashboard
 - **Product management** — add/edit, variants, images, inventory/stock, low-stock flags.
