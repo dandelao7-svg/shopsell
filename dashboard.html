@@ -1141,6 +1141,16 @@ tr:hover td{background:#fafaf7}
           <div class="field" style="flex:1"><label>Secondary button</label><input type="text" id="hpHeroCta2" maxlength="30" placeholder="New arrivals"></div>
         </div>
 
+        <div class="field">
+          <label>Hero background image (optional)</label>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div id="hpHeroImgPreview" class="ap-logo-preview" style="min-width:160px;height:60px">No image</div>
+            <input type="file" accept="image/*" id="hpHeroImgInput" onchange="handleHeroImgFile(this.files)" style="font-size:12px">
+            <button type="button" class="btn secondary" onclick="removeHeroImg()" style="padding:6px 12px;font-size:12px">Remove</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">A wide photo works best — a dark overlay is added automatically so your hero text stays readable. Under ~800KB.</div>
+        </div>
+
         <button class="btn primary" onclick="saveHomepage()" id="hpSaveBtn">Save homepage</button>
       </div>
 
@@ -2040,7 +2050,8 @@ async function loadStorefrontContent(){
   } catch(e){ /* not fatal */ }
 }
 
-// ── HOMEPAGE & BANNER (announcement bar + hero text) ──
+// ── HOMEPAGE & BANNER (announcement bar + hero text/image) ──
+let hpHeroImg = ''; // data URL or existing URL, '' = none
 function loadHomepageInto(c){
   const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ''; };
   const on = document.getElementById('hpAnnounceOn'); if(on) on.checked = !!c.announcementEnabled;
@@ -2051,6 +2062,25 @@ function loadHomepageInto(c){
   set('hpHeroSub',      c.heroSubtext);
   set('hpHeroCta1',     c.heroCta1);
   set('hpHeroCta2',     c.heroCta2);
+  hpHeroImg = c.heroImage || '';
+  renderHeroImgPreview();
+}
+function handleHeroImgFile(files){
+  const file = files && files[0];
+  if(!file) return;
+  if(file.size > 819200){ toast('Hero image is too large — use one under 800KB.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => { hpHeroImg = e.target.result; renderHeroImgPreview(); };
+  reader.readAsDataURL(file);
+}
+function removeHeroImg(){
+  hpHeroImg = '';
+  const inp=document.getElementById('hpHeroImgInput'); if(inp) inp.value='';
+  renderHeroImgPreview();
+}
+function renderHeroImgPreview(){
+  const box=document.getElementById('hpHeroImgPreview');
+  if(box) box.innerHTML = hpHeroImg ? '<img src="'+hpHeroImg+'" alt="hero">' : 'No image';
 }
 async function saveHomepage(){
   const token = localStorage.getItem('ss_token');
@@ -2065,6 +2095,7 @@ async function saveHomepage(){
     heroSubtext: val('hpHeroSub'),
     heroCta1:    val('hpHeroCta1'),
     heroCta2:    val('hpHeroCta2'),
+    heroImage:   hpHeroImg,
   };
   const btn = document.getElementById('hpSaveBtn');
   const original = btn.textContent;

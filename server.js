@@ -1728,6 +1728,7 @@ app.get('/api/checkout/config', async (req, res) => {
       heroSubtext: content.heroSubtext || '',
       heroCta1:    content.heroCta1     || '',
       heroCta2:    content.heroCta2     || '',
+      heroImage:   content.heroImage    || '',
     };
 
     res.json({
@@ -2975,6 +2976,7 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         heroSubtext: content.heroSubtext || '',
         heroCta1:    content.heroCta1     || '',
         heroCta2:    content.heroCta2     || '',
+        heroImage:   content.heroImage    || '',
       },
     });
   } catch (err) {
@@ -3097,6 +3099,16 @@ app.put('/api/seller/homepage', requireAuth, async (req, res) => {
     }
     for (const k of ['heroEyebrow', 'heroTitle', 'heroSubtext', 'heroCta1', 'heroCta2']) {
       if (body[k] !== undefined) fields[k] = clip(body[k], HP_LIMITS[k]);
+    }
+    if (body.heroImage !== undefined) {
+      const u = String(body.heroImage || '').trim();
+      if (u && !/^(https?:\/\/|data:image\/)/.test(u)) {
+        return res.status(400).json({ error: 'Hero image must be an image URL or uploaded image.' });
+      }
+      if (u.length > 1200000) { // ~800KB as a data URL
+        return res.status(413).json({ error: 'Hero image is too large. Use one under ~800KB.' });
+      }
+      fields.heroImage = u; // '' removes it
     }
 
     if (!Object.keys(fields).length) {
