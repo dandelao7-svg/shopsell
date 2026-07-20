@@ -1109,6 +1109,42 @@ tr:hover td{background:#fafaf7}
       </div>
 
       <div class="form-card">
+        <div class="form-section-hd">Homepage &amp; banner</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Customize the top announcement bar and your hero section. Leave a field blank to use the default.</div>
+
+        <div class="toggle-row" style="padding-top:0">
+          <div><div class="toggle-label">Announcement bar</div><div class="toggle-desc">A banner across the very top of your store — great for sales or a free-shipping offer.</div></div>
+          <label class="toggle"><input type="checkbox" id="hpAnnounceOn"><span class="tslider"></span></label>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <input type="text" id="hpAnnounceText" maxlength="140" placeholder="e.g. Summer Sale — 20% off with code SUMMER20">
+        </div>
+        <div class="field">
+          <label>Announcement link (optional)</label>
+          <input type="text" id="hpAnnounceLink" placeholder="https://…  or  /shop  (blank = no link)">
+        </div>
+
+        <div class="field">
+          <label>Hero eyebrow (small text above the headline)</label>
+          <input type="text" id="hpHeroEyebrow" maxlength="60" placeholder="New arrivals · Free shipping always">
+        </div>
+        <div class="field">
+          <label>Hero headline</label>
+          <input type="text" id="hpHeroTitle" maxlength="90" placeholder="Shop smarter, live better.">
+        </div>
+        <div class="field">
+          <label>Hero subtext</label>
+          <textarea id="hpHeroSub" rows="2" maxlength="220" placeholder="One or two lines describing your store."></textarea>
+        </div>
+        <div style="display:flex;gap:12px">
+          <div class="field" style="flex:1"><label>Primary button</label><input type="text" id="hpHeroCta1" maxlength="30" placeholder="Shop now"></div>
+          <div class="field" style="flex:1"><label>Secondary button</label><input type="text" id="hpHeroCta2" maxlength="30" placeholder="New arrivals"></div>
+        </div>
+
+        <button class="btn primary" onclick="saveHomepage()" id="hpSaveBtn">Save homepage</button>
+      </div>
+
+      <div class="form-card">
         <div class="alert info" style="font-size:12px;margin-bottom:1rem">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           Buyers see these pages in your storefront footer. Leave blank to show a friendly placeholder. Line breaks become paragraphs.
@@ -2000,7 +2036,53 @@ async function loadStorefrontContent(){
     set('sfPrivacy',      c.privacy);
     set('sfTerms',        c.terms);
     loadAppearanceInto(c);
+    loadHomepageInto(c);
   } catch(e){ /* not fatal */ }
+}
+
+// ── HOMEPAGE & BANNER (announcement bar + hero text) ──
+function loadHomepageInto(c){
+  const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ''; };
+  const on = document.getElementById('hpAnnounceOn'); if(on) on.checked = !!c.announcementEnabled;
+  set('hpAnnounceText', c.announcementText);
+  set('hpAnnounceLink', c.announcementLink);
+  set('hpHeroEyebrow',  c.heroEyebrow);
+  set('hpHeroTitle',    c.heroTitle);
+  set('hpHeroSub',      c.heroSubtext);
+  set('hpHeroCta1',     c.heroCta1);
+  set('hpHeroCta2',     c.heroCta2);
+}
+async function saveHomepage(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const val = id => (document.getElementById(id).value || '').trim();
+  const payload = {
+    announcementEnabled: document.getElementById('hpAnnounceOn').checked,
+    announcementText: val('hpAnnounceText'),
+    announcementLink: val('hpAnnounceLink'),
+    heroEyebrow: val('hpHeroEyebrow'),
+    heroTitle:   val('hpHeroTitle'),
+    heroSubtext: val('hpHeroSub'),
+    heroCta1:    val('hpHeroCta1'),
+    heroCta2:    val('hpHeroCta2'),
+  };
+  const btn = document.getElementById('hpSaveBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/seller/homepage', {
+      method:'PUT',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Failed to save homepage'); return; }
+    toast('✓ Homepage saved — refresh your storefront to see it');
+  } catch(err){
+    toast('Network error — could not save');
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
 }
 
 // ── APPEARANCE (theme presets + accent color + logo) ──

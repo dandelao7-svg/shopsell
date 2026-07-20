@@ -1719,6 +1719,15 @@ app.get('/api/checkout/config', async (req, res) => {
       theme:       content.theme       || 'classic',
       accentColor: content.accentColor || '',
       logoUrl:     content.logoUrl      || '',
+      // Homepage messaging: announcement bar + hero text overrides.
+      announcementEnabled: !!content.announcementEnabled,
+      announcementText:    content.announcementText || '',
+      announcementLink:    content.announcementLink || '',
+      heroEyebrow: content.heroEyebrow || '',
+      heroTitle:   content.heroTitle   || '',
+      heroSubtext: content.heroSubtext || '',
+      heroCta1:    content.heroCta1     || '',
+      heroCta2:    content.heroCta2     || '',
     };
 
     res.json({
@@ -2958,6 +2967,14 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         theme:       content.theme       || 'classic',
         accentColor: content.accentColor || '',
         logoUrl:     content.logoUrl      || '',
+        announcementEnabled: !!content.announcementEnabled,
+        announcementText:    content.announcementText || '',
+        announcementLink:    content.announcementLink || '',
+        heroEyebrow: content.heroEyebrow || '',
+        heroTitle:   content.heroTitle   || '',
+        heroSubtext: content.heroSubtext || '',
+        heroCta1:    content.heroCta1     || '',
+        heroCta2:    content.heroCta2     || '',
       },
     });
   } catch (err) {
@@ -3057,6 +3074,42 @@ app.put('/api/seller/appearance', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save appearance error:', err);
     res.status(500).json({ error: 'Failed to save appearance.' });
+  }
+});
+
+// Homepage messaging: announcement bar + hero text overrides. Merged into the
+// storefront_content JSONB blob. All text fields are optional (blank = default).
+const HP_LIMITS = { announcementText: 140, heroEyebrow: 60, heroTitle: 90, heroSubtext: 220, heroCta1: 30, heroCta2: 30 };
+app.put('/api/seller/homepage', requireAuth, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const fields = {};
+    const clip = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+
+    if (body.announcementEnabled !== undefined) fields.announcementEnabled = !!body.announcementEnabled;
+    if (body.announcementText !== undefined) fields.announcementText = clip(body.announcementText, HP_LIMITS.announcementText);
+    if (body.announcementLink !== undefined) {
+      const u = String(body.announcementLink || '').trim();
+      if (u && !/^(https?:\/\/|\/)/.test(u)) {
+        return res.status(400).json({ error: 'Announcement link must be a URL (https://…) or a path (/…).' });
+      }
+      fields.announcementLink = u.slice(0, 400);
+    }
+    for (const k of ['heroEyebrow', 'heroTitle', 'heroSubtext', 'heroCta1', 'heroCta2']) {
+      if (body[k] !== undefined) fields[k] = clip(body[k], HP_LIMITS[k]);
+    }
+
+    if (!Object.keys(fields).length) {
+      return res.status(400).json({ error: 'Nothing to update.' });
+    }
+
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    const content = { ...existing, ...fields };
+    await db.setSellerStorefrontContent(req.seller.sellerId, content);
+    res.json({ message: 'Homepage saved.', content: fields });
+  } catch (err) {
+    console.error('Save homepage error:', err);
+    res.status(500).json({ error: 'Failed to save homepage.' });
   }
 });
 

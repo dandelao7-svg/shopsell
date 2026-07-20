@@ -47,6 +47,9 @@ html{scroll-behavior:smooth}
 body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);min-height:100vh;overflow-x:hidden}
 
 /* TOPBAR */
+.announce-bar{background:var(--accent);color:#fff;font-size:13px;font-weight:600;text-align:center;padding:9px 1.5rem;letter-spacing:0.02em}
+.announce-bar[hidden]{display:none}
+.announce-bar a{color:#fff;text-decoration:underline;text-underline-offset:2px}
 .topbar{background:var(--brand);color:rgba(255,255,255,0.6);font-size:12px;padding:7px 1.5rem;display:flex;justify-content:space-between;align-items:center}
 .topbar-links{display:flex;gap:16px}
 .topbar-links a{color:rgba(255,255,255,0.6);text-decoration:none;cursor:pointer}
@@ -377,6 +380,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 </head>
 <body>
 <!--SSR_BODY-->
+<div class="announce-bar" id="announceBar" hidden></div>
 <div class="topbar">
   <span>Free shipping on every order — always.</span>
   <div class="topbar-links">
@@ -421,12 +425,12 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 <!-- HOME -->
 <div class="page active" id="page-home">
   <div class="hero">
-    <div class="hero-eyebrow">New arrivals · Free shipping always</div>
-    <h1>Shop smarter,<br><em>live better.</em></h1>
-    <p class="hero-sub">Curated products from independent sellers — free shipping on every single order, no minimums.</p>
+    <div class="hero-eyebrow" id="heroEyebrow">New arrivals · Free shipping always</div>
+    <h1 id="heroTitle">Shop smarter,<br><em>live better.</em></h1>
+    <p class="hero-sub" id="heroSub">Curated products from independent sellers — free shipping on every single order, no minimums.</p>
     <div class="hero-actions">
-      <button class="btn-hero primary" onclick="navTo('shop')">Shop now</button>
-      <button class="btn-hero secondary" onclick="navTo('shop')">New arrivals</button>
+      <button class="btn-hero primary" id="heroCta1" onclick="navTo('shop')">Shop now</button>
+      <button class="btn-hero secondary" id="heroCta2" onclick="navTo('shop')">New arrivals</button>
     </div>
     <div class="hero-stats">
       <div><div class="hero-stat-val">500+</div><div class="hero-stat-label">Products</div></div>
@@ -943,6 +947,39 @@ function applyAppearance(){
       logoEl.textContent = name;
     }
   }
+}
+
+// Apply the seller's homepage messaging: the top announcement bar and the hero
+// text/CTA labels. Any field left blank keeps the built-in default.
+function applyHomepage(){
+  const sc = (STORE_CONFIG && STORE_CONFIG.storefrontContent) || {};
+  // Announcement bar
+  const bar = document.getElementById('announceBar');
+  if(bar){
+    const text = (sc.announcementText || '').trim();
+    if(sc.announcementEnabled && text){
+      const link = (sc.announcementLink || '').trim();
+      bar.textContent = '';
+      if(link){
+        const a = document.createElement('a');
+        a.href = link; a.textContent = text;
+        if(/^https?:\/\//.test(link)){ a.target = '_blank'; a.rel = 'noopener'; }
+        bar.appendChild(a);
+      } else {
+        bar.textContent = text;
+      }
+      bar.hidden = false;
+    } else {
+      bar.hidden = true;
+    }
+  }
+  // Hero text — only override when the seller has provided a value.
+  const setText = (id, val) => { const el = document.getElementById(id); if(el && val && val.trim()) el.textContent = val.trim(); };
+  setText('heroEyebrow', sc.heroEyebrow);
+  setText('heroTitle',   sc.heroTitle);
+  setText('heroSub',     sc.heroSubtext);
+  setText('heroCta1',    sc.heroCta1);
+  setText('heroCta2',    sc.heroCta2);
 }
 
 // Homepage "Featured" carousel. Shows only when the seller has the rail enabled
@@ -2141,6 +2178,7 @@ async function loadStorefront(){
       // Don't clobber the server-rendered product title on /product/<id> pages.
       if(STORE_CONFIG.storeName && !/^\/product\/\d+/.test(location.pathname)) document.title = STORE_CONFIG.storeName + ' — ShopSell';
       applyAppearance();
+      applyHomepage();
     }
     if(!prodRes.ok){
       const e = await prodRes.json().catch(()=>({error:'Failed to load products.'}));
