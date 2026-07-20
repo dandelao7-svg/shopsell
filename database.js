@@ -327,6 +327,22 @@ async function initSchema() {
     // One code per seller, case-insensitive.
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_discount_seller_code ON discount_codes (seller_id, UPPER(code));`);
 
+    // EMAIL SUBSCRIBERS — captured by the storefront email-for-discount popup.
+    // Each subscriber gets a unique single-use welcome code (in discount_codes).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscribers (
+        id          SERIAL PRIMARY KEY,
+        seller_id   INTEGER NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+        email       TEXT NOT NULL,
+        code        TEXT,
+        source      TEXT NOT NULL DEFAULT 'popup',
+        consent     BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    // One subscription per email per store (case-insensitive).
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_subscribers_seller_email ON subscribers (seller_id, LOWER(email));`);
+
     // COMP CODES — operator-issued signup codes that waive the seller's monthly
     // subscription (100%-off forever). Platform-wide, not per-seller.
     await client.query(`
@@ -1282,6 +1298,30 @@ async function getDiscountsBySeller(sellerId) {
   return rows.map(r => camelize(r));
 }
 
+// ── EMAIL SUBSCRIBERS ────────────────────────────────────────
+async function getSubscriberByEmail(sellerId, email) {
+  const { rows } = await pool.query(
+    `SELECT * FROM subscribers WHERE seller_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
+    [sellerId, email]);
+  return camelize(rows[0]);
+}
+
+async function createSubscriber(sellerId, s) {
+  const { rows } = await pool.query(
+    `INSERT INTO subscribers (seller_id, email, code, source, consent)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (seller_id, LOWER(email)) DO NOTHING
+     RETURNING *`,
+    [sellerId, s.email, s.code || null, s.source || 'popup', s.consent !== false]);
+  return rows[0] ? camelize(rows[0]) : null; // null = already existed
+}
+
+async function getSubscribersBySeller(sellerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM subscribers WHERE seller_id = $1 ORDER BY created_at DESC`, [sellerId]);
+  return rows.map(r => camelize(r));
+}
+
 async function getDiscountByCode(sellerId, code) {
   const { rows } = await pool.query(
     `SELECT * FROM discount_codes WHERE seller_id = $1 AND UPPER(code) = UPPER($2) LIMIT 1`,
@@ -1584,6 +1624,11 @@ module.exports = {
   updateDiscount,
   deleteDiscount,
   incrementDiscountUse,
+
+  // Email subscribers (storefront popup)
+  getSubscriberByEmail,
+  createSubscriber,
+  getSubscribersBySeller,
 
   // Shipping automation rules
   createAutomationRule,

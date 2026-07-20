@@ -1155,6 +1155,33 @@ tr:hover td{background:#fafaf7}
       </div>
 
       <div class="form-card">
+        <div class="form-section-hd">Email capture</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Offer visitors a discount in exchange for their email. They get a one-time code emailed to them; you build a marketing list.</div>
+
+        <div class="toggle-row" style="padding-top:0">
+          <div><div class="toggle-label">Show email popup</div><div class="toggle-desc">A popup offering a discount for an email address, shown once per visitor.</div></div>
+          <label class="toggle"><input type="checkbox" id="ecapOn"><span class="tslider"></span></label>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:12px">
+          <div class="field" style="width:130px"><label>Discount %</label><input type="number" id="ecapPercent" min="1" max="90" value="10"></div>
+          <div class="field" style="flex:1"><label>Headline (optional)</label><input type="text" id="ecapHeadline" maxlength="80" placeholder="Get 10% off your first order"></div>
+        </div>
+        <div class="field"><label>Subtext (optional)</label><input type="text" id="ecapSubtext" maxlength="160" placeholder="Join our list and we'll email you a code."></div>
+        <button class="btn primary" onclick="saveEmailPopup()" id="ecapSaveBtn">Save email popup</button>
+
+        <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div class="toggle-label">Subscribers <span id="ecapCount" style="color:var(--muted);font-weight:400"></span></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn secondary" onclick="loadSubscribers()" style="padding:5px 12px;font-size:12px">Refresh</button>
+              <button class="btn secondary" onclick="exportSubscribersCsv()" style="padding:5px 12px;font-size:12px">Export CSV</button>
+            </div>
+          </div>
+          <div id="ecapList" style="max-height:220px;overflow:auto;font-size:12px;color:var(--muted)">No subscribers yet.</div>
+        </div>
+      </div>
+
+      <div class="form-card">
         <div class="alert info" style="font-size:12px;margin-bottom:1rem">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           Buyers see these pages in your storefront footer. Leave blank to show a friendly placeholder. Line breaks become paragraphs.
@@ -2047,7 +2074,75 @@ async function loadStorefrontContent(){
     set('sfTerms',        c.terms);
     loadAppearanceInto(c);
     loadHomepageInto(c);
+    loadEmailPopupInto(c);
   } catch(e){ /* not fatal */ }
+}
+
+// ── EMAIL CAPTURE (popup config + subscriber list) ──
+let ecapSubs = [];
+function loadEmailPopupInto(c){
+  const on = document.getElementById('ecapOn'); if(on) on.checked = !!c.popupEnabled;
+  const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = (val==null?'':val); };
+  set('ecapPercent', c.popupPercent || 10);
+  set('ecapHeadline', c.popupHeadline);
+  set('ecapSubtext',  c.popupSubtext);
+}
+async function saveEmailPopup(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const payload = {
+    enabled:  document.getElementById('ecapOn').checked,
+    percent:  parseInt(document.getElementById('ecapPercent').value) || 10,
+    headline: document.getElementById('ecapHeadline').value.trim(),
+    subtext:  document.getElementById('ecapSubtext').value.trim(),
+  };
+  const btn = document.getElementById('ecapSaveBtn');
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/seller/email-popup', {
+      method:'PUT', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Failed to save'); return; }
+    toast('✓ Email popup saved');
+  } catch(e){ toast('Network error — could not save'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+async function loadSubscribers(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  try {
+    const res = await fetch('/api/seller/subscribers', { headers:{ 'Authorization':`Bearer ${token}` } });
+    if(!res.ok) return;
+    const data = await res.json();
+    ecapSubs = Array.isArray(data.subscribers) ? data.subscribers : [];
+    const countEl = document.getElementById('ecapCount');
+    if(countEl) countEl.textContent = ecapSubs.length ? '(' + ecapSubs.length + ')' : '';
+    const list = document.getElementById('ecapList');
+    if(!list) return;
+    if(!ecapSubs.length){ list.innerHTML = 'No subscribers yet.'; return; }
+    list.innerHTML = ecapSubs.map(s => {
+      const when = s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '';
+      return `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--text)">${escapeHtmlDash(s.email)}</span>
+        <span>${escapeHtmlDash(s.code||'')} · ${when}</span></div>`;
+    }).join('');
+  } catch(e){ /* not fatal */ }
+}
+function escapeHtmlDash(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function exportSubscribersCsv(){
+  if(!ecapSubs.length){ toast('No subscribers to export yet.'); return; }
+  const rows = [['email','code','source','date']].concat(
+    ecapSubs.map(s => [s.email||'', s.code||'', s.source||'', s.createdAt||''])
+  );
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\r\n');
+  const blob = new Blob([csv], { type:'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'subscribers.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
 // ── HOMEPAGE & BANNER (announcement bar + hero text/image) ──
@@ -2554,6 +2649,7 @@ function showDash(name){
   window.scrollTo(0,0);
 
   if(name === 'products') loadFeaturedRailToggle();
+  if(name === 'storefront') loadSubscribers();
   if(name === 'stripe') loadStripeConfig();
   if(name === 'discounts') loadDiscounts();
   if(name === 'add-product') initVariantEditor(ADD_VAR_CTX);

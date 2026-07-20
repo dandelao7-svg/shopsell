@@ -1729,6 +1729,11 @@ app.get('/api/checkout/config', async (req, res) => {
       heroCta1:    content.heroCta1     || '',
       heroCta2:    content.heroCta2     || '',
       heroImage:   content.heroImage    || '',
+      // Email-capture popup (email → welcome discount code).
+      popupEnabled:  !!content.popupEnabled,
+      popupPercent:  content.popupPercent || 10,
+      popupHeadline: content.popupHeadline || '',
+      popupSubtext:  content.popupSubtext || '',
     };
 
     res.json({
@@ -2977,6 +2982,10 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         heroCta1:    content.heroCta1     || '',
         heroCta2:    content.heroCta2     || '',
         heroImage:   content.heroImage    || '',
+        popupEnabled:  !!content.popupEnabled,
+        popupPercent:  content.popupPercent || 10,
+        popupHeadline: content.popupHeadline || '',
+        popupSubtext:  content.popupSubtext || '',
       },
     });
   } catch (err) {
@@ -3122,6 +3131,92 @@ app.put('/api/seller/homepage', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save homepage error:', err);
     res.status(500).json({ error: 'Failed to save homepage.' });
+  }
+});
+
+// Seller: configure the storefront email-capture popup (email → welcome discount).
+app.put('/api/seller/email-popup', requireAuth, async (req, res) => {
+  try {
+    const { enabled, percent, headline, subtext } = req.body || {};
+    const fields = {};
+    if (enabled !== undefined) fields.popupEnabled = !!enabled;
+    if (percent !== undefined) {
+      const p = parseInt(percent);
+      if (!Number.isFinite(p) || p < 1 || p > 90) {
+        return res.status(400).json({ error: 'Percent must be between 1 and 90.' });
+      }
+      fields.popupPercent = p;
+    }
+    if (headline !== undefined) fields.popupHeadline = String(headline).trim().slice(0, 80);
+    if (subtext !== undefined) fields.popupSubtext = String(subtext).trim().slice(0, 160);
+    if (!Object.keys(fields).length) return res.status(400).json({ error: 'Nothing to update.' });
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    await db.setSellerStorefrontContent(req.seller.sellerId, { ...existing, ...fields });
+    res.json({ message: 'Email popup saved.', ...fields });
+  } catch (err) {
+    console.error('Save email popup error:', err);
+    res.status(500).json({ error: 'Failed to save email popup.' });
+  }
+});
+
+// Seller: the captured subscriber list (marketing list / CSV export).
+app.get('/api/seller/subscribers', requireAuth, async (req, res) => {
+  try {
+    const subs = await db.getSubscribersBySeller(req.seller.sellerId);
+    res.json({ subscribers: subs.map(s => ({
+      email: s.email, code: s.code, source: s.source, createdAt: s.createdAt,
+    })) });
+  } catch (err) {
+    console.error('List subscribers error:', err);
+    res.status(500).json({ error: 'Failed to load subscribers.' });
+  }
+});
+
+// Public (buyer-facing, no auth): capture an email from the storefront popup,
+// issue a unique single-use welcome discount code, and email it to the subscriber.
+app.post('/api/store/subscribe', async (req, res) => {
+  try {
+    const storeSlug = String(req.body.storeSlug || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!storeSlug) return res.status(400).json({ error: 'storeSlug is required.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+    const seller = await db.getSellerBySlug(storeSlug);
+    if (!seller) return res.status(404).json({ error: 'Store not found.' });
+
+    const content = (await db.getSellerStorefrontContent(seller.id)) || {};
+    if (!content.popupEnabled) {
+      return res.status(400).json({ error: 'Email signup is not enabled for this store.' });
+    }
+    const percent = Math.min(90, Math.max(1, parseInt(content.popupPercent) || 10));
+    const storeUrl = `https://${seller.storeSlug}.${PLATFORM_DOMAIN}`;
+
+    // Already subscribed? Re-send their existing code — idempotent, no duplicate.
+    const existing = await db.getSubscriberByEmail(seller.id, email);
+    if (existing) {
+      if (existing.code) {
+        emailService.sendWelcomeDiscount({ toEmail: email, storeName: seller.storeName, code: existing.code, percent, storeUrl }).catch(() => {});
+      }
+      return res.json({ message: "You're already subscribed — we re-sent your code.", code: existing.code || null, percent, alreadySubscribed: true });
+    }
+
+    // Unique single-use welcome code for this seller.
+    let code = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = 'WELCOME' + percent + '-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+      if (!(await db.getDiscountByCode(seller.id, candidate))) { code = candidate; break; }
+    }
+    if (!code) return res.status(500).json({ error: 'Could not generate a code — please try again.' });
+
+    await db.createDiscount(seller.id, { code, type: 'percentage', value: percent, minSubtotal: 0, maxUses: 1, active: true });
+    await db.createSubscriber(seller.id, { email, code, source: 'popup', consent: true });
+    emailService.sendWelcomeDiscount({ toEmail: email, storeName: seller.storeName, code, percent, storeUrl }).catch(() => {});
+
+    res.json({ message: 'Check your email for your code!', code, percent });
+  } catch (err) {
+    console.error('Subscribe error:', err);
+    res.status(500).json({ error: 'Could not sign you up. Please try again.' });
   }
 });
 

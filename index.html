@@ -50,9 +50,26 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .announce-bar{background:var(--accent);color:#fff;font-size:13px;font-weight:600;text-align:center;padding:9px 1.5rem;letter-spacing:0.02em}
 .announce-bar[hidden]{display:none}
 .announce-bar a{color:#fff;text-decoration:underline;text-underline-offset:2px}
-.topbar{background:var(--brand);color:rgba(255,255,255,0.6);font-size:12px;padding:7px 1.5rem;display:flex;justify-content:space-between;align-items:center}
+/* EMAIL CAPTURE POPUP */
+.email-popup-overlay{position:fixed;inset:0;background:rgba(15,15,26,0.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+.email-popup-overlay.open{display:flex}
+.email-popup{background:var(--card);border-radius:var(--radius);max-width:400px;width:100%;padding:34px 30px;text-align:center;position:relative;box-shadow:var(--shadow-lg)}
+.email-popup-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:26px;line-height:1;color:var(--muted);cursor:pointer}
+.email-popup-badge{display:inline-block;background:var(--accent);color:#fff;font-weight:800;font-size:15px;letter-spacing:1px;padding:6px 16px;border-radius:20px;margin-bottom:14px}
+.email-popup h2{font-family:var(--font-head);font-size:1.5rem;font-weight:700;margin:0 0 8px;color:var(--text)}
+.email-popup p{color:var(--muted);font-size:14px;margin:0 0 18px;line-height:1.5}
+.email-popup input[type=email]{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;margin-bottom:10px;outline:none}
+.email-popup input[type=email]:focus{border-color:var(--accent)}
+.email-popup-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:12px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:opacity .2s}
+.email-popup-btn:hover{opacity:0.9}
+.email-popup-btn:disabled{opacity:0.6;cursor:default}
+.email-popup-consent{display:flex;align-items:flex-start;gap:7px;text-align:left;font-size:11px;color:var(--muted);margin-top:12px;line-height:1.4;cursor:pointer}
+.email-popup-consent input{margin-top:2px;flex-shrink:0}
+.email-popup-err{color:var(--accent);font-size:13px;margin-top:10px;min-height:16px}
+.email-popup-code{font-family:var(--font-head);font-size:1.4rem;font-weight:800;letter-spacing:2px;color:var(--accent);background:var(--light);border:1.5px dashed var(--accent);border-radius:10px;padding:12px;margin:6px 0 18px}
+.topbar{background:var(--brand);color:rgba(255,255,255,0.75);font-size:13.5px;padding:9px 1.5rem;display:flex;justify-content:space-between;align-items:center}
 .topbar-links{display:flex;gap:16px}
-.topbar-links a{color:rgba(255,255,255,0.6);text-decoration:none;cursor:pointer}
+.topbar-links a{color:rgba(255,255,255,0.75);text-decoration:none;cursor:pointer}
 .topbar-links a:hover{color:#fff}
 
 /* HEADER */
@@ -420,6 +437,31 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
   <div class="mobile-nav-link" onclick="navTo('shop');closeMobileNav()">🛍️ Shop all</div>
   <div class="mobile-nav-link" onclick="navTo('account');closeMobileNav()">📦 My orders</div>
   <div class="mobile-nav-link" onclick="openCart();closeMobileNav()">🛒 Cart</div>
+</div>
+
+<!-- EMAIL CAPTURE POPUP -->
+<div class="email-popup-overlay" id="emailPopupOverlay" onclick="if(event.target===this)dismissEmailPopup()">
+  <div class="email-popup">
+    <button class="email-popup-close" onclick="dismissEmailPopup()" aria-label="Close">&times;</button>
+    <div id="emailPopupForm">
+      <div class="email-popup-badge" id="emailPopupBadge">10% OFF</div>
+      <h2 id="emailPopupHeadline">Get 10% off your first order</h2>
+      <p id="emailPopupSub">Join our list and we'll email you a code to use at checkout.</p>
+      <form onsubmit="return submitEmailPopup(event)">
+        <input type="email" id="emailPopupInput" placeholder="you@email.com" required autocomplete="email">
+        <button type="submit" class="email-popup-btn" id="emailPopupBtn">Get my code</button>
+        <label class="email-popup-consent"><input type="checkbox" id="emailPopupConsent" checked> I agree to receive marketing emails. Unsubscribe anytime.</label>
+      </form>
+      <div class="email-popup-err" id="emailPopupErr"></div>
+    </div>
+    <div id="emailPopupSuccess" style="display:none">
+      <div class="email-popup-badge">✓</div>
+      <h2>You're in!</h2>
+      <p id="emailPopupSuccessMsg">Check your email for your discount code.</p>
+      <div class="email-popup-code" id="emailPopupCode"></div>
+      <button class="email-popup-btn" onclick="dismissEmailPopup()">Start shopping</button>
+    </div>
+  </div>
 </div>
 
 <!-- HOME -->
@@ -994,6 +1036,53 @@ function applyHomepage(){
       hero.style.backgroundPosition = '';
     }
   }
+}
+
+// Email-capture popup. Shows once per visitor (localStorage) after a short delay,
+// only when the seller has it enabled. On submit it posts the email, which issues
+// a unique welcome discount code (shown + emailed).
+function popupSeenKey(){ return 'ss_popup_seen_' + (STORE_SLUG || ''); }
+function applyPopup(){
+  const sc = (STORE_CONFIG && STORE_CONFIG.storefrontContent) || {};
+  if(!sc.popupEnabled) return;
+  try { if(localStorage.getItem(popupSeenKey())) return; } catch(e){}
+  const pct = parseInt(sc.popupPercent) || 10;
+  const badge = document.getElementById('emailPopupBadge'); if(badge) badge.textContent = pct + '% OFF';
+  const hd = document.getElementById('emailPopupHeadline');
+  if(hd) hd.textContent = (sc.popupHeadline && sc.popupHeadline.trim()) || ('Get ' + pct + '% off your first order');
+  const sub = document.getElementById('emailPopupSub');
+  if(sub && sc.popupSubtext && sc.popupSubtext.trim()) sub.textContent = sc.popupSubtext.trim();
+  setTimeout(showEmailPopup, 6000);
+}
+function showEmailPopup(){ const o=document.getElementById('emailPopupOverlay'); if(o) o.classList.add('open'); }
+function dismissEmailPopup(){
+  const o=document.getElementById('emailPopupOverlay'); if(o) o.classList.remove('open');
+  try { localStorage.setItem(popupSeenKey(), '1'); } catch(e){}
+}
+async function submitEmailPopup(e){
+  e.preventDefault();
+  const input = document.getElementById('emailPopupInput');
+  const btn   = document.getElementById('emailPopupBtn');
+  const err   = document.getElementById('emailPopupErr');
+  const consent = document.getElementById('emailPopupConsent');
+  err.textContent = '';
+  const email = (input.value||'').trim();
+  if(!email){ err.textContent = 'Please enter your email.'; return false; }
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
+  try {
+    const res = await fetch('/api/store/subscribe', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ storeSlug: STORE_SLUG, email, consent: consent ? consent.checked : true }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ err.textContent = data.error || 'Something went wrong.'; btn.disabled=false; btn.textContent=orig; return false; }
+    document.getElementById('emailPopupForm').style.display = 'none';
+    document.getElementById('emailPopupSuccess').style.display = 'block';
+    if(data.code) document.getElementById('emailPopupCode').textContent = data.code;
+    document.getElementById('emailPopupSuccessMsg').textContent = data.message || 'Check your email for your code.';
+    try { localStorage.setItem(popupSeenKey(), '1'); } catch(e){}
+  } catch(_){ err.textContent = 'Network error — please try again.'; btn.disabled=false; btn.textContent=orig; }
+  return false;
 }
 
 // Homepage "Featured" carousel. Shows only when the seller has the rail enabled
@@ -2193,6 +2282,7 @@ async function loadStorefront(){
       if(STORE_CONFIG.storeName && !/^\/product\/\d+/.test(location.pathname)) document.title = STORE_CONFIG.storeName + ' — ShopSell';
       applyAppearance();
       applyHomepage();
+      applyPopup();
     }
     if(!prodRes.ok){
       const e = await prodRes.json().catch(()=>({error:'Failed to load products.'}));

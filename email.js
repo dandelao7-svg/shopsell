@@ -433,6 +433,40 @@ async function sendPasswordReset({ toEmail, firstName, resetUrl }) {
   }
 }
 
+// ============================================================
+// BUYER EMAIL — "here's your welcome discount code"
+// ============================================================
+async function sendWelcomeDiscount({ toEmail, storeName, code, percent, storeUrl }) {
+  if (!client) return { skipped: true };
+  if (!toEmail) return { skipped: true, reason: 'no recipient' };
+
+  const shopBtn = storeUrl
+    ? `<p style="margin:18px 0"><a href="${esc(storeUrl)}" style="display:inline-block;background:#0f0f1a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Start shopping</a></p>`
+    : '';
+
+  const inner = `
+      <h1 style="font-size:22px;margin:0 0 8px;font-weight:700">Here's your ${esc(percent)}% off</h1>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:14px">Thanks for subscribing to ${esc(storeName)}.</p>
+
+      <div style="background:#0f0f1a;color:#fff;padding:18px 16px;border-radius:10px;text-align:center;margin:14px 0">
+        <div style="font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.6);text-transform:uppercase;margin-bottom:6px">Your code — ${esc(percent)}% off</div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:2px">${esc(code)}</div>
+      </div>
+
+      <p style="margin:14px 0;font-size:14px;color:#374151">Enter it at checkout to take ${esc(percent)}% off your order. It's good for one use.</p>
+      ${shopBtn}
+      <p style="margin:22px 0 0;font-size:12px;color:#9ca3af;line-height:1.6">
+        You're receiving this because you signed up for offers from ${esc(storeName)}. You can unsubscribe at any time.
+      </p>`;
+
+  return _send({
+    from:    fromAddr,
+    to:      [toEmail],
+    subject: `Your ${percent}% off code for ${storeName}`,
+    html:    emailShell(inner, `Sent by ${storeName} via ShopSell`),
+  }, 'welcome-discount');
+}
+
 module.exports = {
   sendReturnLabelToBuyer,
   sendReturnNotificationToSeller,
@@ -440,4 +474,5 @@ module.exports = {
   sendNewOrderToSeller,
   sendShippingNotificationToBuyer,
   sendPasswordReset,
+  sendWelcomeDiscount,
 };
