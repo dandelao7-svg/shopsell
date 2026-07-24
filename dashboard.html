@@ -1087,16 +1087,20 @@ tr:hover td{background:#fafaf7}
       <!-- PAGE LAYOUT — storefront sections editor (Phase 2) -->
       <div class="form-card">
         <div class="form-section-hd">Page layout</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Arrange your homepage: reorder sections, hide them, edit their content, or add new ones. Changes go live when you click <b>Save layout</b>.</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Arrange your homepage: reorder sections, hide them, edit content, or add new ones. <b>Save draft</b> keeps changes private; <b>Publish</b> makes them live for shoppers.</div>
+        <div id="layoutStatus" style="font-size:12px;font-weight:600;margin-bottom:10px"></div>
         <div id="layoutSectionList"></div>
         <div style="display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap">
           <select id="layoutAddType" class="input" style="max-width:220px"></select>
           <button type="button" class="btn secondary" onclick="layoutAdd()" style="padding:8px 12px;font-size:12px">+ Add section</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-          <button class="btn primary" id="layoutSaveBtn" onclick="layoutSave()">Save layout</button>
+          <button class="btn primary" id="layoutPublishBtn" onclick="layoutPublish()">Publish</button>
+          <button type="button" class="btn secondary" id="layoutSaveDraftBtn" onclick="layoutSaveDraft()">Save draft</button>
+          <button type="button" class="btn secondary" onclick="layoutPreview()">Preview ↗</button>
+          <button type="button" class="btn secondary" id="layoutDiscardBtn" onclick="layoutDiscardDraft()">Discard draft</button>
           <button type="button" class="btn secondary" onclick="layoutReset()">Reset to default</button>
-          <button type="button" class="btn secondary" onclick="viewStore()">View store ↗</button>
+          <button type="button" class="btn secondary" onclick="viewStore()">View live store ↗</button>
         </div>
       </div>
 
@@ -2108,7 +2112,7 @@ async function loadStorefrontContent(){
     loadAppearanceInto(c);
     loadHomepageInto(c);
     loadEmailPopupInto(c);
-    loadLayoutEditor(c.sections);
+    loadLayoutEditor(c.sections, c.draftSections);
   } catch(e){ /* not fatal */ }
 }
 
@@ -2135,6 +2139,9 @@ const SECTION_TYPE_ORDER = ['hero','featured_carousel','product_grid','promo_ban
 
 let editorSections = [];
 let layoutEditingIndex = -1;
+let layoutPublished = null;   // the live (published) sections, or null = default
+let layoutHasDraft  = false;  // an unpublished draft exists server-side
+let layoutDirty     = false;  // in-editor edits not yet saved to draft/published
 
 const _dhEsc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -2148,18 +2155,41 @@ function layoutLegacyDefault(){
   ];
 }
 
-function loadLayoutEditor(sections){
-  editorSections = (Array.isArray(sections) && sections.length)
-    ? sections.map(s => ({ type:s.type, enabled:s.enabled, config: (s.config && typeof s.config==='object') ? {...s.config} : {} }))
-    : layoutLegacyDefault();
+const _cloneSections = arr => (arr||[]).map(s => ({ type:s.type, enabled:s.enabled, config:(s.config && typeof s.config==='object') ? {...s.config} : {} }));
+
+function loadLayoutEditor(sections, draftSections){
+  layoutPublished = (Array.isArray(sections) && sections.length) ? sections : null;
+  layoutHasDraft  = Array.isArray(draftSections) && draftSections.length > 0;
+  // Edit the draft if one exists, else the live layout, else the default.
+  const src = layoutHasDraft ? draftSections : (layoutPublished || layoutLegacyDefault());
+  editorSections = _cloneSections(src);
   layoutEditingIndex = -1;
+  layoutDirty = false;
   const sel = document.getElementById('layoutAddType');
   if(sel && !sel.dataset.filled){
     sel.innerHTML = SECTION_TYPE_ORDER.map(t=>`<option value="${t}">${SECTION_SCHEMAS[t].label}</option>`).join('');
     sel.dataset.filled = '1';
   }
+  updateLayoutStatus();
   renderLayoutList();
 }
+
+// Reflect publish/draft/dirty state in the status line + Discard button.
+function updateLayoutStatus(){
+  const dbtn = document.getElementById('layoutDiscardBtn');
+  if(dbtn) dbtn.style.display = layoutHasDraft ? '' : 'none';
+  const el = document.getElementById('layoutStatus');
+  if(!el) return;
+  let txt, color;
+  if(layoutDirty)            { txt = '● Unsaved changes — Save draft or Publish'; color = '#b8860b'; }
+  else if(layoutHasDraft)    { txt = '● Draft saved — not live yet. Publish to go live.'; color = '#b8860b'; }
+  else if(layoutPublished)   { txt = '● Custom layout published — live'; color = '#00845a'; }
+  else                       { txt = '● Default layout (live)'; color = 'var(--muted)'; }
+  el.textContent = txt; el.style.color = color;
+}
+
+// Flag an in-editor change (bumps status to "unsaved").
+function layoutTouch(){ layoutDirty = true; updateLayoutStatus(); }
 
 function _layoutFieldHTML(i, f, cfg){
   const val = cfg[f.key];
@@ -2202,18 +2232,20 @@ function renderLayoutList(){
 }
 
 function layoutEdit(i){ layoutEditingIndex = (layoutEditingIndex===i) ? -1 : i; renderLayoutList(); }
-function layoutSetCfg(i, key, val){ if(editorSections[i]){ editorSections[i].config = editorSections[i].config || {}; editorSections[i].config[key] = val; } }
+function layoutSetCfg(i, key, val){ if(editorSections[i]){ editorSections[i].config = editorSections[i].config || {}; editorSections[i].config[key] = val; layoutTouch(); } }
 function layoutMove(i, dir){
   const j = i+dir; if(j<0 || j>=editorSections.length) return;
   const t = editorSections[i]; editorSections[i] = editorSections[j]; editorSections[j] = t;
   if(layoutEditingIndex===i) layoutEditingIndex = j; else if(layoutEditingIndex===j) layoutEditingIndex = i;
+  layoutTouch();
   renderLayoutList();
 }
-function layoutToggle(i){ const s = editorSections[i]; if(s){ s.enabled = (s.enabled===false); renderLayoutList(); } }
+function layoutToggle(i){ const s = editorSections[i]; if(s){ s.enabled = (s.enabled===false); layoutTouch(); renderLayoutList(); } }
 function layoutDelete(i){
   editorSections.splice(i,1);
   if(layoutEditingIndex===i) layoutEditingIndex = -1;
   else if(layoutEditingIndex>i) layoutEditingIndex--;
+  layoutTouch();
   renderLayoutList();
 }
 function layoutAdd(){
@@ -2222,8 +2254,9 @@ function layoutAdd(){
   if(!SECTION_SCHEMAS[type]) return;
   editorSections.push({ type, config:{} });
   layoutEditingIndex = editorSections.length-1;   // open the new section for editing
+  layoutTouch();
   renderLayoutList();
-  toast(SECTION_SCHEMAS[type].label + ' added — edit it, then Save layout');
+  toast(SECTION_SCHEMAS[type].label + ' added — edit it, then Save draft or Publish');
 }
 
 function _layoutPayload(){
@@ -2235,45 +2268,80 @@ function _layoutPayload(){
   });
 }
 
-async function layoutSave(){
+// Shared PUT helper for the layout actions. Returns parsed JSON or null.
+async function _layoutPut(url, bodyObj, btnId, okMsg){
   const token = localStorage.getItem('ss_token');
-  if(!token){ toast('Please log in first'); return; }
-  const btn = document.getElementById('layoutSaveBtn'); const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Saving…';
+  if(!token){ toast('Please log in first'); return null; }
+  const btn = btnId ? document.getElementById(btnId) : null;
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '…'; }
   try {
-    const res = await fetch('/api/seller/storefront-sections', {
-      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-      body: JSON.stringify({ sections: _layoutPayload() }),
-    });
+    const res = await fetch(url, { method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`}, body: JSON.stringify(bodyObj) });
     const data = await res.json().catch(()=>({}));
-    if(!res.ok){ toast(data.error || 'Failed to save layout'); }
-    else {
-      // Re-sync from the server's cleaned/sanitized copy so the editor reflects
-      // exactly what will render (e.g. dropped unsafe URLs).
-      editorSections = (data.sections||[]).map(s=>({ type:s.type, enabled:s.enabled, config:(s.config&&typeof s.config==='object')?{...s.config}:{} }));
-      layoutEditingIndex = -1;
-      renderLayoutList();
-      toast('Layout saved ✓ — view your store to see it');
-    }
-  } catch(e){ toast('Network error saving layout'); }
-  finally { btn.disabled=false; btn.textContent=orig; }
+    if(!res.ok){ toast(data.error || 'Save failed'); return null; }
+    toast(okMsg);
+    return data;
+  } catch(e){ toast('Network error'); return null; }
+  finally { if(btn){ btn.disabled=false; btn.textContent=orig; } }
 }
 
+// Save the working draft — the live store is untouched.
+async function layoutSaveDraft(){
+  const data = await _layoutPut('/api/seller/storefront-draft', { sections: _layoutPayload() }, 'layoutSaveDraftBtn', 'Draft saved ✓ — not live yet');
+  if(!data) return;
+  layoutHasDraft = Array.isArray(data.draftSections) && data.draftSections.length > 0;
+  layoutDirty = false;
+  updateLayoutStatus();
+}
+
+// Publish the current editor state to the live store (also clears any draft).
+async function layoutPublish(){
+  const data = await _layoutPut('/api/seller/storefront-sections', { sections: _layoutPayload() }, 'layoutPublishBtn', 'Published ✓ — now live');
+  if(!data) return;
+  layoutPublished = (Array.isArray(data.sections) && data.sections.length) ? data.sections : null;
+  layoutHasDraft = false;
+  layoutDirty = false;
+  // Re-sync from the server's cleaned/sanitized copy (e.g. dropped unsafe URLs).
+  editorSections = layoutPublished ? _cloneSections(layoutPublished) : layoutLegacyDefault();
+  layoutEditingIndex = -1;
+  updateLayoutStatus();
+  renderLayoutList();
+}
+
+// Throw away the unpublished draft and go back to the live layout.
+async function layoutDiscardDraft(){
+  if(!confirm('Discard your unpublished draft and go back to the live layout?')) return;
+  const data = await _layoutPut('/api/seller/storefront-draft', { sections: null }, 'layoutDiscardBtn', 'Draft discarded');
+  if(!data) return;
+  layoutHasDraft = false;
+  editorSections = _cloneSections(layoutPublished || layoutLegacyDefault());
+  layoutEditingIndex = -1;
+  layoutDirty = false;
+  updateLayoutStatus();
+  renderLayoutList();
+}
+
+// Preview the CURRENT editor state on the storefront (via localStorage; no
+// persistence, merchant's own browser only) so you can see it before publishing.
+function layoutPreview(){
+  let slug=''; try{ slug=(JSON.parse(localStorage.getItem('ss_seller')||'{}').storeSlug||'').trim(); }catch(e){}
+  if(!slug){ toast('Store slug not found — save your settings first'); return; }
+  try { localStorage.setItem('ss_layout_preview', JSON.stringify(_layoutPayload())); } catch(e){}
+  window.open(location.origin + '/?store=' + encodeURIComponent(slug) + '&preview=layout', '_blank');
+}
+
+// Clear the live custom layout (and any draft) → back to the default homepage.
 async function layoutReset(){
-  if(!confirm('Reset your homepage to the default layout? This clears your custom section arrangement.')) return;
-  const token = localStorage.getItem('ss_token');
-  if(!token){ toast('Please log in first'); return; }
-  try {
-    const res = await fetch('/api/seller/storefront-sections', {
-      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-      body: JSON.stringify({ sections: null }),
-    });
-    if(!res.ok){ const d = await res.json().catch(()=>({})); toast(d.error || 'Failed to reset'); return; }
-    editorSections = layoutLegacyDefault();
-    layoutEditingIndex = -1;
-    renderLayoutList();
-    toast('Reset to the default layout ✓');
-  } catch(e){ toast('Network error'); }
+  if(!confirm('Reset your homepage to the default layout? This clears your custom section arrangement and any draft.')) return;
+  const data = await _layoutPut('/api/seller/storefront-sections', { sections: null }, null, 'Reset to the default layout ✓');
+  if(!data) return;
+  layoutPublished = null;
+  layoutHasDraft = false;
+  layoutDirty = false;
+  editorSections = layoutLegacyDefault();
+  layoutEditingIndex = -1;
+  updateLayoutStatus();
+  renderLayoutList();
 }
 
 // ── EMAIL CAPTURE (popup config + subscriber list) ──

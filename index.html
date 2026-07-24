@@ -1172,6 +1172,29 @@ function legacyToSections(sc){
   ];
 }
 
+// Merchant layout preview: when opened from the dashboard "Preview" button
+// (?preview=layout), render the in-progress editor layout stashed in
+// localStorage instead of the published sections. Only ever set in the
+// merchant's own browser, never persisted, and invisible to buyers.
+function maybeApplyLayoutPreview(){
+  try {
+    if(new URLSearchParams(location.search).get('preview') !== 'layout') return;
+    const raw = localStorage.getItem('ss_layout_preview');
+    if(!raw) return;
+    const sections = JSON.parse(raw);
+    if(!Array.isArray(sections)) return;
+    STORE_CONFIG.storefrontContent = STORE_CONFIG.storefrontContent || {};
+    STORE_CONFIG.storefrontContent.sections = sections;
+    if(!document.getElementById('ssPreviewBanner')){
+      const b = document.createElement('div');
+      b.id = 'ssPreviewBanner';
+      b.textContent = 'Draft preview — not your live store';
+      b.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99999;background:#111;color:#fff;padding:8px 18px;border-radius:22px;font:600 12px system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35)';
+      document.body.appendChild(b);
+    }
+  } catch(e){ /* ignore malformed preview data */ }
+}
+
 // Render #page-home from the seller's sections (or the legacy default). Runs once
 // per load, BEFORE renderFeatured()/renderGrid() fill their targets and BEFORE
 // applyHomepage() re-applies hero text. Unknown/disabled sections are skipped; a
@@ -2503,6 +2526,9 @@ async function loadStorefront(){
       STORE_CONFIG = await cfgRes.json();
       // Don't clobber the server-rendered product title on /product/<id> pages.
       if(STORE_CONFIG.storeName && !/^\/product\/\d+/.test(location.pathname)) document.title = STORE_CONFIG.storeName + ' — ShopSell';
+      // Merchant "Preview" (?preview=layout) overrides the published sections
+      // with the in-progress editor layout from localStorage — see below.
+      maybeApplyLayoutPreview();
       // Rebuild #page-home from the seller's sections (or the legacy default)
       // before applying appearance/hero text and before the grids hydrate.
       renderStorefront(STORE_CONFIG.storefrontContent);

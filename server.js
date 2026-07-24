@@ -2991,6 +2991,7 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         popupHeadline: content.popupHeadline || '',
         popupSubtext:  content.popupSubtext || '',
         sections:      Array.isArray(content.sections) ? content.sections : null,
+        draftSections: Array.isArray(content.draftSections) ? content.draftSections : null,
       },
     });
   } catch (err) {
@@ -3106,11 +3107,39 @@ app.put('/api/seller/storefront-sections', requireAuth, async (req, res) => {
     const content = { ...existing };
     if (sections === null) delete content.sections;
     else content.sections = sections;
+    // Publishing clears any working draft — it has now gone live.
+    delete content.draftSections;
     await db.setSellerStorefrontContent(req.seller.sellerId, content);
-    res.json({ message: 'Storefront layout saved.', sections: content.sections || null });
+    res.json({ message: 'Storefront layout published.', sections: content.sections || null });
   } catch (err) {
-    console.error('Save storefront sections error:', err);
-    res.status(500).json({ error: 'Failed to save storefront layout.' });
+    console.error('Publish storefront sections error:', err);
+    res.status(500).json({ error: 'Failed to publish storefront layout.' });
+  }
+});
+
+// Save the working DRAFT layout WITHOUT publishing. The live store
+// (content.sections, the only thing served to buyers) is left untouched, so a
+// merchant can stage changes. null clears the draft. Same validation as publish.
+app.put('/api/seller/storefront-draft', requireAuth, async (req, res) => {
+  try {
+    let sections;
+    try {
+      sections = validateSections(req.body ? req.body.sections : null);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    const content = { ...existing };
+    if (sections === null) delete content.draftSections;
+    else content.draftSections = sections;
+    await db.setSellerStorefrontContent(req.seller.sellerId, content);
+    res.json({
+      message: sections === null ? 'Draft discarded.' : 'Draft saved.',
+      draftSections: content.draftSections || null,
+    });
+  } catch (err) {
+    console.error('Save storefront draft error:', err);
+    res.status(500).json({ error: 'Failed to save draft layout.' });
   }
 });
 
