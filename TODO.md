@@ -30,7 +30,7 @@ design doc (like the storefront one) before starting. Components:
   estimate at checkout.
 - [ ] **Compliance** — restricted/prohibited items, denied-party screening,
   export EEL/PFC (AES) threshold handling.
-- [ ] _(when ready)_ Write `INTERNATIONAL-SHIPPING-DESIGN.md` scoping the above.
+- [x] **Design doc written** — see [INTERNATIONAL-SHIPPING-DESIGN.md](INTERNATIONAL-SHIPPING-DESIGN.md) (data model, per-carrier customs payloads, addresses, duties, compliance, 5-phase plan). Phase 1 = product customs fields; Phase 2 = customs on labels.
 
 ## Feature roadmap — "make it yours" + growth
 - [x] **Email-capture popup (phase 1)** — popup → unique single-use welcome code (reuses `discount_codes`) → emailed via Resend → dashboard subscriber list + CSV export. _(done 2026-07-19, deployed + verified)_ **Phase 2 (todo):** bulk marketing send + unsubscribe management.
