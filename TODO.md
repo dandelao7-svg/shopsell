@@ -12,7 +12,28 @@ Running list of pending work. Shipped features live in [FEATURES.md](FEATURES.md
 ## Feature roadmap — "make it yours" + growth
 - [x] **Email-capture popup (phase 1)** — popup → unique single-use welcome code (reuses `discount_codes`) → emailed via Resend → dashboard subscriber list + CSV export. _(done 2026-07-19, deployed + verified)_ **Phase 2 (todo):** bulk marketing send + unsubscribe management.
 - [x] **Update user manual (`guide.html`)** — added themes/branding, homepage/banner, hero + bg image, featured carousel, email capture. _(done 2026-07-19)_
-- [ ] **Section show/hide + reorder** — let tenants toggle/reorder homepage sections (hero, category tiles, featured rail, etc.).
 - [ ] **Footer social links** — Instagram / TikTok / Facebook icons.
 - [ ] **Custom font pairings** beyond the theme defaults.
-- [ ] _(later)_ Visual / live editor.
+
+## Storefront page builder (sections) — see [STOREFRONT-SECTIONS-DESIGN.md](STOREFRONT-SECTIONS-DESIGN.md)
+Move the storefront from fixed editable slots → an ordered array of `{type,config}`
+section blocks + a registry, so marketers can rearrange/add/remove sections safely.
+Supersedes the old "Section show/hide + reorder" and "Visual/live editor" items.
+
+### Phase 1 — Sections engine (no visible change; new capability under the hood)
+Goal: `index.html` can render a store from a `sections` array if present, else fall
+back to today's exact layout. No editor yet (that's Phase 2).
+
+- [ ] **1. Section registry + schemas** — new `SECTION_REGISTRY` (inline in `index.html`, exportable later). Define the field-type vocabulary (`text/textarea/richtext/image/link/select/toggle/number/color/collection/repeater`) and schema entries for the 4 core types: `hero`, `featured_carousel`, `product_grid`, `promo_banner`. Render stubs OK at this step.
+- [ ] **2. Refactor existing markup → render() fns** — pull the current hard-coded hero, featured rail, and shop grid out of `index.html`'s body into `hero.render() / featured_carousel.render() / product_grid.render()`, producing identical HTML from `config` + theme tokens. _Acceptance: output byte-for-byte matches current DOM for the default config._
+- [ ] **3. New `promo_banner` section** — render + schema (text, countdown, link, style). First genuinely new section type (Newegg-style deal bar).
+- [ ] **4. Render loop + hydration** — `renderStorefront(sc, ctx)` filters enabled/known sections into `#page-home` and `.map(render).join('')`; then `hydrate()` re-wires carousel autoplay, countdowns, add-to-cart, and the category tabs against the dynamically generated markup. _Acceptance: cart/featured/filtering all still work._
+- [ ] **5. Legacy fallback + `legacyToSections(sc)`** — when `sc.sections` is absent, synthesize the default `[hero, featured_carousel, product_grid]` from the flat fields so the page is pixel-identical to today. _Acceptance: existing stores unchanged._
+- [ ] **6. Server: expose + persist + validate `sections`** — add `sections` to the `storefrontContent` object in `GET /api/checkout/config`; make `PUT /api/seller/storefront-content` accept + merge a `sections` array with validation (array, known types only, per-type config shape, max-count cap, sanitize `richtext`). No DB migration (rides existing `storefront_content` JSONB).
+- [ ] **7. End-to-end verify path** — set a test store's `sections` via the PUT route (no editor needed), confirm the storefront renders a **rearranged** layout, then clear `sections` → confirm it reverts to the legacy layout. Manual browser check (no test suite).
+- [ ] _(optional in P1)_ **Idempotent backfill** of `sections` for existing stores — can defer to Phase 2 since the legacy fallback covers render.
+
+### Later phases (tracked in the design doc)
+- [ ] **Phase 2** — dashboard editor: reorder/add/remove/toggle + schema-generated forms + save-then-refresh preview; draft vs published (`draftSections`).
+- [ ] **Phase 3** — more section types (`category_tiles`, `image_with_text`, `newsletter`) + merchandising (collections/tags for section `source`) + drag-drop + live iframe preview.
+- [ ] **Phase 4** — starter templates ("Fashion" / "Electronics" / "Minimal") that seed a whole `sections` array.
