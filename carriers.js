@@ -80,10 +80,14 @@ class UPS {
     this.clientId      = creds.clientId;
     this.clientSecret  = creds.clientSecret;
     this.accountNumber = creds.accountNumber;
+    // DIAG (temporary): per-request override to hit UPS's CIE/test host without
+    // touching the global UPS_SANDBOX env var. Used to determine whether a
+    // seller's saved credentials are test-scoped. Remove after diagnosis.
+    this.sandbox       = creds.sandbox === true;
   }
 
   get apiUrl() {
-    return process.env.UPS_SANDBOX === 'true' ? this.sandboxUrl : this.baseUrl;
+    return (this.sandbox || process.env.UPS_SANDBOX === 'true') ? this.sandboxUrl : this.baseUrl;
   }
 
   async getAccessToken() {
@@ -91,8 +95,9 @@ class UPS {
       throw new Error('UPS credentials not configured. Connect your UPS account in Settings.');
     }
 
-    // Cache per credential so we don't re-auth on every request.
-    const cacheKey = `ups:${this.clientId}`;
+    // Cache per credential AND host so a prod token is never reused against the
+    // sandbox host (and vice versa).
+    const cacheKey = `ups:${this.clientId}:${this.apiUrl}`;
     const cached = _getCachedToken(cacheKey);
     if (cached) return cached;
 
