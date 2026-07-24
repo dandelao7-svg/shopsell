@@ -49,6 +49,8 @@
   --code:#1c1c27;
 }
 *{box-sizing:border-box}
+/* readability: scale UI ~12% on screen only (never print) */
+@media screen{html{zoom:1.12}}
 html{scroll-behavior:smooth}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);

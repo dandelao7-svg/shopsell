@@ -50,6 +50,9 @@
 }
 
 html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden}
+/* Global readability bump: scale the whole UI up ~12% on screen. Scoped to
+   @media screen so it never affects printed shipping labels. */
+@media screen{html{zoom:1.12}}
 
 /* ── LAYOUT ── */
 .app{display:flex;min-height:100vh}

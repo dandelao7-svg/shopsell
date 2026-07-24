@@ -11,6 +11,8 @@
     --muted:#6b7280; --accent:#e63946; --green:#22c55e; --blue:#3b82f6; --amber:#f59e0b;
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  /* readability: scale UI ~12% on screen only (never print) */
+  @media screen{html{zoom:1.12}}
   body{font-family:'Outfit',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);padding:24px;line-height:1.5}
   .wrap{max-width:1080px;margin:0 auto}
   header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}

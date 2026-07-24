@@ -14,6 +14,9 @@
    ============================================================ */
 
 *{box-sizing:border-box;margin:0;padding:0}
+/* Global readability bump: scale the whole UI up ~12% on screen. Scoped to
+   @media screen so it never affects any print output. */
+@media screen{html{zoom:1.12}}
 :root{
   --brand:#0f0f1a;
   --brand2:#1a1a2e;
