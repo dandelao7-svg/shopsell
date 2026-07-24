@@ -141,6 +141,12 @@ async function initSchema() {
     // Merchandising: flag a product to appear in the homepage "Featured" carousel.
     // The rail itself is toggled per-store via sellers.storefront_content.
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT FALSE;`);
+    // International shipping (customs): populate the commercial invoice on
+    // cross-border labels. All optional — only needed to ship abroad. See
+    // INTERNATIONAL-SHIPPING-DESIGN.md.
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS hs_code             TEXT;`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS country_of_origin   TEXT;`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS customs_description TEXT;`);
 
     // BUYERS — accounts for the buyer storefront. Separate from sellers
     // (different login flow, different JWT claim type).
@@ -715,8 +721,9 @@ async function createProduct(data) {
         price, compare_at_price, cost_per_item, sku, quantity,
         weight, options, variants, status, image_urls,
         returnable, return_window_days, restocking_fee_pct,
-        length, width, height)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        length, width, height,
+        hs_code, country_of_origin, customs_description)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
      RETURNING *`,
     [
       data.sellerId, data.name, data.description, data.category, data.brand,
@@ -732,6 +739,9 @@ async function createProduct(data) {
       (data.length == null || data.length === '') ? null : Number(data.length),
       (data.width  == null || data.width  === '') ? null : Number(data.width),
       (data.height == null || data.height === '') ? null : Number(data.height),
+      data.hsCode || null,
+      data.countryOfOrigin || null,
+      data.customsDescription || null,
     ]
   );
   return camelize(rows[0]);
@@ -767,6 +777,9 @@ async function updateProduct(id, fields) {
     width:            'width',
     height:           'height',
     isFeatured:       'is_featured',
+    hsCode:             'hs_code',
+    countryOfOrigin:    'country_of_origin',
+    customsDescription: 'customs_description',
   };
   const sets = [];
   const vals = [];

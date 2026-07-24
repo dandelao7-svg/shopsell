@@ -760,6 +760,27 @@ tr:hover td{background:#fafaf7}
         </div>
 
         <div class="form-card">
+          <div class="form-section-hd">Customs (international shipping)</div>
+          <div class="hint" style="margin-bottom:12px">Only needed if you ship this item abroad — used to fill the customs form on international labels. Leave blank for domestic-only.</div>
+          <div class="two-col">
+            <div class="field">
+              <label>HS tariff code</label>
+              <input type="text" id="pHsCode" placeholder="e.g. 610910" maxlength="14">
+              <div class="hint">Harmonized System code that classifies the item for customs</div>
+            </div>
+            <div class="field">
+              <label>Country of origin</label>
+              <input type="text" id="pOriginCountry" placeholder="e.g. US" maxlength="2" style="text-transform:uppercase">
+              <div class="hint">ISO-2 code for where the item was made</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Customs description</label>
+            <input type="text" id="pCustomsDesc" placeholder="Plain description for customs (defaults to the product name)" maxlength="120">
+          </div>
+        </div>
+
+        <div class="form-card">
           <div class="form-section-hd">Options &amp; variants</div>
           <div class="hint" style="margin-bottom:12px">Optional. Add options like Size or Color and we'll build a row per combination, each with its own price, SKU and stock. Leave empty for a single-variant product.</div>
           <div id="optionsList"></div>
@@ -1552,6 +1573,19 @@ tr:hover td{background:#fafaf7}
           <input type="number" id="epHeight" placeholder="Height" min="0" step="0.1">
         </div>
         <div class="hint">Auto-sizes the box for single-item orders when batch shipping.</div>
+      </div>
+      <div class="field">
+        <label>Customs — international shipping (optional)</label>
+        <div class="two-col">
+          <div class="field" style="margin-bottom:8px">
+            <input type="text" id="epHsCode" placeholder="HS tariff code (e.g. 610910)" maxlength="14">
+          </div>
+          <div class="field" style="margin-bottom:8px">
+            <input type="text" id="epOriginCountry" placeholder="Country of origin (e.g. US)" maxlength="2" style="text-transform:uppercase">
+          </div>
+        </div>
+        <input type="text" id="epCustomsDesc" placeholder="Customs description (defaults to product name)" maxlength="120">
+        <div class="hint">Only used to fill the customs form on international labels.</div>
       </div>
     </div>
 
@@ -3510,6 +3544,9 @@ async function publishProduct(overrideStatus){
     returnable:       document.getElementById('pReturnable').checked,
     returnWindowDays: parseInt(document.getElementById('pReturnDays').value)  || 30,
     restockingFeePct: parseFloat(document.getElementById('pRestockFee').value) || 0,
+    hsCode:             (document.getElementById('pHsCode').value || '').trim(),
+    countryOfOrigin:    (document.getElementById('pOriginCountry').value || '').trim(),
+    customsDescription: (document.getElementById('pCustomsDesc').value || '').trim(),
   };
 
   const btn = document.querySelector(isDraft ? '[onclick="saveDraft()"]' : '[onclick="publishProduct()"]');
@@ -3959,6 +3996,9 @@ function openEditProduct(id){
   document.getElementById('epReturnable').checked = r.returnable !== false;
   document.getElementById('epReturnDays').value   = r.returnWindowDays != null ? r.returnWindowDays : 30;
   document.getElementById('epRestockFee').value   = r.restockingFeePct != null ? r.restockingFeePct : 0;
+  document.getElementById('epHsCode').value        = r.hsCode || '';
+  document.getElementById('epOriginCountry').value = r.countryOfOrigin || '';
+  document.getElementById('epCustomsDesc').value   = r.customsDescription || '';
 
   initVariantEditor(EDIT_VAR_CTX, r);
   epToggleReturnFields();
@@ -4010,6 +4050,9 @@ async function saveEditProduct(){
     returnable:       document.getElementById('epReturnable').checked,
     returnWindowDays: parseInt(document.getElementById('epReturnDays').value)  || 30,
     restockingFeePct: parseFloat(document.getElementById('epRestockFee').value) || 0,
+    hsCode:             (document.getElementById('epHsCode').value || '').trim(),
+    countryOfOrigin:    (document.getElementById('epOriginCountry').value || '').trim(),
+    customsDescription: (document.getElementById('epCustomsDesc').value || '').trim(),
   };
 
   const btn = document.getElementById('epSaveBtn');

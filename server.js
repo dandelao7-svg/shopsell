@@ -1475,6 +1475,7 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       length, width, height,
       status, imageUrls,
       returnable, returnWindowDays, restockingFeePct,
+      hsCode, countryOfOrigin, customsDescription,
     } = req.body;
 
     const { options, variants } = normalizeVariants(req.body.options, req.body.variants);
@@ -1529,6 +1530,9 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       returnable:       returnable,
       returnWindowDays: returnWindowDays,
       restockingFeePct: restockingFeePct,
+      hsCode:             (hsCode || '').toString().trim() || null,
+      countryOfOrigin:    (countryOfOrigin || '').toString().trim().toUpperCase() || null,
+      customsDescription: (customsDescription || '').toString().trim() || null,
     });
 
     res.status(201).json({ message: 'Product created!', product });
@@ -1650,6 +1654,13 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
     // UPDATE doesn't try to cast an empty string.
     for (const dim of ['length', 'width', 'height']) {
       if (dim in body) body[dim] = (body[dim] === '' || body[dim] == null) ? null : Number(body[dim]);
+    }
+    // Customs text fields — trim; uppercase the ISO country of origin.
+    for (const k of ['hsCode', 'customsDescription']) {
+      if (k in body) body[k] = body[k] == null ? null : (String(body[k]).trim() || null);
+    }
+    if ('countryOfOrigin' in body) {
+      body.countryOfOrigin = body.countryOfOrigin ? (String(body.countryOfOrigin).trim().toUpperCase() || null) : null;
     }
     // When options/variants are being edited, normalize them and re-derive the
     // product-level price/quantity from the variants.
