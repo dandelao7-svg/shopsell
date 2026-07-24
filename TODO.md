@@ -18,9 +18,10 @@ design doc (like the storefront one) before starting. Components:
   (UPS/FedEx/Shippo) needs an international-forms payload: per-item description,
   quantity, declared value, **HS tariff code**, country of origin, weight,
   reason for export. Add these fields to `createShipment()` for each carrier.
-- [ ] **Product-level customs data** — HS code + country of origin + customs
-  description per product (new fields in the product schema + Add-product form),
-  so labels can auto-populate the invoice.
+- [x] **Product-level customs data** — HS code + country of origin + customs
+  description per product. _(DONE ad1b731 — additive DB columns, create/update
+  routes, Add-product + Edit-product forms; verified live: save/normalize/
+  round-trip + edit-modal populate. This is design-doc **Phase 1**.)_
 - [ ] **International addresses** — drop the US state/ZIP assumptions in the
   buyer checkout (`index.html`) and Quick Ship (`shipping.html`): full country
   list, free-form region + postal code, required phone/country.
