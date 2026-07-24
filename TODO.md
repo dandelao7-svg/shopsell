@@ -20,7 +20,9 @@ Move the storefront from fixed editable slots → an ordered array of `{type,con
 section blocks + a registry, so marketers can rearrange/add/remove sections safely.
 Supersedes the old "Section show/hide + reorder" and "Visual/live editor" items.
 
-### Phase 1 — Sections engine (no visible change; new capability under the hood)
+### Phase 1 — Sections engine ✅ COMPLETE (2026-07-24) — no visible change; new capability under the hood
+Engine + registry + server persistence all shipped & verified live. Custom layouts
+now save/serve/render end-to-end; existing stores unchanged. Next: Phase 2 editor.
 Goal: `index.html` can render a store from a `sections` array if present, else fall
 back to today's exact layout. No editor yet (that's Phase 2).
 
@@ -29,8 +31,8 @@ back to today's exact layout. No editor yet (that's Phase 2).
 - [x] **3. New `promo_banner` section** _(done; live countdown verified)_ — render + schema (text, countdown, link, style). First genuinely new section type (Newegg-style deal bar).
 - [x] **4. Render loop + hydration** _(done; verified rearrange + hydrate live)_ — `renderStorefront(sc, ctx)` filters enabled/known sections into `#page-home` and `.map(render).join('')`; then `hydrate()` re-wires carousel autoplay, countdowns, add-to-cart, and the category tabs against the dynamically generated markup. _Acceptance: cart/featured/filtering all still work._
 - [x] **5. Legacy fallback + `legacyToSections(sc)`** _(done; existing store visually unchanged)_ — when `sc.sections` is absent, synthesize the default `[hero, featured_carousel, product_grid]` from the flat fields so the page is pixel-identical to today. _Acceptance: existing stores unchanged._
-- [ ] **6. Server: expose + persist + validate `sections`** — add `sections` to the `storefrontContent` object in `GET /api/checkout/config`; make `PUT /api/seller/storefront-content` accept + merge a `sections` array with validation (array, known types only, per-type config shape, max-count cap, sanitize `richtext`). No DB migration (rides existing `storefront_content` JSONB).
-- [ ] **7. End-to-end verify path** — set a test store's `sections` via the PUT route (no editor needed), confirm the storefront renders a **rearranged** layout, then clear `sections` → confirm it reverts to the legacy layout. Manual browser check (no test suite).
+- [x] **6. Server: expose + persist + validate `sections`** _(done 78955f0; 19 validator tests incl. URL-scheme XSS guard)_ — add `sections` to the `storefrontContent` object in `GET /api/checkout/config`; make `PUT /api/seller/storefront-content` accept + merge a `sections` array with validation (array, known types only, per-type config shape, max-count cap, sanitize `richtext`). No DB migration (rides existing `storefront_content` JSONB).
+- [x] **7. End-to-end verify path** _(done; saved via API → persisted → served → rendered rearranged w/ live countdown → cleared → reverted; javascript: URL stripped end-to-end)_ — set a test store's `sections` via the PUT route (no editor needed), confirm the storefront renders a **rearranged** layout, then clear `sections` → confirm it reverts to the legacy layout. Manual browser check (no test suite).
 - [ ] _(optional in P1)_ **Idempotent backfill** of `sections` for existing stores — can defer to Phase 2 since the legacy fallback covers render.
 
 ### Later phases (tracked in the design doc)
