@@ -10,7 +10,32 @@
 
 'use strict';
 
-const nodeFetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+// Every carrier API call goes through here. Carrier endpoints (UPS/FedEx/
+// Shippo) can occasionally hang — a newly-activated product, a slow upstream,
+// a dropped connection — and node-fetch has no default timeout, so a hung
+// socket would otherwise wedge the seller's whole request indefinitely (spinner
+// forever, no error). Bound every call with an AbortController and turn a
+// timeout into a clean, catchable error the route can surface.
+const CARRIER_TIMEOUT_MS = 30000;
+
+async function nodeFetch(url, opts = {}) {
+  const { default: f } = await import('node-fetch');
+  const { timeoutMs = CARRIER_TIMEOUT_MS, ...rest } = opts;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await f(url, { ...rest, signal: controller.signal });
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      let host = url;
+      try { host = new URL(url).host; } catch { /* keep raw url */ }
+      throw new Error(`Carrier request timed out after ${Math.round(timeoutMs / 1000)}s (${host}). The carrier did not respond — try again in a moment.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ============================================================
 // PER-SELLER TOKEN CACHE
