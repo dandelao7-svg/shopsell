@@ -4372,13 +4372,9 @@ app.post('/api/shipping/rates', requireAuth, async (req, res) => {
       });
     }
 
-    // DIAG (temporary): when _diagSandbox is set, force carrier calls to the
-    // CIE/test host to check whether the seller's saved creds are test-scoped.
-    const diagSandbox = req.body._diagSandbox === true;
     const settled = await Promise.allSettled(connected.map(async carrier => {
       const creds = await loadSellerCarrierCreds(req.seller.sellerId, carrier);
       if (!creds) throw new Error('credentials unavailable');
-      if (diagSandbox) creds.sandbox = true;
       return carriers.getRates(carrier, { shipper, recipient, package: pkg }, creds);
     }));
 
