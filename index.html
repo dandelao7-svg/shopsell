@@ -972,6 +972,142 @@ function renderGrid(gId,cId,cat,sort,search=''){
 
 // Apply the seller's saved appearance: theme preset (body class), optional accent
 // color (inline on <body>, overrides the theme), and logo (image or store name).
+/* ============================================================
+   STOREFRONT SECTIONS — registry  (Phase 1, tasks 1–2)
+   The storefront is moving from a fixed layout to an ordered array of
+   {type, config} section blocks. This is the single catalog of allowed
+   section types. Each entry declares:
+     • label  — human name (for the Phase 2 editor)
+     • schema — editable settings; will DRIVE the editor UI automatically
+     • render — (config, ctx) => HTML string, built only from theme tokens
+   The render fns reproduce today's markup exactly (verified DOM-identical),
+   so wiring the render loop (task 4) + legacy fallback (task 5) is visually
+   a no-op. NOT yet called anywhere — see TODO.md Phase 1 tasks 4–7.
+   Schema field-type vocabulary:
+     text · textarea · richtext · image · link · select ·
+     toggle · number · color · collection · repeater
+   ============================================================ */
+const _ssEsc = s => String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+const SECTION_REGISTRY = {
+  hero: {
+    label: 'Hero',
+    schema: [
+      { key:'eyebrow', type:'text',     label:'Eyebrow' },
+      { key:'title',   type:'richtext', label:'Headline' },
+      { key:'subtext', type:'textarea', label:'Subtext' },
+      { key:'cta1',    type:'link',     label:'Primary button' },
+      { key:'cta2',    type:'link',     label:'Secondary button' },
+      { key:'image',   type:'image',    label:'Background image' },
+    ],
+    // Reproduces the static .hero exactly when config is empty. title is
+    // richtext → inserted as HTML (the built-in default contains <br><em>);
+    // config-supplied HTML will be sanitized server-side in task 6.
+    render(c={}) {
+      c = c || {};
+      const eyebrow = (c.eyebrow && c.eyebrow.trim()) || 'New arrivals · Free shipping always';
+      const title   = (c.title   && c.title.trim())   || 'Shop smarter,<br><em>live better.</em>';
+      const subtext = (c.subtext && c.subtext.trim()) || 'Curated products from independent sellers — free shipping on every single order, no minimums.';
+      const cta1    = (c.cta1 && c.cta1.label) || 'Shop now';
+      const cta2    = (c.cta2 && c.cta2.label) || 'New arrivals';
+      const bg = c.image
+        ? ` style="background-image:linear-gradient(rgba(15,15,26,0.55),rgba(15,15,26,0.55)),url('${_ssEsc(c.image)}');background-size:cover;background-position:center"`
+        : '';
+      return `<div class="hero"${bg}>
+    <div class="hero-eyebrow" id="heroEyebrow">${_ssEsc(eyebrow)}</div>
+    <h1 id="heroTitle">${title}</h1>
+    <p class="hero-sub" id="heroSub">${_ssEsc(subtext)}</p>
+    <div class="hero-actions">
+      <button class="btn-hero primary" id="heroCta1" onclick="navTo('shop')">${_ssEsc(cta1)}</button>
+      <button class="btn-hero secondary" id="heroCta2" onclick="navTo('shop')">${_ssEsc(cta2)}</button>
+    </div>
+    <div class="hero-stats">
+      <div><div class="hero-stat-val">500+</div><div class="hero-stat-label">Products</div></div>
+      <div><div class="hero-stat-val">Free</div><div class="hero-stat-label">Shipping always</div></div>
+      <div><div class="hero-stat-val">4.9★</div><div class="hero-stat-label">Avg. rating</div></div>
+    </div>
+  </div>`;
+    },
+  },
+
+  featured_carousel: {
+    label: 'Featured carousel',
+    schema: [
+      { key:'heading',  type:'text',       label:'Heading' },
+      { key:'source',   type:'collection', label:'Products', default:'featured' },
+      { key:'autoplay', type:'toggle',     label:'Auto-scroll', default:true },
+    ],
+    // Reproduces the static #featuredRail shell. The track is filled by the
+    // existing renderFeatured() at hydration (task 4).
+    render(c={}) {
+      c = c || {};
+      const heading = (c.heading && c.heading.trim()) || 'Featured';
+      return `<section class="featured-rail" id="featuredRail" hidden>
+    <div class="featured-rail-hd">
+      <h2 id="featuredTitle">${_ssEsc(heading)}</h2>
+      <span class="featured-rail-hint">Hover to pause</span>
+    </div>
+    <div class="featured-track" id="featuredTrack"></div>
+  </section>`;
+    },
+  },
+
+  product_grid: {
+    label: 'Product grid',
+    schema: [
+      { key:'source',      type:'collection', label:'Products', default:'all' },
+      { key:'showFilters', type:'toggle',     label:'Category tabs', default:true },
+      { key:'columns',     type:'number',     label:'Columns', default:4 },
+    ],
+    // Reproduces the static .cat-strip + .shop-section. The grid (#homeGrid)
+    // is filled by the existing renderGrid() at hydration (task 4). Categories
+    // are still hard-coded here; collections land in Phase 3 (design doc §8).
+    render(c={}) {
+      c = c || {};
+      const filters = c.showFilters === false ? '' : `<div class="cat-strip">
+    <div class="cat-strip-inner" id="homeCatStrip">
+      <div class="cat-tab active" onclick="setHomeCat('all',this)">All</div>
+      <div class="cat-tab" onclick="setHomeCat('clothing',this)">Clothing</div>
+      <div class="cat-tab" onclick="setHomeCat('accessories',this)">Accessories</div>
+      <div class="cat-tab" onclick="setHomeCat('home',this)">Home & Living</div>
+      <div class="cat-tab" onclick="setHomeCat('beauty',this)">Beauty</div>
+    </div>
+  </div>
+  `;
+      return `${filters}<div class="shop-section">
+    <div class="shop-toolbar">
+      <span class="results-count" id="homeCount">12 products</span>
+      <select class="sort-select" onchange="setHomeSort(this.value)">
+        <option value="default">Featured</option>
+        <option value="price-asc">Price: low to high</option>
+        <option value="price-desc">Price: high to low</option>
+        <option value="rating">Top rated</option>
+        <option value="newest">Newest</option>
+      </select>
+    </div>
+    <div class="products-grid" id="homeGrid"></div>
+  </div>`;
+    },
+  },
+
+  // promo_banner — schema defined now (task 1); render implemented in task 3.
+  promo_banner: {
+    label: 'Promo banner',
+    schema: [
+      { key:'text',        type:'text',   label:'Text' },
+      { key:'countdownTo', type:'text',   label:'Countdown to (ISO date)' },
+      { key:'link',        type:'link',   label:'Link' },
+      { key:'style',       type:'select', label:'Style', options:['solid','outline'], default:'solid' },
+    ],
+    render(/* c, ctx */) { return ''; /* TODO(Phase 1 task 3): Newegg-style deal / countdown bar */ },
+  },
+};
+
+// Ordered list of allowed types — used later by the render loop (task 4) and
+// server-side validation (task 6).
+const SECTION_TYPES = Object.keys(SECTION_REGISTRY);
+
 const APPEARANCE_THEMES = ['classic','boutique','minimal'];
 function applyAppearance(){
   const sc = (STORE_CONFIG && STORE_CONFIG.storefrontContent) || {};
