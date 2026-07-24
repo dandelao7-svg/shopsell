@@ -4853,6 +4853,30 @@ app.post('/api/shipping/labels/merge', requireAuth, async (req, res) => {
   }
 });
 
+// Build a customs block from an order's line items + each product's customs
+// fields (HS code, country of origin, customs description), to auto-fill the
+// commercial invoice on international labels. Returns null if unavailable.
+async function assembleCustomsFromOrder(orderId, sellerId) {
+  const oid = normalizeOrderId(orderId);
+  if (oid === null) return null;
+  const ord = await db.getOrderById(oid);
+  if (!ord || ord.sellerId !== sellerId || !Array.isArray(ord.items) || !ord.items.length) return null;
+  const items = [];
+  for (const it of ord.items) {
+    const p = it.productId ? await db.getProductById(it.productId).catch(() => null) : null;
+    items.push({
+      description:   (p && (p.customsDescription || p.name)) || it.name || 'Goods',
+      quantity:      it.qty || it.quantity || 1,
+      value:         it.price || 0,
+      // Product weight is captured in ounces (Add-product form) → convert to lb.
+      weight:        (p && p.weight) ? (Number(p.weight) / 16) : 0.2,
+      hsCode:        (p && p.hsCode) || '',
+      originCountry: (p && p.countryOfOrigin) || '',
+    });
+  }
+  return { contentsType: 'merchandise', incoterm: 'DDU', invoiceNumber: String(oid), items };
+}
+
 // CREATE SHIPPING LABEL
 app.post('/api/shipping/label', requireAuth, async (req, res) => {
   try {
@@ -4866,6 +4890,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
       serviceType,
       labelFormat,
       billing,
+      customs,
     } = req.body;
 
     if(!shipper || !recipient || !pkg) {
@@ -4886,6 +4911,16 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
     // Build billing info
     const billingInfo = billing || { type: '01' };
 
+    // International: attach a customs declaration (commercial invoice). Use the
+    // caller-provided `customs` block, else auto-assemble one from the order's
+    // line items + each product's customs fields. Only for cross-border shipments
+    // (the carriers ignore customs domestically; we skip the order lookup too).
+    const isIntl = (shipper.country || 'US').toUpperCase() !== (recipient.country || 'US').toUpperCase();
+    let customsForLabel = customs || null;
+    if (isIntl && !customsForLabel) {
+      customsForLabel = await assembleCustomsFromOrder(orderId, req.seller.sellerId).catch(() => null);
+    }
+
     // Create label with appropriate carrier
     let label;
     if(carrier === 'ups') {
@@ -4896,6 +4931,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
         labelFormat: labelFormat || 'GIF',
         reference: orderId,
         billing: billingInfo,
+        customs: customsForLabel,
       });
     } else if(carrier === 'fedex') {
       label = await client.createShipment({
@@ -4905,6 +4941,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
         labelFormat: labelFormat || 'PDF',
         reference: orderId,
         billing: billingInfo,
+        customs: customsForLabel,
       });
     } else { // usps
       label = await client.createShipment({
@@ -4912,6 +4949,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
         package: pkg,
         serviceToken: serviceType || 'usps_priority',
         reference: orderId,
+        customs: customsForLabel,
       });
     }
 

@@ -71,6 +71,104 @@ function _setCachedToken(key, token, expiresInSec) {
 }
 
 // ============================================================
+// INTERNATIONAL CUSTOMS
+// A shipment is cross-border when ship-to country ≠ ship-from country. Those
+// labels require a customs declaration (commercial invoice). The common
+// `customs` block is normalized here, then each carrier's createShipment maps
+// it into that carrier's own structure. See INTERNATIONAL-SHIPPING-DESIGN.md.
+// ============================================================
+function isCrossBorder(shipper = {}, recipient = {}) {
+  return (shipper.country || 'US').toUpperCase() !== (recipient.country || 'US').toUpperCase();
+}
+
+// Normalize the incoming customs block to a common internal shape, or null if
+// there's nothing usable. Values are clamped/typed so carrier payloads are safe.
+function normalizeCustoms(customs, shipper = {}) {
+  if (!customs || !Array.isArray(customs.items) || !customs.items.length) return null;
+  const originDefault = (shipper.country || 'US').toUpperCase().slice(0, 2);
+  const items = customs.items.map(it => ({
+    description:   String(it.description || 'Goods').slice(0, 200),
+    quantity:      Math.max(1, parseInt(it.quantity, 10) || 1),
+    value:         Math.max(0, parseFloat(it.value) || 0),        // unit value
+    weightLb:      Math.max(0.1, parseFloat(it.weight) || 0.1),   // per-unit, lb
+    hsCode:        String(it.hsCode || '').replace(/[^0-9]/g, '').slice(0, 12),
+    originCountry: String(it.originCountry || originDefault).toUpperCase().slice(0, 2),
+  }));
+  return {
+    contentsType:  customs.contentsType || 'merchandise',
+    incoterm:      (customs.incoterm || 'DDU').toUpperCase() === 'DDP' ? 'DDP' : 'DDU',
+    invoiceNumber: String(customs.invoiceNumber || 'INV').slice(0, 35),
+    currency:      (customs.currency || 'USD').toUpperCase().slice(0, 3),
+    signer:        String(customs.signer || shipper.name || 'Shipper').slice(0, 60),
+    items,
+  };
+}
+
+// UPS: Shipment.ShipmentServiceOptions.InternationalForms (commercial invoice).
+function _upsInternationalForms(c) {
+  const d = new Date();
+  const invoiceDate = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return {
+    FormType:        '01', // 01 = Commercial Invoice
+    InvoiceNumber:   c.invoiceNumber,
+    InvoiceDate:     invoiceDate,
+    ReasonForExport: 'SALE',
+    CurrencyCode:    c.currency,
+    Product: c.items.map(it => ({
+      Description:       it.description,
+      ...(it.hsCode ? { CommodityCode: it.hsCode } : {}),
+      OriginCountryCode: it.originCountry,
+      Unit: {
+        Number:            String(it.quantity),
+        Value:             it.value.toFixed(2),
+        UnitOfMeasurement: { Code: 'EA' },
+      },
+      ProductWeight: { UnitOfMeasurement: { Code: 'LBS' }, Weight: it.weightLb.toFixed(2) },
+    })),
+  };
+}
+
+// FedEx: requestedShipment.customsClearanceDetail.
+function _fedexCustomsDetail(c) {
+  return {
+    dutiesPayment:     { paymentType: c.incoterm === 'DDP' ? 'SENDER' : 'RECIPIENT' },
+    commercialInvoice: { termsOfSale: c.incoterm },
+    commodities: c.items.map(it => ({
+      description:          it.description,
+      countryOfManufacture: it.originCountry,
+      ...(it.hsCode ? { harmonizedCode: it.hsCode } : {}),
+      quantity:             it.quantity,
+      quantityUnits:        'EA',
+      unitPrice:            { amount: Number(it.value.toFixed(2)), currency: c.currency },
+      customsValue:         { amount: Number((it.value * it.quantity).toFixed(2)), currency: c.currency },
+      weight:               { units: 'LB', value: it.weightLb },
+    })),
+  };
+}
+
+// Shippo: a /customs/declarations body (referenced by the shipment).
+function _shippoCustomsDeclaration(c) {
+  const contents = { gift: 'GIFT', sample: 'SAMPLE', documents: 'DOCUMENTS', returned_goods: 'RETURNED_GOODS' }[c.contentsType] || 'MERCHANDISE';
+  return {
+    contents_type:       contents,
+    non_delivery_option: 'RETURN',
+    certify:             true,
+    certify_signer:      c.signer,
+    incoterm:            c.incoterm,
+    items: c.items.map(it => ({
+      description:    it.description,
+      quantity:       it.quantity,
+      net_weight:     it.weightLb.toFixed(2),
+      mass_unit:      'lb',
+      value_amount:   it.value.toFixed(2),
+      value_currency: c.currency,
+      origin_country: it.originCountry,
+      ...(it.hsCode ? { tariff_number: it.hsCode } : {}),
+    })),
+  };
+}
+
+// ============================================================
 // UPS
 // ============================================================
 class UPS {
@@ -119,10 +217,12 @@ class UPS {
     return data.access_token;
   }
 
-  async createShipment({ shipper, recipient, package: pkg, serviceCode, labelFormat, reference, barcodeReference, billing }) {
+  async createShipment({ shipper, recipient, package: pkg, serviceCode, labelFormat, reference, barcodeReference, billing, customs }) {
     const token = await this.getAccessToken();
 
     const isResidential = recipient.residential === true;
+    // Cross-border → attach the commercial-invoice InternationalForms.
+    const intlForms = isCrossBorder(shipper, recipient) ? normalizeCustoms(customs, shipper) : null;
 
     const payload = {
       ShipmentRequest: {
@@ -180,6 +280,7 @@ class UPS {
             Code:        serviceCode || '03',
             Description: 'UPS Service',
           },
+          ...(intlForms ? { ShipmentServiceOptions: { InternationalForms: _upsInternationalForms(intlForms) } } : {}),
           Package: {
             Description:   pkg.description || 'Package',
             Packaging:     { Code: '02', Description: 'Customer Supplied Package' },
@@ -532,8 +633,10 @@ class FedEx {
     return data.access_token;
   }
 
-  async createShipment({ shipper, recipient, package: pkg, serviceType, labelFormat, reference }) {
+  async createShipment({ shipper, recipient, package: pkg, serviceType, labelFormat, reference, customs }) {
     const token = await this.getAccessToken();
+
+    const intlCustoms = isCrossBorder(shipper, recipient) ? normalizeCustoms(customs, shipper) : null;
 
     const payload = {
       labelResponseOptions: 'URL_ONLY',
@@ -569,6 +672,13 @@ class FedEx {
         serviceType:   serviceType || 'FEDEX_GROUND',
         packagingType: 'YOUR_PACKAGING',
         pickupType:    'USE_SCHEDULED_PICKUP',
+        ...(intlCustoms ? {
+          customsClearanceDetail: _fedexCustomsDetail(intlCustoms),
+          shippingDocumentSpecification: {
+            shippingDocumentTypes: ['COMMERCIAL_INVOICE'],
+            commercialInvoiceDetail: { documentFormat: { docType: 'PDF', stockType: 'PAPER_LETTER' } },
+          },
+        } : {}),
         shippingChargesPayment: {
           paymentType: 'SENDER',
           payor: { responsibleParty: { accountNumber: { value: this.accountNumber } } },
@@ -784,9 +894,31 @@ class USPS {
     this.baseUrl = 'https://api.goshippo.com';
   }
 
-  async createShipment({ shipper, recipient, package: pkg, serviceToken, reference }) {
+  // Create a Shippo customs declaration and return its object_id.
+  async _createCustomsDeclaration(c) {
+    const res = await nodeFetch(`${this.baseUrl}/customs/declarations/`, {
+      method: 'POST',
+      headers: { 'Authorization': `ShippoToken ${this.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(_shippoCustomsDeclaration(c)),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.object_id) {
+      throw new Error(`Shippo customs declaration error: ${data.detail || JSON.stringify(data).slice(0, 200)}`);
+    }
+    return data.object_id;
+  }
+
+  async createShipment({ shipper, recipient, package: pkg, serviceToken, reference, customs }) {
     if (!this.apiKey) {
       throw new Error('Shippo token not configured. Connect your USPS/Shippo account in Settings.');
+    }
+
+    // Cross-border → create a customs declaration first and reference it on the
+    // shipment (Shippo requires the declaration object for international labels).
+    let customsDeclarationId = null;
+    const intlCustoms = isCrossBorder(shipper, recipient) ? normalizeCustoms(customs, shipper) : null;
+    if (intlCustoms) {
+      customsDeclarationId = await this._createCustomsDeclaration(intlCustoms);
     }
 
     // Step 1: Create shipment to get rates
@@ -824,6 +956,7 @@ class USPS {
           weight:        String(pkg.weight || 1),
           mass_unit:     'lb',
         }],
+        ...(customsDeclarationId ? { customs_declaration: customsDeclarationId } : {}),
         async: false,
       }),
     });
