@@ -21,6 +21,20 @@ const nodeFetch = (...args) => import('node-fetch').then(({ default: f }) => f(.
 // ============================================================
 const _tokenCache = new Map(); // key -> { token, expiresAt }
 
+// UPS returns errors as { response: { errors: [{ code, message }] } }. The
+// numeric code is what actually disambiguates failures (e.g. 250002/250003 =
+// account or product-entitlement problems, not a bad request), so keep it in
+// the thrown message instead of dropping it.
+function _upsErr(data) {
+  const errs = data?.response?.errors;
+  if (Array.isArray(errs) && errs.length) {
+    return errs.map(e => `${e.code ? `[${e.code}] ` : ''}${e.message}`).join('; ');
+  }
+  return data?.ShipmentResponse?.Response?.ResponseStatus?.Description
+      || data?.RateResponse?.Response?.ResponseStatus?.Description
+      || JSON.stringify(data).slice(0, 500);
+}
+
 function _getCachedToken(key) {
   const hit = _tokenCache.get(key);
   if (hit && Date.now() < hit.expiresAt) return hit.token;
@@ -192,11 +206,7 @@ class UPS {
     const data = await res.json();
 
     if (!res.ok || !data.ShipmentResponse) {
-      const errMsg =
-        data?.response?.errors?.[0]?.message ||
-        data?.ShipmentResponse?.Response?.ResponseStatus?.Description ||
-        JSON.stringify(data).slice(0, 500);
-      throw new Error(`UPS Ship API error: ${errMsg}`);
+      throw new Error(`UPS Ship API error: ${_upsErr(data)}`);
     }
 
     const sr = data.ShipmentResponse;
@@ -287,8 +297,7 @@ class UPS {
 
     const data = await res.json();
     if (!res.ok || !data.RateResponse) {
-      const errMsg = data?.response?.errors?.[0]?.message || JSON.stringify(data).slice(0, 300);
-      throw new Error(`UPS Rating API error: ${errMsg}`);
+      throw new Error(`UPS Rating API error: ${_upsErr(data)}`);
     }
 
     const rated = data.RateResponse.RatedShipment || [];
