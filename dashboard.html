@@ -172,6 +172,20 @@ tr:hover td{background:#fafaf7}
 /* ── FORMS ── */
 .form-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.5rem;margin-bottom:1rem}
 .form-section-hd{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--muted);margin-bottom:1rem;padding-bottom:8px;border-bottom:1px solid var(--border)}
+/* Page layout (sections editor) */
+.layout-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:8px;background:var(--card)}
+.layout-row.off{opacity:.55}
+.layout-move{display:flex;flex-direction:column;gap:2px}
+.layout-move button{width:22px;height:18px;line-height:1;padding:0;border:1px solid var(--border);background:var(--bg2,#f7f7f2);border-radius:4px;cursor:pointer;font-size:9px;color:var(--muted)}
+.layout-move button:disabled{opacity:.35;cursor:not-allowed}
+.layout-meta{flex:1;min-width:0;cursor:pointer}
+.layout-name{font-size:13px;font-weight:600;color:var(--text)}
+.layout-type{font-size:11px;color:var(--muted)}
+.layout-edit,.layout-del{border:1px solid var(--border);background:none;border-radius:6px;cursor:pointer;font-size:12px;padding:5px 9px;color:var(--muted)}
+.layout-del:hover{border-color:var(--red,#e63946);color:var(--red,#e63946)}
+.layout-form{border:1px dashed var(--border);border-radius:8px;padding:12px;margin:0 0 8px 0;background:var(--bg2,#faf9f4)}
+.layout-form .field{margin-bottom:10px}
+.layout-form .field:last-child{margin-bottom:0}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:12px;font-weight:500;margin-bottom:5px;color:var(--text)}
 .field input,.field select,.field textarea{width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);background:#fff;outline:none;transition:border-color 0.2s}
@@ -1070,6 +1084,22 @@ tr:hover td{background:#fafaf7}
       <div class="page-hd-title">Storefront pages</div>
     </div>
     <div style="max-width:720px">
+      <!-- PAGE LAYOUT — storefront sections editor (Phase 2) -->
+      <div class="form-card">
+        <div class="form-section-hd">Page layout</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Arrange your homepage: reorder sections, hide them, edit their content, or add new ones. Changes go live when you click <b>Save layout</b>.</div>
+        <div id="layoutSectionList"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap">
+          <select id="layoutAddType" class="input" style="max-width:220px"></select>
+          <button type="button" class="btn secondary" onclick="layoutAdd()" style="padding:8px 12px;font-size:12px">+ Add section</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn primary" id="layoutSaveBtn" onclick="layoutSave()">Save layout</button>
+          <button type="button" class="btn secondary" onclick="layoutReset()">Reset to default</button>
+          <button type="button" class="btn secondary" onclick="viewStore()">View store ↗</button>
+        </div>
+      </div>
+
       <div class="form-card">
         <div class="form-section-hd">Theme &amp; branding</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Pick a look for your storefront, set your brand accent color, and add a logo. Saved changes apply to your live store.</div>
@@ -2078,7 +2108,172 @@ async function loadStorefrontContent(){
     loadAppearanceInto(c);
     loadHomepageInto(c);
     loadEmailPopupInto(c);
+    loadLayoutEditor(c.sections);
   } catch(e){ /* not fatal */ }
+}
+
+// ── PAGE LAYOUT — storefront sections editor (Phase 2) ──
+// SECTION_SCHEMAS mirrors index.html's SECTION_REGISTRY (label + editable
+// fields). TODO: unify into a shared module (public/storefront-sections.js) so
+// the two can't drift. Field types here: text | textarea | toggle | select.
+const SECTION_SCHEMAS = {
+  hero:              { label:'Hero', fields:[
+                        {key:'eyebrow', type:'text',     label:'Eyebrow'},
+                        {key:'title',   type:'text',     label:'Headline'},
+                        {key:'subtext', type:'textarea', label:'Subtext'},
+                        {key:'image',   type:'text',     label:'Background image URL'} ] },
+  featured_carousel: { label:'Featured carousel', fields:[
+                        {key:'heading', type:'text', label:'Heading'} ] },
+  product_grid:      { label:'Product grid', fields:[
+                        {key:'showFilters', type:'toggle', label:'Show category tabs'} ] },
+  promo_banner:      { label:'Promo banner', fields:[
+                        {key:'text',        type:'text',   label:'Text'},
+                        {key:'countdownTo', type:'text',   label:'Countdown to (ISO date, e.g. 2026-12-25T00:00:00Z)'},
+                        {key:'style',       type:'select', label:'Style', options:['solid','outline']} ] },
+};
+const SECTION_TYPE_ORDER = ['hero','featured_carousel','product_grid','promo_banner'];
+
+let editorSections = [];
+let layoutEditingIndex = -1;
+
+const _dhEsc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// The default homepage layout — mirrors legacyToSections() in index.html, so a
+// store that never customized starts the editor from its current live layout.
+function layoutLegacyDefault(){
+  return [
+    { type:'hero', config:{} },
+    { type:'featured_carousel', config:{} },
+    { type:'product_grid', config:{ showFilters:true } },
+  ];
+}
+
+function loadLayoutEditor(sections){
+  editorSections = (Array.isArray(sections) && sections.length)
+    ? sections.map(s => ({ type:s.type, enabled:s.enabled, config: (s.config && typeof s.config==='object') ? {...s.config} : {} }))
+    : layoutLegacyDefault();
+  layoutEditingIndex = -1;
+  const sel = document.getElementById('layoutAddType');
+  if(sel && !sel.dataset.filled){
+    sel.innerHTML = SECTION_TYPE_ORDER.map(t=>`<option value="${t}">${SECTION_SCHEMAS[t].label}</option>`).join('');
+    sel.dataset.filled = '1';
+  }
+  renderLayoutList();
+}
+
+function _layoutFieldHTML(i, f, cfg){
+  const val = cfg[f.key];
+  if(f.type==='textarea')
+    return `<textarea rows="2" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="${_dhEsc(f.label)}">${_dhEsc(val)}</textarea>`;
+  if(f.type==='toggle')
+    return `<label class="toggle"><input type="checkbox" ${val!==false?'checked':''} onchange="layoutSetCfg(${i},'${f.key}',this.checked)"><span class="tslider"></span></label>`;
+  if(f.type==='select')
+    return `<select onchange="layoutSetCfg(${i},'${f.key}',this.value)">${(f.options||[]).map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  return `<input type="text" value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="${_dhEsc(f.label)}">`;
+}
+
+function _layoutFormHTML(i){
+  const s = editorSections[i]; const sc = SECTION_SCHEMAS[s.type];
+  if(!sc) return `<div class="layout-form"><div style="font-size:12px;color:var(--muted)">This section type isn’t editable here.</div></div>`;
+  const cfg = s.config || {};
+  return `<div class="layout-form">${sc.fields.map(f=>`<div class="field"><label>${f.label}</label>${_layoutFieldHTML(i,f,cfg)}</div>`).join('')}</div>`;
+}
+
+function renderLayoutList(){
+  const el = document.getElementById('layoutSectionList');
+  if(!el) return;
+  if(!editorSections.length){ el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0">No sections yet — add one below.</div>'; return; }
+  el.innerHTML = editorSections.map((s,i)=>{
+    const sc = SECTION_SCHEMAS[s.type];
+    const label = sc ? sc.label : s.type;
+    const off = s.enabled === false;
+    const row = `<div class="layout-row${off?' off':''}">
+      <div class="layout-move">
+        <button type="button" onclick="layoutMove(${i},-1)" ${i===0?'disabled':''} title="Move up">▲</button>
+        <button type="button" onclick="layoutMove(${i},1)" ${i===editorSections.length-1?'disabled':''} title="Move down">▼</button>
+      </div>
+      <div class="layout-meta" onclick="layoutEdit(${i})"><div class="layout-name">${_dhEsc(label)}</div><div class="layout-type">${_dhEsc(s.type)}${sc?'':' · unknown'}</div></div>
+      <button type="button" class="layout-edit" onclick="layoutEdit(${i})">${layoutEditingIndex===i?'Close':'Edit'}</button>
+      <label class="toggle" title="Show on storefront"><input type="checkbox" ${off?'':'checked'} onchange="layoutToggle(${i})"><span class="tslider"></span></label>
+      <button type="button" class="layout-del" onclick="layoutDelete(${i})" title="Remove">✕</button>
+    </div>`;
+    return row + (layoutEditingIndex===i ? _layoutFormHTML(i) : '');
+  }).join('');
+}
+
+function layoutEdit(i){ layoutEditingIndex = (layoutEditingIndex===i) ? -1 : i; renderLayoutList(); }
+function layoutSetCfg(i, key, val){ if(editorSections[i]){ editorSections[i].config = editorSections[i].config || {}; editorSections[i].config[key] = val; } }
+function layoutMove(i, dir){
+  const j = i+dir; if(j<0 || j>=editorSections.length) return;
+  const t = editorSections[i]; editorSections[i] = editorSections[j]; editorSections[j] = t;
+  if(layoutEditingIndex===i) layoutEditingIndex = j; else if(layoutEditingIndex===j) layoutEditingIndex = i;
+  renderLayoutList();
+}
+function layoutToggle(i){ const s = editorSections[i]; if(s){ s.enabled = (s.enabled===false); renderLayoutList(); } }
+function layoutDelete(i){
+  editorSections.splice(i,1);
+  if(layoutEditingIndex===i) layoutEditingIndex = -1;
+  else if(layoutEditingIndex>i) layoutEditingIndex--;
+  renderLayoutList();
+}
+function layoutAdd(){
+  const sel = document.getElementById('layoutAddType');
+  const type = sel ? sel.value : 'promo_banner';
+  if(!SECTION_SCHEMAS[type]) return;
+  editorSections.push({ type, config:{} });
+  layoutEditingIndex = editorSections.length-1;   // open the new section for editing
+  renderLayoutList();
+  toast(SECTION_SCHEMAS[type].label + ' added — edit it, then Save layout');
+}
+
+function _layoutPayload(){
+  // Drop enabled:true (default), keep enabled:false; ensure a config object.
+  return editorSections.map(s => {
+    const o = { type:s.type, config: s.config || {} };
+    if(s.enabled === false) o.enabled = false;
+    return o;
+  });
+}
+
+async function layoutSave(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const btn = document.getElementById('layoutSaveBtn'); const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/seller/storefront-sections', {
+      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ sections: _layoutPayload() }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ toast(data.error || 'Failed to save layout'); }
+    else {
+      // Re-sync from the server's cleaned/sanitized copy so the editor reflects
+      // exactly what will render (e.g. dropped unsafe URLs).
+      editorSections = (data.sections||[]).map(s=>({ type:s.type, enabled:s.enabled, config:(s.config&&typeof s.config==='object')?{...s.config}:{} }));
+      layoutEditingIndex = -1;
+      renderLayoutList();
+      toast('Layout saved ✓ — view your store to see it');
+    }
+  } catch(e){ toast('Network error saving layout'); }
+  finally { btn.disabled=false; btn.textContent=orig; }
+}
+
+async function layoutReset(){
+  if(!confirm('Reset your homepage to the default layout? This clears your custom section arrangement.')) return;
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  try {
+    const res = await fetch('/api/seller/storefront-sections', {
+      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ sections: null }),
+    });
+    if(!res.ok){ const d = await res.json().catch(()=>({})); toast(d.error || 'Failed to reset'); return; }
+    editorSections = layoutLegacyDefault();
+    layoutEditingIndex = -1;
+    renderLayoutList();
+    toast('Reset to the default layout ✓');
+  } catch(e){ toast('Network error'); }
 }
 
 // ── EMAIL CAPTURE (popup config + subscriber list) ──
