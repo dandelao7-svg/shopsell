@@ -32,6 +32,8 @@
   --radius:14px; --maxw:1080px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* readability: scale UI ~12% on screen only (never print) */
+@media screen{html{zoom:1.12}}
 html{scroll-behavior:smooth}
 body{
   font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden;
