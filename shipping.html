@@ -264,6 +264,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .api-key-row input:focus{border-color:var(--accent)}
 .api-reveal{background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-family:'Outfit',sans-serif;white-space:nowrap}
 .api-save{background:var(--accent);border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11px;font-family:'Outfit',sans-serif;font-weight:600}
+.api-reveal:disabled{opacity:.45;cursor:not-allowed}
 
 /* ── BULK ACTIONS BAR ── */
 .bulk-bar{background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:10px 16px;margin-bottom:1rem;display:none;align-items:center;gap:12px}
@@ -1275,6 +1276,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div class="api-key-row">
             <button class="api-save" onclick="saveCarrierCreds('ups')">Save &amp; verify</button>
             <button class="api-reveal" onclick="testCarrierConnection('ups')">Test</button>
+            <button class="api-reveal" id="upsDisconnect" onclick="disconnectCarrier('ups')" disabled style="margin-left:auto">Disconnect</button>
           </div>
         </div>
 
@@ -1310,6 +1312,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div class="api-key-row">
             <button class="api-save" onclick="saveCarrierCreds('fedex')">Save &amp; verify</button>
             <button class="api-reveal" onclick="testCarrierConnection('fedex')">Test</button>
+            <button class="api-reveal" id="fedexDisconnect" onclick="disconnectCarrier('fedex')" disabled style="margin-left:auto">Disconnect</button>
           </div>
         </div>
 
@@ -1331,6 +1334,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div class="api-key-row">
             <button class="api-save" onclick="saveCarrierCreds('usps')">Save &amp; verify</button>
             <button class="api-reveal" onclick="testCarrierConnection('usps')">Test</button>
+            <button class="api-reveal" id="uspsDisconnect" onclick="disconnectCarrier('usps')" disabled style="margin-left:auto">Disconnect</button>
           </div>
         </div>
       </div>
@@ -3922,6 +3926,9 @@ async function loadCarrierStatus(){
       else { setCarrierBadge(c, 'warn', 'Saved — unverified'); }
       const hint = document.getElementById(`${c}AcctHint`);
       if(hint) hint.textContent = info.accountNumberMasked ? `(saved: ${info.accountNumberMasked})` : '';
+      // Disconnect only makes sense once something is stored server-side.
+      const dc = document.getElementById(`${c}Disconnect`);
+      if(dc) dc.disabled = !info.connected;
     });
   } catch(e){ /* non-fatal */ }
 }
@@ -3965,6 +3972,31 @@ async function testCarrierConnection(carrier){
     else { toast(data.error || `${carrier.toUpperCase()} test failed`,'error'); }
   } catch(e){
     toast('Test failed: '+e.message,'error');
+  }
+  await loadCarrierStatus();
+}
+
+/* Delete this seller's stored credentials for one carrier. Labels already
+   bought stay valid — this only stops NEW labels until they reconnect. */
+async function disconnectCarrier(carrier){
+  const name = carrier.toUpperCase();
+  if(!confirm(`Disconnect your ${name} account? The saved credentials are deleted. Labels you already bought stay valid, but you can’t buy new ${name} labels until you reconnect.`)) return;
+
+  setCarrierBadge(carrier, 'warn', 'Disconnecting…');
+  try {
+    const res  = await fetch(`/api/seller/carriers/${carrier}`, {
+      method:'DELETE', headers:_carrierAuthHeaders(false),
+    });
+    const data = await res.json();
+    if(!res.ok){ toast(data.error || 'Disconnect failed','error'); }
+    else {
+      toast(data.message || `${name} disconnected.`,'success');
+      for(const id of Object.values(CARRIER_FIELD_IDS[carrier] || {})){
+        const el = document.getElementById(id); if(el) el.value = '';
+      }
+    }
+  } catch(e){
+    toast('Disconnect failed: '+e.message,'error');
   }
   await loadCarrierStatus();
 }
