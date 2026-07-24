@@ -1734,6 +1734,10 @@ app.get('/api/checkout/config', async (req, res) => {
       popupPercent:  content.popupPercent || 10,
       popupHeadline: content.popupHeadline || '',
       popupSubtext:  content.popupSubtext || '',
+      // Custom page-builder layout (Phase 1). null → storefront renders the
+      // legacy fixed layout. Written only via PUT /api/seller/storefront-sections,
+      // which validates + sanitizes before storing, so this is safe to pass through.
+      sections:      Array.isArray(content.sections) ? content.sections : null,
     };
 
     res.json({
@@ -2986,6 +2990,7 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         popupPercent:  content.popupPercent || 10,
         popupHeadline: content.popupHeadline || '',
         popupSubtext:  content.popupSubtext || '',
+        sections:      Array.isArray(content.sections) ? content.sections : null,
       },
     });
   } catch (err) {
@@ -3018,6 +3023,94 @@ app.put('/api/seller/storefront-content', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save storefront content error:', err);
     res.status(500).json({ error: 'Failed to save storefront content.' });
+  }
+});
+
+/* ============================================================
+   Storefront page-builder layout (Phase 1)
+   PUT /api/seller/storefront-sections  — save the ordered section array.
+   Section render lives client-side (index.html SECTION_REGISTRY); the
+   server's job is to REJECT unsafe/oversized input before it's stored and
+   later served to buyers. Keep SECTION_TYPES_ALLOWED in sync with the
+   client registry (a shared module can replace this duplication later).
+   ============================================================ */
+const SECTION_TYPES_ALLOWED = ['hero', 'featured_carousel', 'product_grid', 'promo_banner'];
+const MAX_SECTIONS   = 30;
+const MAX_STR_LEN    = 5000;
+const MAX_URL_LEN    = 2000;
+const URL_KEYS       = new Set(['url', 'image', 'href', 'src', 'logoUrl', 'link']);
+
+// URL scheme whitelist: HTML-escaping does NOT neutralize `javascript:` in an
+// href/src, so URL-bearing values are scheme-checked here. Allow only relative
+// paths and http(s); everything else (javascript:, data:, vbscript:, …) is dropped.
+function _safeUrl(v) {
+  if (typeof v !== 'string') return '';
+  const s = v.trim();
+  if (!s) return '';
+  if (s.startsWith('/') && !s.startsWith('//')) return s.slice(0, MAX_URL_LEN); // relative path
+  if (/^https?:\/\//i.test(s)) return s.slice(0, MAX_URL_LEN);
+  return '';
+}
+
+// Recursively bound + sanitize a section's config: cap string/array/key sizes
+// and scheme-check URL-bearing values (including a `link` object's url).
+function _sanitizeConfig(v, depth) {
+  if (depth > 6) return null;
+  if (typeof v === 'string')  return v.slice(0, MAX_STR_LEN);
+  if (typeof v === 'number' || typeof v === 'boolean' || v === null) return v;
+  if (Array.isArray(v)) return v.slice(0, 100).map(x => _sanitizeConfig(x, depth + 1));
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const k of Object.keys(v).slice(0, 50)) {
+      if (k === 'url' || k === 'image' || k === 'href' || k === 'src' || k === 'logoUrl') {
+        out[k] = _safeUrl(v[k]);
+      } else if (k === 'link' && v[k] && typeof v[k] === 'object') {
+        // { label, url } — keep the label as text, scheme-check the url.
+        out[k] = { label: typeof v[k].label === 'string' ? v[k].label.slice(0, MAX_STR_LEN) : '', url: _safeUrl(v[k].url) };
+      } else {
+        out[k] = _sanitizeConfig(v[k], depth + 1);
+      }
+    }
+    return out;
+  }
+  return null;
+}
+
+// Validate the incoming sections array. Returns the cleaned array, or null to
+// clear the layout (back to legacy). Throws Error(message) on invalid input.
+function validateSections(input) {
+  if (input == null) return null;
+  if (!Array.isArray(input)) throw new Error('sections must be an array.');
+  if (input.length > MAX_SECTIONS) throw new Error(`Too many sections (max ${MAX_SECTIONS}).`);
+  return input.map((s, i) => {
+    if (!s || typeof s !== 'object') throw new Error(`Section ${i} must be an object.`);
+    if (!SECTION_TYPES_ALLOWED.includes(s.type)) throw new Error(`Section ${i}: unknown type "${s.type}".`);
+    const out = { type: s.type };
+    if (s.id != null)        out.id = String(s.id).slice(0, 64);
+    if (s.enabled === false) out.enabled = false;
+    out.config = (s.config && typeof s.config === 'object') ? _sanitizeConfig(s.config, 0) : {};
+    return out;
+  });
+}
+
+app.put('/api/seller/storefront-sections', requireAuth, async (req, res) => {
+  try {
+    let sections;
+    try {
+      sections = validateSections(req.body ? req.body.sections : null);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+    // Merge into the existing blob so unrelated keys (theme, hero text, etc.) survive.
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    const content = { ...existing };
+    if (sections === null) delete content.sections;
+    else content.sections = sections;
+    await db.setSellerStorefrontContent(req.seller.sellerId, content);
+    res.json({ message: 'Storefront layout saved.', sections: content.sections || null });
+  } catch (err) {
+    console.error('Save storefront sections error:', err);
+    res.status(500).json({ error: 'Failed to save storefront layout.' });
   }
 });
 
