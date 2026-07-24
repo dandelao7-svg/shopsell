@@ -14,10 +14,15 @@ Today the shipping stack is US-domestic by design: `carriers.js` addresses defau
 `country:'US'`, rate/label calls send no customs data, and the checkout/Quick-Ship
 forms assume US state + ZIP. International is a cross-cutting build, worth its own
 design doc (like the storefront one) before starting. Components:
-- [ ] **Customs / commercial invoice** — the core of it. Each carrier
-  (UPS/FedEx/Shippo) needs an international-forms payload: per-item description,
-  quantity, declared value, **HS tariff code**, country of origin, weight,
-  reason for export. Add these fields to `createShipment()` for each carrier.
+- [x] **Customs / commercial invoice** — the core of it. _(DONE 9690535,
+  design-doc **Phase 2**.)_ `carriers.js`: `isCrossBorder` + `normalizeCustoms`
+  + per-carrier builders (UPS InternationalForms, FedEx customsClearanceDetail
+  + CI doc, Shippo /customs/declarations); each `createShipment` takes a
+  `customs` arg, injected only cross-border. `/api/shipping/label` accepts a
+  `customs` block or auto-assembles one from the order's line items + product
+  customs fields. 29 unit tests pass; domestic path unchanged. **Still needs a
+  real international-enabled carrier account to verify a live cross-border label
+  (built to documented spec, like Walmart was).**
 - [x] **Product-level customs data** — HS code + country of origin + customs
   description per product. _(DONE ad1b731 — additive DB columns, create/update
   routes, Add-product + Edit-product forms; verified live: save/normalize/
