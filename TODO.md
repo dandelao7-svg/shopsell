@@ -9,6 +9,29 @@ Running list of pending work. Shipped features live in [FEATURES.md](FEATURES.md
 - [ ] **Test real shipping labels** on the user's own account — in the past, purchased labels "didn't look right." Buy a real label end-to-end, inspect the output (layout/format/print), and fix rendering issues.
 - [ ] **Batch printing test** — needs a **thermal printer** (user is buying one). Test the batch label flow + merged-label PDF output on real hardware.
 
+## Shipping — International (larger effort; not started)
+Today the shipping stack is US-domestic by design: `carriers.js` addresses default
+`country:'US'`, rate/label calls send no customs data, and the checkout/Quick-Ship
+forms assume US state + ZIP. International is a cross-cutting build, worth its own
+design doc (like the storefront one) before starting. Components:
+- [ ] **Customs / commercial invoice** — the core of it. Each carrier
+  (UPS/FedEx/Shippo) needs an international-forms payload: per-item description,
+  quantity, declared value, **HS tariff code**, country of origin, weight,
+  reason for export. Add these fields to `createShipment()` for each carrier.
+- [ ] **Product-level customs data** — HS code + country of origin + customs
+  description per product (new fields in the product schema + Add-product form),
+  so labels can auto-populate the invoice.
+- [ ] **International addresses** — drop the US state/ZIP assumptions in the
+  buyer checkout (`index.html`) and Quick Ship (`shipping.html`): full country
+  list, free-form region + postal code, required phone/country.
+- [ ] **International services & rates** — surface UPS Worldwide / FedEx
+  International / USPS Intl (via Shippo) in rate shopping + service pickers.
+- [ ] **Duties & taxes** — DDP vs DDU choice (who pays duties); optional landed-cost
+  estimate at checkout.
+- [ ] **Compliance** — restricted/prohibited items, denied-party screening,
+  export EEL/PFC (AES) threshold handling.
+- [ ] _(when ready)_ Write `INTERNATIONAL-SHIPPING-DESIGN.md` scoping the above.
+
 ## Feature roadmap — "make it yours" + growth
 - [x] **Email-capture popup (phase 1)** — popup → unique single-use welcome code (reuses `discount_codes`) → emailed via Resend → dashboard subscriber list + CSV export. _(done 2026-07-19, deployed + verified)_ **Phase 2 (todo):** bulk marketing send + unsubscribe management.
 - [x] **Update user manual (`guide.html`)** — added themes/branding, homepage/banner, hero + bg image, featured carousel, email capture. _(done 2026-07-19)_
