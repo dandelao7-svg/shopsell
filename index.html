@@ -131,6 +131,11 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 /* FEATURED CAROUSEL */
 .featured-rail{max-width:1100px;margin:0 auto;padding:2rem 1.5rem 0.5rem}
 .featured-rail[hidden]{display:none}
+/* promo_banner section (Newegg-style deal bar) — theme-token styled */
+.ss-promo{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 20px;margin:0;font-size:14px;font-weight:600;text-decoration:none;flex-wrap:wrap;text-align:center}
+.ss-promo--solid{background:var(--accent);color:#fff}
+.ss-promo--outline{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.ss-promo-countdown{font-variant-numeric:tabular-nums;font-weight:800;letter-spacing:.5px}
 .featured-rail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .featured-rail-hd h2{font-family:var(--font-head);font-size:1.5rem;font-weight:700;margin:0}
 .featured-rail-hint{font-size:12px;color:var(--muted)}
@@ -1007,7 +1012,11 @@ const SECTION_REGISTRY = {
     render(c={}) {
       c = c || {};
       const eyebrow = (c.eyebrow && c.eyebrow.trim()) || 'New arrivals · Free shipping always';
-      const title   = (c.title   && c.title.trim())   || 'Shop smarter,<br><em>live better.</em>';
+      const titleRaw = (c.title && c.title.trim());
+      // Default is trusted built-in HTML (<br><em>); a seller-supplied title is
+      // escaped (plain text), matching the old applyHomepage() textContent path.
+      // Task 6 will add a proper richtext allowlist sanitizer.
+      const title    = titleRaw ? _ssEsc(titleRaw) : 'Shop smarter,<br><em>live better.</em>';
       const subtext = (c.subtext && c.subtext.trim()) || 'Curated products from independent sellers — free shipping on every single order, no minimums.';
       const cta1    = (c.cta1 && c.cta1.label) || 'Shop now';
       const cta2    = (c.cta2 && c.cta2.label) || 'New arrivals';
@@ -1100,13 +1109,89 @@ const SECTION_REGISTRY = {
       { key:'link',        type:'link',   label:'Link' },
       { key:'style',       type:'select', label:'Style', options:['solid','outline'], default:'solid' },
     ],
-    render(/* c, ctx */) { return ''; /* TODO(Phase 1 task 3): Newegg-style deal / countdown bar */ },
+    // Newegg-style deal bar with an optional live countdown (hydrated by
+    // hydratePromoCountdowns). Renders nothing if there's no text and no
+    // countdown, so an empty banner never leaves a bar on the page.
+    render(c={}) {
+      c = c || {};
+      const text  = _ssEsc((c.text || '').trim());
+      const until = (c.countdownTo || '').trim();
+      if(!text && !until) return '';
+      const cls = c.style === 'outline' ? 'ss-promo ss-promo--outline' : 'ss-promo ss-promo--solid';
+      const cd  = until ? `<span class="ss-promo-countdown" data-until="${_ssEsc(until)}"></span>` : '';
+      const inner = `${text ? `<span class="ss-promo-text">${text}</span>` : ''}${cd}`;
+      const url = (c.link && c.link.url) ? _ssEsc(c.link.url) : '';
+      return url
+        ? `<a class="${cls}" href="${url}">${inner}</a>`
+        : `<div class="${cls}">${inner}</div>`;
+    },
   },
 };
 
-// Ordered list of allowed types — used later by the render loop (task 4) and
+// Ordered list of allowed types — used by the render loop and later by
 // server-side validation (task 6).
 const SECTION_TYPES = Object.keys(SECTION_REGISTRY);
+
+// Live countdown timers inside promo_banner sections. Browser Date is fine here
+// (the no-Date rule is only for Workflow scripts).
+function hydratePromoCountdowns(root){
+  (root || document).querySelectorAll('.ss-promo-countdown[data-until]').forEach(el=>{
+    const until = Date.parse(el.getAttribute('data-until'));
+    if(isNaN(until)){ el.textContent = ''; return; }
+    const pad = n => String(n).padStart(2,'0');
+    const tick = ()=>{
+      const ms = until - Date.now();
+      if(ms <= 0){ el.textContent = 'Ended'; clearInterval(el._ssTimer); return; }
+      const s = Math.floor(ms/1000), d = Math.floor(s/86400);
+      el.textContent = (d ? d+'d ' : '') + pad(Math.floor(s%86400/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60);
+    };
+    clearInterval(el._ssTimer); tick(); el._ssTimer = setInterval(tick, 1000);
+  });
+}
+
+// Per-section JS wiring after #page-home is (re)built. Featured + grid are
+// hydrated by the existing renderFeatured()/renderGrid() calls in loadStorefront().
+function hydrateSections(root){
+  hydratePromoCountdowns(root);
+}
+
+// Synthesize the default section list from the legacy flat fields, so a store
+// with no `sections` renders exactly as the old fixed layout. The featured
+// shell is always included; renderFeatured() gates its visibility as before.
+function legacyToSections(sc){
+  sc = sc || {};
+  return [
+    { type:'hero', config:{
+      eyebrow: sc.heroEyebrow, title: sc.heroTitle, subtext: sc.heroSubtext,
+      cta1: sc.heroCta1 ? { label: sc.heroCta1 } : undefined,
+      cta2: sc.heroCta2 ? { label: sc.heroCta2 } : undefined,
+      image: sc.heroImage || '',
+    }},
+    { type:'featured_carousel', config:{} },
+    { type:'product_grid', config:{ showFilters:true } },
+  ];
+}
+
+// Render #page-home from the seller's sections (or the legacy default). Runs once
+// per load, BEFORE renderFeatured()/renderGrid() fill their targets and BEFORE
+// applyHomepage() re-applies hero text. Unknown/disabled sections are skipped; a
+// section whose render throws is dropped rather than breaking the whole page.
+function renderStorefront(sc){
+  sc = sc || {};
+  const home = document.getElementById('page-home');
+  if(!home) return;
+  const sections = (Array.isArray(sc.sections) && sc.sections.length)
+    ? sc.sections
+    : legacyToSections(sc);
+  home.innerHTML = sections
+    .filter(s => s && SECTION_REGISTRY[s.type] && s.enabled !== false)
+    .map(s => {
+      try { return SECTION_REGISTRY[s.type].render(s.config || {}, { sc }); }
+      catch(e){ console.error('Section render failed:', s.type, e); return ''; }
+    })
+    .join('\n  ');
+  hydrateSections(home);
+}
 
 const APPEARANCE_THEMES = ['classic','boutique','minimal'];
 function applyAppearance(){
@@ -2418,6 +2503,9 @@ async function loadStorefront(){
       STORE_CONFIG = await cfgRes.json();
       // Don't clobber the server-rendered product title on /product/<id> pages.
       if(STORE_CONFIG.storeName && !/^\/product\/\d+/.test(location.pathname)) document.title = STORE_CONFIG.storeName + ' — ShopSell';
+      // Rebuild #page-home from the seller's sections (or the legacy default)
+      // before applying appearance/hero text and before the grids hydrate.
+      renderStorefront(STORE_CONFIG.storefrontContent);
       applyAppearance();
       applyHomepage();
       applyPopup();
