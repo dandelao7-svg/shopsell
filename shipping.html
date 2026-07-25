@@ -835,12 +835,18 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
                 <select id="qs-to-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
                   <option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>DC</option>
                 </select>
+                <input type="text" id="qs-to-state-free" placeholder="State / Province / Region" maxlength="60" autocomplete="off" style="display:none;background:var(--bg3);color:var(--text);border-color:var(--border)">
               </div>
             </div>
-            <div class="form-field" style="margin-bottom:0">
-              <label>ZIP code</label>
-              <input type="text" id="qs-to-zip" placeholder="78701" maxlength="5" oninput="onZipInput(this)" autocomplete="off">
-              <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none"></div>
+            <div class="two-col">
+              <div class="form-field" style="margin-bottom:0">
+                <label>ZIP / Postal</label>
+                <input type="text" id="qs-to-zip" placeholder="78701" maxlength="12" oninput="onZipInput(this)" autocomplete="off">
+                <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none"></div>
+              </div>
+              <div class="form-field" style="margin-bottom:0"><label>Country</label>
+                <select id="qs-to-country" onchange="qsOnToCountryChange()" style="background:var(--bg3);color:var(--text);border-color:var(--border)"></select>
+              </div>
             </div>
             <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
               <input type="checkbox" id="qs-residential" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0">
@@ -899,6 +905,26 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div class="form-field" style="margin-bottom:1.25rem">
             <label>Package description (optional)</label>
             <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
+          </div>
+          <!-- CUSTOMS (shown only for international destinations) -->
+          <div id="qs-customs-section" style="display:none;margin-bottom:1.25rem;padding:12px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px">
+            <div style="font-weight:600;font-size:13px;margin-bottom:2px">🌍 Customs declaration</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Required for international labels — list what's in the package (commercial invoice).</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div class="form-field" style="margin-bottom:0"><label>Contents</label>
+                <select id="qs-customs-contents" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option value="merchandise">Merchandise</option><option value="gift">Gift</option><option value="sample">Sample</option><option value="documents">Documents</option><option value="returned_goods">Returned goods</option>
+                </select>
+              </div>
+              <div class="form-field" style="margin-bottom:0"><label>Duties &amp; taxes paid by</label>
+                <select id="qs-customs-incoterm" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option value="DDU">Recipient on delivery (DDU)</option><option value="DDP">Me / sender (DDP)</option>
+                </select>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Items — description, qty, value ($), HS code, origin (ISO-2)</div>
+            <div id="qs-customs-items"></div>
+            <button type="button" onclick="qsAddCustomsItem()" style="background:var(--bg3);border:1px dashed var(--border2);color:var(--text2);padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-top:4px">+ Add item</button>
           </div>
           <div id="addrValidResult" style="display:none;border-radius:9px;padding:12px 14px;margin-bottom:1rem;font-size:12px">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
@@ -4888,9 +4914,101 @@ function updateServiceOptions(){
       {v:'GROUND_ADVANTAGE',l:'USPS Ground Advantage'},
     ],
   };
-  select.innerHTML = (services[carrier]||services.ups)
+  // International services when the destination is outside the US (the seller
+  // ships from the US, so cross-border = recipient country != US).
+  const intlServices = {
+    ups:   [{v:'07',l:'UPS Worldwide Express'},{v:'08',l:'UPS Worldwide Expedited'},{v:'65',l:'UPS Worldwide Saver'},{v:'11',l:'UPS Standard (CA/MX)'}],
+    fedex: [{v:'INTERNATIONAL_PRIORITY',l:'FedEx International Priority'},{v:'INTERNATIONAL_ECONOMY',l:'FedEx International Economy'},{v:'INTERNATIONAL_FIRST',l:'FedEx International First'}],
+    usps:  [{v:'usps_priority_mail_international',l:'USPS Priority Mail International'},{v:'usps_priority_mail_express_international',l:'USPS Priority Express International'},{v:'usps_first_class_package_international_service',l:'USPS First-Class Package Intl'}],
+  };
+  const set = (typeof qsIsIntl === 'function' && qsIsIntl()) ? intlServices : services;
+  select.innerHTML = (set[carrier]||set.ups)
     .map(s=>`<option value="${s.v}">${s.l}</option>`).join('');
 }
+
+// ── QUICK SHIP — INTERNATIONAL ────────────────────────────────
+// Mirrors index.html COUNTRIES (unify into a shared module later). Quick Ship
+// always ships FROM the US seller, so cross-border = recipient country != US.
+const QS_COUNTRIES = [
+  ['US','United States'],['CA','Canada'],['GB','United Kingdom'],['AU','Australia'],
+  ['AE','United Arab Emirates'],['AR','Argentina'],['AT','Austria'],['BE','Belgium'],['BR','Brazil'],['BG','Bulgaria'],
+  ['CL','Chile'],['CN','China'],['CO','Colombia'],['CR','Costa Rica'],['HR','Croatia'],['CZ','Czechia'],['DK','Denmark'],
+  ['EG','Egypt'],['EE','Estonia'],['FI','Finland'],['FR','France'],['DE','Germany'],['GR','Greece'],['HK','Hong Kong'],
+  ['HU','Hungary'],['IS','Iceland'],['IN','India'],['ID','Indonesia'],['IE','Ireland'],['IL','Israel'],['IT','Italy'],
+  ['JP','Japan'],['KE','Kenya'],['KR','South Korea'],['KW','Kuwait'],['LV','Latvia'],['LT','Lithuania'],['LU','Luxembourg'],
+  ['MY','Malaysia'],['MX','Mexico'],['MA','Morocco'],['NL','Netherlands'],['NZ','New Zealand'],['NG','Nigeria'],['NO','Norway'],
+  ['PA','Panama'],['PE','Peru'],['PH','Philippines'],['PL','Poland'],['PT','Portugal'],['QA','Qatar'],['RO','Romania'],
+  ['SA','Saudi Arabia'],['RS','Serbia'],['SG','Singapore'],['SK','Slovakia'],['SI','Slovenia'],['ZA','South Africa'],
+  ['ES','Spain'],['SE','Sweden'],['CH','Switzerland'],['TW','Taiwan'],['TH','Thailand'],['TR','Turkey'],['UA','Ukraine'],
+  ['UY','Uruguay'],['VN','Vietnam'],
+];
+function populateQsCountries(){
+  const sel = document.getElementById('qs-to-country');
+  if(!sel) return;
+  sel.innerHTML = QS_COUNTRIES.map(([code,name])=>`<option value="${code}">${name}</option>`).join('');
+  sel.value = 'US';
+}
+function qsToCountry(){ return (document.getElementById('qs-to-country')||{}).value || 'US'; }
+function qsIsIntl(){ return qsToCountry() !== 'US'; }
+function qsToState(){
+  return qsIsIntl()
+    ? ((document.getElementById('qs-to-state-free')||{}).value || '').trim()
+    : (document.getElementById('qs-to-state')||{}).value;
+}
+// On country change: swap region field, show/hide customs, refresh services.
+function qsOnToCountryChange(){
+  const intl = qsIsIntl();
+  const sel  = document.getElementById('qs-to-state');
+  const free = document.getElementById('qs-to-state-free');
+  if(sel)  sel.style.display  = intl ? 'none' : '';
+  if(free) free.style.display = intl ? '' : 'none';
+  const cs = document.getElementById('qs-customs-section');
+  if(cs) cs.style.display = intl ? '' : 'none';
+  if(intl && !qsCustomsItems.length) qsAddCustomsItem();
+  if(typeof updateServiceOptions === 'function') updateServiceOptions();
+}
+
+// Manual customs line items (Quick Ship has no order to auto-assemble from).
+let qsCustomsItems = [];
+function qsAddCustomsItem(){ qsCustomsItems.push({ description:'', quantity:1, value:'', hsCode:'', originCountry:'US' }); qsRenderCustomsItems(); }
+function qsRemoveCustomsItem(i){ qsCustomsItems.splice(i,1); qsRenderCustomsItems(); }
+function qsSetCustomsField(i,k,v){ if(qsCustomsItems[i]) qsCustomsItems[i][k] = v; }
+function qsRenderCustomsItems(){
+  const wrap = document.getElementById('qs-customs-items');
+  if(!wrap) return;
+  const esc = s => String(s==null?'':s).replace(/"/g,'&quot;');
+  wrap.innerHTML = qsCustomsItems.map((it,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 0.6fr 0.9fr 1fr 0.7fr auto;gap:6px;margin-bottom:6px;align-items:center">
+      <input type="text" placeholder="Description" value="${esc(it.description)}" oninput="qsSetCustomsField(${i},'description',this.value)">
+      <input type="number" min="1" placeholder="Qty" value="${esc(it.quantity)}" oninput="qsSetCustomsField(${i},'quantity',this.value)">
+      <input type="number" min="0" step="0.01" placeholder="Value $" value="${esc(it.value)}" oninput="qsSetCustomsField(${i},'value',this.value)">
+      <input type="text" placeholder="HS code" value="${esc(it.hsCode)}" oninput="qsSetCustomsField(${i},'hsCode',this.value)">
+      <input type="text" placeholder="Origin" maxlength="2" value="${esc(it.originCountry)}" oninput="qsSetCustomsField(${i},'originCountry',this.value.toUpperCase())" style="text-transform:uppercase">
+      <button type="button" onclick="qsRemoveCustomsItem(${i})" title="Remove" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;cursor:pointer;padding:6px 8px">✕</button>
+    </div>`).join('');
+}
+// Build the customs block for the label payload. Package weight is split evenly
+// across items as a rough per-item weight (carriers mostly price on the total).
+function qsBuildCustoms(){
+  const pkgWeight = parseFloat(document.getElementById('qs-weight').value) || 1;
+  const raw = qsCustomsItems.filter(it => (it.description||'').trim() && parseFloat(it.value) > 0);
+  const per = raw.length ? Math.max(0.1, pkgWeight / raw.length) : 0.1;
+  return {
+    contentsType:  (document.getElementById('qs-customs-contents')||{}).value || 'merchandise',
+    incoterm:      (document.getElementById('qs-customs-incoterm')||{}).value || 'DDU',
+    invoiceNumber: (document.getElementById('qs-ref')||{}).value || '',
+    items: raw.map(it => ({
+      description:   it.description.trim(),
+      quantity:      parseInt(it.quantity) || 1,
+      value:         parseFloat(it.value) || 0,
+      hsCode:        it.hsCode || '',
+      originCountry: (it.originCountry || 'US').toUpperCase(),
+      weight:        per,
+    })),
+  };
+}
+populateQsCountries();
+qsOnToCountryChange();
 
 // ── RATE SHOPPING ─────────────────────────────────────────────
 // Build the shipper/recipient/package object from the Quick Ship form —
@@ -4913,9 +5031,9 @@ function collectShipmentForm(){
       address1:    document.getElementById('qs-to-addr').value.trim(),
       address2:    document.getElementById('qs-to-addr2').value.trim() || undefined,
       city:        document.getElementById('qs-to-city').value.trim(),
-      state:       document.getElementById('qs-to-state').value,
+      state:       qsToState(),
       zip:         document.getElementById('qs-to-zip').value.trim(),
-      country:     'US',
+      country:     qsToCountry(),
       residential: document.getElementById('qs-residential').checked,
     },
     package: {
@@ -5045,6 +5163,11 @@ async function generateQuickShipLabel(){
     toast('Please fill in all recipient fields','error');
     return;
   }
+  // International labels require a customs declaration with at least one item.
+  if(qsIsIntl() && !qsBuildCustoms().items.length){
+    toast('Add at least one customs item (description + value) for international shipments','error');
+    return;
+  }
 
   const carrier  = document.getElementById('qs-carrier').value;
   const service  = document.getElementById('qs-service').value;
@@ -5063,7 +5186,7 @@ async function generateQuickShipLabel(){
     toAddr,
     toAddr2:   document.getElementById('qs-to-addr2').value.trim()||'',
     toCity,
-    toState:   document.getElementById('qs-to-state').value,
+    toState:   qsToState(),
     toZip,
     toPhone:   document.getElementById('qs-to-phone').value.trim()||'',
     toEmail:   '', // not captured in form yet — placeholder for future email field
@@ -5099,9 +5222,9 @@ async function generateQuickShipLabel(){
       address1:    toAddr,
       address2:    document.getElementById('qs-to-addr2').value.trim()||undefined,
       city:        toCity,
-      state:       document.getElementById('qs-to-state').value,
+      state:       qsToState(),
       zip:         toZip,
-      country:     'US',
+      country:     qsToCountry(),
       residential: document.getElementById('qs-residential').checked,
     },
     package: {
@@ -5111,6 +5234,7 @@ async function generateQuickShipLabel(){
       height:      parseFloat(document.getElementById('qs-height').value)||4,
       description: document.getElementById('qs-desc').value||'Shipment',
     },
+    ...(qsIsIntl() ? { customs: qsBuildCustoms() } : {}),
   };
 
   let apiSuccess = false;
