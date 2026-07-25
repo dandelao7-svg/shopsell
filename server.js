@@ -1848,9 +1848,11 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
     // 400s on empty strings. The buyer often hasn't typed it yet when the
     // PaymentElement mounts, so the email is captured on /confirm.
     const piPayload = {
-      amount:               total,
-      currency:             'usd',
-      payment_method_types: ['card'],
+      amount:   total,
+      currency: 'usd',
+      // Let Stripe offer every method the seller has enabled (cards, Link,
+      // Apple/Google Pay, …) — the PaymentElement renders them from this.
+      automatic_payment_methods: { enabled: true },
       metadata: {
         orderId:   order.id,
         storeSlug,

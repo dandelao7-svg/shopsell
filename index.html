@@ -1976,35 +1976,32 @@ async function setupStripeCheckout(){
 
     currentPaymentIntent = data;
 
-    // Legacy CardElement — chosen deliberately over PaymentElement to make
-    // Link impossible. PaymentElement does Link email recognition at a layer
-    // below payment_method_types, so saved Link cards can autofill even on a
-    // card-only PaymentIntent. CardElement just renders card fields.
+    // Stripe PaymentElement — one element that renders cards, Stripe Link,
+    // Apple/Google Pay, and any other methods the seller enabled (driven by the
+    // PaymentIntent's automatic_payment_methods). We collect name/email/address
+    // in our own form, so billing-detail fields are turned off here and passed
+    // at confirm time. Replaces the old card-only CardElement + wallet button.
     stripe = Stripe(STORE_CONFIG.publishableKey);
-    stripeElements = stripe.elements();
-    stripeCardElement = stripeElements.create('card', {
-      // Belt-and-suspenders: never surface Stripe Link / saved-card autofill on
-      // the card field, regardless of the account's Link default. (The card-only
-      // PaymentIntent already excludes Link as a payment method; this covers the
-      // element UI too.)
-      disableLink: true,
-      style: {
-        base: {
-          fontFamily: 'Outfit, sans-serif',
-          fontSize: '15px',
-          color: '#1a1a1a',
-          '::placeholder': { color: '#9ca3af' },
-        },
-        invalid: { color: '#dc2626' },
+    stripeElements = stripe.elements({
+      clientSecret: data.clientSecret,
+      appearance: {
+        theme: 'stripe',
+        variables: { fontFamily: 'Outfit, sans-serif', colorPrimary: '#e63946', borderRadius: '10px' },
       },
     });
+    const paymentElement = stripeElements.create('payment', {
+      layout: 'tabs',
+      fields: { billingDetails: 'never' },
+    });
     mountEl.innerHTML = '';
-    stripeCardElement.mount('#stripePaymentMount');
+    paymentElement.mount('#stripePaymentMount');
+
+    // PaymentElement includes wallets/Link, so the old standalone wallet button
+    // is retired — keep it hidden.
+    const walletWrap = document.getElementById('walletBtnWrap');
+    if(walletWrap) walletWrap.style.display = 'none';
 
     setPlaceBtn({label:'Place order', total:'$'+data.total, disabled:false});
-
-    // Offer Apple Pay / Google Pay if the buyer's device/browser supports it.
-    setupWalletButton().catch(()=>{});
   } catch(err){
     mountEl.innerHTML = `<div style="color:var(--accent);font-size:13px">${err.message}</div>`;
     setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()), disabled:true});
@@ -2209,7 +2206,7 @@ function checkoutError(){
 
 async function placeOrder(){
   if(!cartCount()){toast('Your cart is empty!');return}
-  if(!stripe || !stripeCardElement || !currentPaymentIntent){
+  if(!stripe || !stripeElements || !currentPaymentIntent){
     showStripeMsg('Payment is still loading. Please wait a moment.');
     return;
   }
@@ -2230,32 +2227,8 @@ async function placeOrder(){
                         document.getElementById('co-lname').value.trim()).trim();
     const billingEmail = document.getElementById('co-email').value.trim();
 
-    // 1. Confirm with Stripe via legacy confirmCardPayment(). CardElement
-    //    pairs with this call directly; no redirect handling needed because
-    //    card-only flow stays inline (3DS challenges open a modal, not a
-    //    full-page redirect).
-    const { error, paymentIntent } = await stripe.confirmCardPayment(
-      currentPaymentIntent.clientSecret,
-      {
-        payment_method: {
-          card: stripeCardElement,
-          billing_details: {
-            name:  billingName || undefined,
-            email: billingEmail || undefined,
-          },
-        },
-      },
-    );
-
-    if(error){
-      showStripeMsg(error.message || 'Payment failed. Please check your card details.');
-      setPlaceBtn({label:'Place order', total:'$'+currentPaymentIntent.total, disabled:false});
-      return;
-    }
-
-    // 2. Tell our backend the payment succeeded so it can mark the order paid.
-    //    Include the shipping address so return labels can use it as the
-    //    shipper (buyer ships back to seller).
+    // 1. Build the customer/shipping info now — needed to finalize, and to stash
+    //    across a full-page return if the chosen method requires a redirect.
     const v = id => (document.getElementById(id)?.value || '').trim();
     const customerInfo = {
       firstName: v('co-fname'),
@@ -2270,7 +2243,52 @@ async function placeOrder(){
       country:   coCountry(),
     };
 
-    await finalizeOrder(paymentIntent.id, customerInfo);
+    // 2. Confirm with the PaymentElement. redirect:'if_required' keeps cards,
+    //    Link, and wallets inline (returns the PaymentIntent); redirect-based
+    //    methods navigate to return_url, where handleCheckoutReturn() finishes.
+    //    Billing details come from our form (element has billingDetails:'never').
+    const returnUrl = location.origin + location.pathname + '?checkout=return' +
+      (STORE_SLUG ? '&store=' + encodeURIComponent(STORE_SLUG) : '');
+    try { sessionStorage.setItem('ss_pending_checkout', JSON.stringify({ orderId: currentPaymentIntent.orderId, customerInfo })); } catch(e){}
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements: stripeElements,
+      confirmParams: {
+        return_url: returnUrl,
+        payment_method_data: {
+          billing_details: {
+            name:  billingName || undefined,
+            email: billingEmail || undefined,
+            phone: v('co-phone') || undefined,
+            address: {
+              line1: v('co-addr1') || undefined,
+              line2: v('co-addr2') || undefined,
+              city:  v('co-city') || undefined,
+              state: coState() || undefined,
+              postal_code: v('co-zip') || undefined,
+              country: coCountry() || undefined,
+            },
+          },
+        },
+      },
+      redirect: 'if_required',
+    });
+
+    if(error){
+      showStripeMsg(error.message || 'Payment failed. Please check your details and try again.');
+      setPlaceBtn({label:'Place order', total:'$'+currentPaymentIntent.total, disabled:false});
+      try { sessionStorage.removeItem('ss_pending_checkout'); } catch(e){}
+      return;
+    }
+
+    // 3. Inline success (no redirect happened) → confirm the order with our backend.
+    if(paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing')){
+      try { sessionStorage.removeItem('ss_pending_checkout'); } catch(e){}
+      await finalizeOrder(paymentIntent.id, customerInfo);
+    } else if(paymentIntent){
+      showStripeMsg('Payment could not be completed (' + paymentIntent.status + '). Please try again.');
+      setPlaceBtn({label:'Place order', total:'$'+currentPaymentIntent.total, disabled:false});
+    }
   } catch(err) {
     showStripeMsg(err.message || 'Something went wrong. Please try again.');
     setPlaceBtn({label:'Place order', total:'$'+(currentPaymentIntent?.total||cartTotal().toFixed(2)), disabled:false});
@@ -2297,6 +2315,31 @@ async function finalizeOrder(paymentIntentId, customerInfo){
   showPage('success');
   // If the buyer is signed in, refresh their orders so the new one appears.
   if(BUYER) loadBuyerOrders();
+}
+
+// Handle the return from a redirect-based payment method (?checkout=return with
+// Stripe's payment_intent params). Retrieves the PaymentIntent and, if paid,
+// finalizes the order using the customer info stashed before the redirect.
+async function handleCheckoutReturn(){
+  const q = new URLSearchParams(location.search);
+  if(q.get('checkout') !== 'return') return;
+  const cs = q.get('payment_intent_client_secret');
+  if(!cs || !STORE_CONFIG.publishableKey) return;
+  let pending = null;
+  try { pending = JSON.parse(sessionStorage.getItem('ss_pending_checkout') || 'null'); } catch(e){}
+  try {
+    const s = Stripe(STORE_CONFIG.publishableKey);
+    const { paymentIntent } = await s.retrievePaymentIntent(cs);
+    if(!paymentIntent) return;
+    if((paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') && pending){
+      sessionStorage.removeItem('ss_pending_checkout');
+      currentPaymentIntent = { orderId: pending.orderId };
+      await finalizeOrder(paymentIntent.id, pending.customerInfo);
+    } else if(paymentIntent.status !== 'succeeded' && paymentIntent.status !== 'processing'){
+      showPage('checkout');
+      showStripeMsg('Payment was not completed (' + paymentIntent.status + '). Please try again.');
+    }
+  } catch(e){ /* leave the buyer on the page */ }
 }
 
 // ── BUYER AUTH + ACCOUNT ──────────────────────────────────────
@@ -2603,6 +2646,9 @@ async function loadStorefront(){
     // Deep link: /product/<id> (server-rendered for SEO) — open that product.
     const m = location.pathname.match(/^\/product\/(\d+)/);
     if(m){ const pid = parseInt(m[1],10); if(PRODUCTS.find(x=>x.id===pid)) openModal(pid); }
+
+    // If we're returning from a redirect-based payment, finish the order.
+    handleCheckoutReturn();
   } catch(err){
     const msg = `<div style="color:var(--accent);grid-column:1/-1;text-align:center;padding:2rem">${err.message}</div>`;
     homeGrid.innerHTML = msg; shopGrid.innerHTML = msg;
