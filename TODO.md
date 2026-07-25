@@ -2,6 +2,20 @@
 
 Running list of pending work. Shipped features live in [FEATURES.md](FEATURES.md).
 
+## Stripe / launch-readiness
+- [x] **Checkout modernized → PaymentElement** _(9f88a77)_ — Link + wallets +
+  more methods; reversed the old deliberate card-only/no-Link decision
+  (user-approved). Link-based saved cards. **NOT live-tested** — no store here
+  has Stripe connected. Before go-live: connect Stripe (test keys ok) to a
+  store, walk a payment through, confirm PaymentElement mounts + Link/cards/
+  wallets render. Apple Pay also needs Stripe **domain verification**.
+- [ ] **Go-live config (you, not code):** platform Stripe → live key
+  (`STRIPE_SECRET_KEY=sk_live_`) + live `STRIPE_PRICE_*` + live
+  `STRIPE_WEBHOOK_SECRET`; activate the Stripe **Customer Portal** (dashboard)
+  so "Manage billing" works; each seller connects their own live keys.
+- [ ] _(optional code)_ Harden the billing-portal route to return a clear
+  "portal not activated yet" message instead of a generic 500.
+
 ## UI polish
 - [x] **Top bar font too small** — bumped `.topbar` 12px → 13.5px + lifted contrast. _(done 2026-07-19)_
 
