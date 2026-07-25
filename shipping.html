@@ -777,6 +777,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
             Reprint label
           </button>
+          <button id="qsCustomsBtn" onclick="printCustomsInvoice()" style="display:none;flex:1;justify-content:center;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Print customs invoice
+          </button>
           <button id="qsVoidBtn" onclick="confirmVoidLabel()" style="flex:1;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;justify-content:center">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
             Void label
@@ -5258,6 +5262,7 @@ async function generateQuickShipLabel(){
       qsLabelData.transactionId  = data.label.transactionId || null; // USPS only — needed for refunds
       qsLabelData.labelImage     = data.label.labelImage || null;
       qsLabelData.labelUrl       = data.label.labelUrl   || null;
+      qsLabelData.customsForm    = data.label.customsForm || null; // intl commercial invoice (non-paperless)
       qsLabelData.totalCharge    = data.label.totalCharge;
       qsLabelData.currency       = data.label.currency;
       qsLabelData.serviceName    = data.label.serviceName || qsLabelData.service;
@@ -5336,12 +5341,41 @@ function showQuickShipSuccess(){
     }
   }
 
+  // Show the "Print customs invoice" button only when UPS returned a printable
+  // commercial invoice (i.e. an international, non-paperless shipment).
+  const cbtn = document.getElementById('qsCustomsBtn');
+  if(cbtn) cbtn.style.display = qsLabelData.customsForm ? 'flex' : 'none';
+
   // Hide voided badge
   const badge = document.getElementById('qsVoidedBadge');
   if(badge) badge.style.display = 'none';
 
   // Scroll to top so user sees success panel
   document.querySelector('.main')?.scrollTo({top:0, behavior:'smooth'});
+}
+
+// ── PRINT CUSTOMS INVOICE ─────────────────────────────────────
+// Prints the international commercial invoice UPS returns when the account
+// isn't enrolled in Paperless Invoice. UPS may hand it back as a GIF image or
+// a PDF; detect from the base64 header and render accordingly, in a hidden
+// iframe so no pop-up is needed.
+function printCustomsInvoice(){
+  if(!qsLabelData || !qsLabelData.customsForm){ toast('No customs invoice available for this label','error'); return; }
+  const b64   = qsLabelData.customsForm;
+  const isPdf = /^JVBER/.test(b64);                       // base64 of "%PDF"
+  const src   = `data:${isPdf ? 'application/pdf' : 'image/gif'};base64,${b64}`;
+  const inner = isPdf ? `<embed src="${src}" type="application/pdf">` : `<img src="${src}">`;
+  const html  = `<!DOCTYPE html><html><head><title>Customs Invoice ${qsLabelData.trackingNumber||''}</title>
+    <style>*{margin:0;padding:0}html,body{background:#fff}img{max-width:100%;display:block;margin:0 auto}embed{width:100%;height:100vh}</style>
+    </head><body>${inner}</body></html>`;
+
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(iframe);
+  iframe.onload = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){ toast('Could not open the print dialog','error'); } };
+  const doc = iframe.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  setTimeout(() => { try { document.body.removeChild(iframe); } catch(e){} }, 60000);
 }
 
 // ── PRINT QUICK SHIP LABEL ────────────────────────────────────
