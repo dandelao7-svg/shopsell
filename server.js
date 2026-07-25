@@ -1475,7 +1475,7 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       length, width, height,
       status, imageUrls,
       returnable, returnWindowDays, restockingFeePct,
-      hsCode, countryOfOrigin, customsDescription,
+      hsCode, countryOfOrigin, customsDescription, intlRestricted,
     } = req.body;
 
     const { options, variants } = normalizeVariants(req.body.options, req.body.variants);
@@ -1533,6 +1533,7 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
       hsCode:             (hsCode || '').toString().trim() || null,
       countryOfOrigin:    (countryOfOrigin || '').toString().trim().toUpperCase() || null,
       customsDescription: (customsDescription || '').toString().trim() || null,
+      intlRestricted:     intlRestricted === true,
     });
 
     res.status(201).json({ message: 'Product created!', product });
@@ -1662,6 +1663,7 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
     if ('countryOfOrigin' in body) {
       body.countryOfOrigin = body.countryOfOrigin ? (String(body.countryOfOrigin).trim().toUpperCase() || null) : null;
     }
+    if ('intlRestricted' in body) body.intlRestricted = body.intlRestricted === true;
     // When options/variants are being edited, normalize them and re-derive the
     // product-level price/quantity from the variants.
     if (body.options !== undefined || body.variants !== undefined) {
@@ -4899,6 +4901,21 @@ async function assembleCustomsFromOrder(orderId, sellerId) {
   return { contentsType: 'merchandise', incoterm, invoiceNumber: String(oid), items };
 }
 
+// Returns the name of the first product in an order flagged not-for-international,
+// or null if none — used to block cross-border labels for restricted goods.
+async function orderHasRestrictedItem(orderId, sellerId) {
+  const oid = normalizeOrderId(orderId);
+  if (oid === null) return null;
+  const ord = await db.getOrderById(oid);
+  if (!ord || ord.sellerId !== sellerId || !Array.isArray(ord.items)) return null;
+  for (const it of ord.items) {
+    if (!it.productId) continue;
+    const p = await db.getProductById(it.productId).catch(() => null);
+    if (p && p.intlRestricted) return p.name;
+  }
+  return null;
+}
+
 // CREATE SHIPPING LABEL
 app.post('/api/shipping/label', requireAuth, async (req, res) => {
   try {
@@ -4938,6 +4955,12 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
     // line items + each product's customs fields. Only for cross-border shipments
     // (the carriers ignore customs domestically; we skip the order lookup too).
     const isIntl = (shipper.country || 'US').toUpperCase() !== (recipient.country || 'US').toUpperCase();
+    if (isIntl) {
+      const blocked = await orderHasRestrictedItem(orderId, req.seller.sellerId).catch(() => null);
+      if (blocked) {
+        return res.status(400).json({ error: `"${blocked}" is flagged not for international shipping and can't be shipped abroad.` });
+      }
+    }
     let customsForLabel = customs || null;
     if (isIntl && !customsForLabel) {
       customsForLabel = await assembleCustomsFromOrder(orderId, req.seller.sellerId).catch(() => null);

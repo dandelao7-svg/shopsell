@@ -914,6 +914,7 @@ function normalizeProduct(p) {
     quantity:     p.quantity,
     images:       Array.isArray(p.imageUrls) ? p.imageUrls : [],
     featured:     !!p.isFeatured,
+    intlRestricted: !!p.intlRestricted,
   };
 }
 
@@ -2196,6 +2197,13 @@ function checkoutError(){
   // use a free-text region that may legitimately be blank.
   if(REGIONS[coCountry()] && !coState()) return 'Please select your state / province.';
   if(!v('co-zip'))   return 'Please enter your ZIP / postal code.';
+  // Block items the seller flagged not-for-international when shipping abroad.
+  if(coCountry() !== 'US'){
+    for(const it of Object.values(cart)){
+      const p = PRODUCTS.find(x => x.id === it.id);
+      if(p && p.intlRestricted) return `"${p.name}" can't be shipped internationally — remove it or use a US address.`;
+    }
+  }
   return null;
 }
 

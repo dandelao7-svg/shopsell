@@ -147,6 +147,9 @@ async function initSchema() {
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS hs_code             TEXT;`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS country_of_origin   TEXT;`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS customs_description TEXT;`);
+    // Compliance: flag a product that can't ship internationally (blocks
+    // cross-border orders/labels that include it).
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS intl_restricted BOOLEAN NOT NULL DEFAULT FALSE;`);
 
     // BUYERS — accounts for the buyer storefront. Separate from sellers
     // (different login flow, different JWT claim type).
@@ -722,8 +725,8 @@ async function createProduct(data) {
         weight, options, variants, status, image_urls,
         returnable, return_window_days, restocking_fee_pct,
         length, width, height,
-        hs_code, country_of_origin, customs_description)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+        hs_code, country_of_origin, customs_description, intl_restricted)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
      RETURNING *`,
     [
       data.sellerId, data.name, data.description, data.category, data.brand,
@@ -742,6 +745,7 @@ async function createProduct(data) {
       data.hsCode || null,
       data.countryOfOrigin || null,
       data.customsDescription || null,
+      data.intlRestricted === true,
     ]
   );
   return camelize(rows[0]);
@@ -780,6 +784,7 @@ async function updateProduct(id, fields) {
     hsCode:             'hs_code',
     countryOfOrigin:    'country_of_origin',
     customsDescription: 'customs_description',
+    intlRestricted:     'intl_restricted',
   };
   const sets = [];
   const vals = [];

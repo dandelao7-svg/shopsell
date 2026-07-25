@@ -778,6 +778,7 @@ tr:hover td{background:#fafaf7}
             <label>Customs description</label>
             <input type="text" id="pCustomsDesc" placeholder="Plain description for customs (defaults to the product name)" maxlength="120">
           </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="pIntlRestricted" style="width:15px;height:15px;accent-color:var(--accent)"> Not for international shipping (blocks cross-border orders)</label>
         </div>
 
         <div class="form-card">
@@ -1599,6 +1600,7 @@ tr:hover td{background:#fafaf7}
         </div>
         <input type="text" id="epCustomsDesc" placeholder="Customs description (defaults to product name)" maxlength="120">
         <div class="hint">Only used to fill the customs form on international labels.</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-top:8px"><input type="checkbox" id="epIntlRestricted" style="width:15px;height:15px;accent-color:var(--accent)"> Not for international shipping</label>
       </div>
     </div>
 
@@ -3579,6 +3581,7 @@ async function publishProduct(overrideStatus){
     hsCode:             (document.getElementById('pHsCode').value || '').trim(),
     countryOfOrigin:    (document.getElementById('pOriginCountry').value || '').trim(),
     customsDescription: (document.getElementById('pCustomsDesc').value || '').trim(),
+    intlRestricted:     document.getElementById('pIntlRestricted').checked,
   };
 
   const btn = document.querySelector(isDraft ? '[onclick="saveDraft()"]' : '[onclick="publishProduct()"]');
@@ -4031,6 +4034,7 @@ function openEditProduct(id){
   document.getElementById('epHsCode').value        = r.hsCode || '';
   document.getElementById('epOriginCountry').value = r.countryOfOrigin || '';
   document.getElementById('epCustomsDesc').value   = r.customsDescription || '';
+  document.getElementById('epIntlRestricted').checked = !!r.intlRestricted;
 
   initVariantEditor(EDIT_VAR_CTX, r);
   epToggleReturnFields();
@@ -4085,6 +4089,7 @@ async function saveEditProduct(){
     hsCode:             (document.getElementById('epHsCode').value || '').trim(),
     countryOfOrigin:    (document.getElementById('epOriginCountry').value || '').trim(),
     customsDescription: (document.getElementById('epCustomsDesc').value || '').trim(),
+    intlRestricted:     document.getElementById('epIntlRestricted').checked,
   };
 
   const btn = document.getElementById('epSaveBtn');
