@@ -105,11 +105,27 @@ function normalizeCustoms(customs, shipper = {}) {
 }
 
 // UPS: Shipment.ShipmentServiceOptions.InternationalForms (commercial invoice).
-function _upsInternationalForms(c) {
+function _upsInternationalForms(c, recipient = {}) {
   const d = new Date();
   const invoiceDate = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   return {
     FormType:        '01', // 01 = Commercial Invoice
+    // SoldTo (the buyer) — UPS Paperless Invoice requires it. Without an
+    // enrolled account UPS falls back to returning a printable form image.
+    Contacts: {
+      SoldTo: {
+        Name:          recipient.company || recipient.name || 'Recipient',
+        AttentionName: recipient.name || 'Recipient',
+        Phone:         { Number: (recipient.phone || '5550000000').replace(/\D/g, '') },
+        Address: {
+          AddressLine:       [recipient.address1, recipient.address2].filter(Boolean),
+          City:              recipient.city,
+          StateProvinceCode: recipient.state,
+          PostalCode:        recipient.zip,
+          CountryCode:       recipient.country || 'US',
+        },
+      },
+    },
     InvoiceNumber:   c.invoiceNumber,
     InvoiceDate:     invoiceDate,
     ReasonForExport: 'SALE',
@@ -280,7 +296,7 @@ class UPS {
             Code:        serviceCode || '03',
             Description: 'UPS Service',
           },
-          ...(intlForms ? { ShipmentServiceOptions: { InternationalForms: _upsInternationalForms(intlForms) } } : {}),
+          ...(intlForms ? { ShipmentServiceOptions: { InternationalForms: _upsInternationalForms(intlForms, recipient) } } : {}),
           Package: {
             Description:   pkg.description || 'Package',
             Packaging:     { Code: '02', Description: 'Customer Supplied Package' },
@@ -344,6 +360,12 @@ class UPS {
     // Extract the label image (base64 GIF) — THIS IS THE FIX
     const labelImage = packageResults?.ShippingLabel?.GraphicImage || null;
 
+    // International commercial-invoice image. On a UPS Paperless-Invoice-enrolled
+    // account UPS transmits it electronically and returns nothing here; on a
+    // non-enrolled account it returns the printable form so it can be attached.
+    const formNode = Array.isArray(shipmentResults?.Form) ? shipmentResults.Form[0] : shipmentResults?.Form;
+    const customsForm = formNode?.Image?.GraphicImage || null;
+
     const trackingNumber =
       packageResults?.TrackingNumber || shipmentResults?.ShipmentIdentificationNumber;
 
@@ -355,6 +377,7 @@ class UPS {
       carrier:        'ups',
       trackingNumber,
       labelImage,                      // ← base64 GIF, frontend renders this
+      customsForm,                     // ← intl commercial invoice (null if paperless/domestic)
       labelUrl:       null,
       labelFormat:    labelFormat || 'GIF',
       serviceCode:    serviceCode || '03',
