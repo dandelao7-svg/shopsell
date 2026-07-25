@@ -926,6 +926,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
                 </select>
               </div>
             </div>
+            <div class="form-field" style="margin-bottom:10px">
+              <label style="font-size:11px">AES ITN <span style="color:var(--muted);font-weight:400">— only for shipments $2,500+ (auto-exempt below that)</span></label>
+              <input type="text" id="qs-customs-itn" placeholder="e.g. AES X20180101987654" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+            </div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Items — description, qty, value ($), HS code, origin (ISO-2)</div>
             <div id="qs-customs-items"></div>
             <button type="button" onclick="qsAddCustomsItem()" style="background:var(--bg3);border:1px dashed var(--border2);color:var(--text2);padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-top:4px">+ Add item</button>
@@ -5000,6 +5004,7 @@ function qsBuildCustoms(){
   return {
     contentsType:  (document.getElementById('qs-customs-contents')||{}).value || 'merchandise',
     incoterm:      (document.getElementById('qs-customs-incoterm')||{}).value || 'DDU',
+    itn:           ((document.getElementById('qs-customs-itn')||{}).value || '').trim() || undefined,
     invoiceNumber: (document.getElementById('qs-ref')||{}).value || '',
     items: raw.map(it => ({
       description:   it.description.trim(),

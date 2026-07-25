@@ -94,12 +94,24 @@ function normalizeCustoms(customs, shipper = {}) {
     hsCode:        String(it.hsCode || '').replace(/[^0-9]/g, '').slice(0, 12),
     originCountry: String(it.originCountry || originDefault).toUpperCase().slice(0, 2),
   }));
+  // US export filing (EEI/AES). Under $2,500 per shipment a low-value exemption
+  // code goes on the label; at/above it, an actual AES filing (ITN) is required.
+  // Honor a caller-supplied ITN or explicit exemption; else default the low-value
+  // code. aesRequired flags an at/above-threshold shipment with no ITN yet.
+  const AES_THRESHOLD = 2500;
+  const totalValue = items.reduce((s, it) => s + it.value * it.quantity, 0);
+  const itn = customs.itn ? String(customs.itn).replace(/[^A-Za-z0-9]/g, '') : '';
+  const eelPfc = itn
+    ? `AES ${itn}`
+    : (customs.eelPfc || (totalValue < AES_THRESHOLD ? 'NOEEI 30.37(a)' : null));
   return {
     contentsType:  customs.contentsType || 'merchandise',
     incoterm:      (customs.incoterm || 'DDU').toUpperCase() === 'DDP' ? 'DDP' : 'DDU',
     invoiceNumber: String(customs.invoiceNumber || 'INV').slice(0, 35),
     currency:      (customs.currency || 'USD').toUpperCase().slice(0, 3),
     signer:        String(customs.signer || shipper.name || 'Shipper').slice(0, 60),
+    eelPfc,
+    aesRequired:   totalValue >= AES_THRESHOLD && !itn,
     items,
   };
 }
@@ -171,6 +183,7 @@ function _shippoCustomsDeclaration(c) {
     certify:             true,
     certify_signer:      c.signer,
     incoterm:            c.incoterm,
+    ...(c.eelPfc ? { eel_pfc: c.eelPfc } : {}),  // US export exemption / AES ITN
     items: c.items.map(it => ({
       description:    it.description,
       quantity:       it.quantity,
