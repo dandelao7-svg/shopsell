@@ -51,8 +51,16 @@ design doc (like the storefront one) before starting. Components:
 - [ ] _(Phase 5, later)_ **Landed-cost estimate** at checkout (show buyers the
   actual duty/tax amount) — needs a third-party service (Zonos/Easyship) or a
   simplified estimate. Optional.
-- [ ] **Compliance** — restricted/prohibited items, denied-party screening,
-  export EEL/PFC (AES) threshold handling.
+- [x] **Compliance (partial)** — design-doc **Phase 5**, verified.
+  - [x] **Export EEL/PFC (AES)** _(94cb500)_ — `normalizeCustoms` sets the
+    low-value exemption `NOEEI 30.37(a)` under $2,500, flags `aesRequired` at/
+    above, and accepts an ITN (`AES <itn>`, Quick Ship field); wired into
+    Shippo `eel_pfc`. 41 unit tests pass.
+  - [x] **Restricted items** _(8a6c9df, verified live)_ — per-product
+    "not for international" flag; checkout blocks intl orders containing one,
+    and `/api/shipping/label` blocks intl labels for such orders.
+  - [ ] **Denied-party screening** — deferred: needs a restricted-party-list
+    data source / API (can't do accurately without one).
 - [x] **Design doc written** — see [INTERNATIONAL-SHIPPING-DESIGN.md](INTERNATIONAL-SHIPPING-DESIGN.md) (data model, per-carrier customs payloads, addresses, duties, compliance, 5-phase plan). Phase 1 = product customs fields; Phase 2 = customs on labels.
 - [~] **UPS Paperless Invoice** — hardened efa4b81 (SoldTo contact) + printed-invoice fallback done fe67aee (`customsForm` captured; Quick Ship "Print customs invoice" button, GIF/PDF-aware, verified live to show only for intl non-paperless labels). **Remaining (UPS-side / live only):** (1) seller enrolls their UPS account in UPS Paperless Invoice (one-time); (2) live cross-border label on an enrolled account to confirm + fill any destination-specific fields (EORI/VAT).
 
