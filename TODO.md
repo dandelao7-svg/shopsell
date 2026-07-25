@@ -106,6 +106,31 @@ back to today's exact layout. No editor yet (that's Phase 2).
 
 ### Later phases (tracked in the design doc)
 - [x] **Phase 2** — dashboard editor **DONE & verified live** (5a4c03a + draft mode a20550b). Storefront page → "Page layout" card: loads draft/live/default, reorder ↑/↓, enable/disable, delete, add-picker, schema-driven per-section forms. **Draft-vs-published (a20550b):** Save draft (live untouched) / Publish / Discard draft / Preview (localStorage, banner, no persist) / Reset, with a status line; buyers never see drafts (`/api/checkout/config` reads only `sections`). Verified full lifecycle live: draft → live-unchanged → reopen-loads-draft → preview → publish→live → reset.
-  - [ ] **Phase 2 leftovers:** unify editor `SECTION_SCHEMAS` with index.html registry into a shared `public/storefront-sections.js`; richer field types (link, image-upload) as sections grow.
-- [ ] **Phase 3** — more section types (`category_tiles`, `image_with_text`, `newsletter`) + merchandising (collections/tags for section `source`) + drag-drop + live iframe preview.
+  - [x] **Phase 2 leftovers** — `SECTION_SCHEMAS` unified into shared
+    `public/storefront-sections.js` (see Phase 3 below). Image *upload* (vs URL)
+    still deferred.
+- [~] **Phase 3** — in progress.
+  - [x] **Shared registry** — `public/storefront-sections.js` is now the single
+    catalog: `index.html` loads it for render, `dashboard.html` for the editor
+    forms, and `server.js` `require()`s it for the PUT type-allowlist. Killed a
+    3-way duplication that had already drifted — the editor never exposed hero
+    CTAs, `product_grid.columns`, `featured_carousel.autoplay`, or the
+    `promo_banner` link. All now editable, and `columns`/`autoplay` are wired to
+    real behavior (inline grid-template / rotation opt-out).
+  - [x] **3 new section types** — `category_tiles` (repeater of image/label/link
+    tiles), `image_with_text` (editorial split, left/right), `newsletter`
+    (inline twin of the capture popup, posts to the same `/api/store/subscribe`
+    so the discount % can't disagree between the two entry points).
+  - [x] **Editor field types** — every type in the shared vocabulary is now
+    implemented: link (label+url pair), collection, number (min/max), image,
+    color, richtext, and a **repeater** widget with add/remove/reorder.
+  - [ ] **Merchandising** — collections/tags for section `source`. Schema+editor
+    are ready (`collection` field, `all`/`featured` options); needs the product
+    tags/collections data model (design-doc §8) before more sources exist.
+  - [ ] **Drag-drop reorder** — ↑/↓ buttons work today; drag is polish.
+  - [ ] **Live iframe preview** — today's Preview opens a new tab.
+  - [ ] **Not yet verified in the live dashboard** — the editor was verified by
+    unit-testing its form generation + a local harness of the storefront render
+    (no DB locally). Walk the Page layout card once on the deployed site: add a
+    Category tiles section, fill 2–3 tiles, Save draft → Preview → Publish.
 - [ ] **Phase 4** — starter templates ("Fashion" / "Electronics" / "Minimal") that seed a whole `sections` array.

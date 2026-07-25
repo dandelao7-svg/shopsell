@@ -186,6 +186,12 @@ tr:hover td{background:#fafaf7}
 .layout-form{border:1px dashed var(--border);border-radius:8px;padding:12px;margin:0 0 8px 0;background:var(--bg2,#faf9f4)}
 .layout-form .field{margin-bottom:10px}
 .layout-form .field:last-child{margin-bottom:0}
+/* repeater field (e.g. category tiles) */
+.layout-rep-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+.layout-rep-fields{flex:1;min-width:0;display:grid;gap:6px}
+.layout-rep-btns{display:flex;flex-direction:column;gap:2px;flex:none}
+.layout-rep-btns button{width:24px;height:20px;line-height:1;padding:0;border:1px solid var(--border);background:var(--card);border-radius:4px;cursor:pointer;font-size:10px;color:var(--muted)}
+.layout-rep-btns button:disabled{opacity:.35;cursor:not-allowed}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:12px;font-weight:500;margin-bottom:5px;color:var(--text)}
 .field input,.field select,.field textarea{width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);background:#fff;outline:none;transition:border-color 0.2s}
@@ -336,6 +342,9 @@ tr:hover td{background:#fafaf7}
   .modules-grid{grid-template-columns:1fr 1fr}
 }
 </style>
+<!-- Shared section registry — the same file the storefront renders from, so the
+     Page layout editor's forms can never drift from what actually renders. -->
+<script src="/storefront-sections.js"></script>
 </head>
 <body>
 
@@ -2184,26 +2193,18 @@ async function saveIntlSettings(){
   finally { btn.disabled = false; btn.textContent = orig; }
 }
 
-// ── PAGE LAYOUT — storefront sections editor (Phase 2) ──
-// SECTION_SCHEMAS mirrors index.html's SECTION_REGISTRY (label + editable
-// fields). TODO: unify into a shared module (public/storefront-sections.js) so
-// the two can't drift. Field types here: text | textarea | toggle | select.
-const SECTION_SCHEMAS = {
-  hero:              { label:'Hero', fields:[
-                        {key:'eyebrow', type:'text',     label:'Eyebrow'},
-                        {key:'title',   type:'text',     label:'Headline'},
-                        {key:'subtext', type:'textarea', label:'Subtext'},
-                        {key:'image',   type:'text',     label:'Background image URL'} ] },
-  featured_carousel: { label:'Featured carousel', fields:[
-                        {key:'heading', type:'text', label:'Heading'} ] },
-  product_grid:      { label:'Product grid', fields:[
-                        {key:'showFilters', type:'toggle', label:'Show category tabs'} ] },
-  promo_banner:      { label:'Promo banner', fields:[
-                        {key:'text',        type:'text',   label:'Text'},
-                        {key:'countdownTo', type:'text',   label:'Countdown to (ISO date, e.g. 2026-12-25T00:00:00Z)'},
-                        {key:'style',       type:'select', label:'Style', options:['solid','outline']} ] },
-};
-const SECTION_TYPE_ORDER = ['hero','featured_carousel','product_grid','promo_banner'];
+// ── PAGE LAYOUT — storefront sections editor ──
+// Schemas come from /storefront-sections.js — the SAME module the storefront
+// renders from, so a field can't exist in one and be missing in the other
+// (which is exactly how hero CTAs, grid columns and carousel autoplay ended up
+// unreachable from this editor). Every field type in the shared vocabulary is
+// implemented in _layoutFieldHTML below.
+const SECTION_SCHEMAS    = window.SECTION_REGISTRY   || {};
+const SECTION_TYPE_ORDER = window.SECTION_TYPE_ORDER || Object.keys(SECTION_SCHEMAS);
+const COLLECTION_OPTIONS = [
+  { value:'all',      label:'All products' },
+  { value:'featured', label:'Featured products' },
+];
 
 let editorSections = [];
 let layoutEditingIndex = -1;
@@ -2223,7 +2224,14 @@ function layoutLegacyDefault(){
   ];
 }
 
-const _cloneSections = arr => (arr||[]).map(s => ({ type:s.type, enabled:s.enabled, config:(s.config && typeof s.config==='object') ? {...s.config} : {} }));
+// Deep clone — configs now hold nested link objects and repeater arrays, so a
+// shallow spread would let editor edits mutate the server payload we were
+// handed (and survive a Discard/Reset that should have thrown them away).
+const _cloneSections = arr => (arr||[]).map(s => ({
+  type: s.type,
+  enabled: s.enabled,
+  config: (s.config && typeof s.config === 'object') ? JSON.parse(JSON.stringify(s.config)) : {},
+}));
 
 function loadLayoutEditor(sections, draftSections){
   layoutPublished = (Array.isArray(sections) && sections.length) ? sections : null;
@@ -2259,22 +2267,69 @@ function updateLayoutStatus(){
 // Flag an in-editor change (bumps status to "unsaved").
 function layoutTouch(){ layoutDirty = true; updateLayoutStatus(); }
 
+// One editor widget per field type in the shared vocabulary. `textarea` and
+// `richtext` share a control (the storefront escapes richtext on render and the
+// server sanitizes it on save, so there's nothing extra to do here yet).
 function _layoutFieldHTML(i, f, cfg){
   const val = cfg[f.key];
-  if(f.type==='textarea')
-    return `<textarea rows="2" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="${_dhEsc(f.label)}">${_dhEsc(val)}</textarea>`;
-  if(f.type==='toggle')
-    return `<label class="toggle"><input type="checkbox" ${val!==false?'checked':''} onchange="layoutSetCfg(${i},'${f.key}',this.checked)"><span class="tslider"></span></label>`;
-  if(f.type==='select')
-    return `<select onchange="layoutSetCfg(${i},'${f.key}',this.value)">${(f.options||[]).map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
-  return `<input type="text" value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="${_dhEsc(f.label)}">`;
+  switch(f.type){
+    case 'textarea':
+    case 'richtext':
+      return `<textarea rows="2" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="${_dhEsc(f.label)}">${_dhEsc(val)}</textarea>`;
+    case 'toggle': {
+      // Default-on fields stay on unless explicitly turned off.
+      const on = val === undefined ? (f.default !== false) : (val !== false);
+      return `<label class="toggle"><input type="checkbox" ${on?'checked':''} onchange="layoutSetCfg(${i},'${f.key}',this.checked)"><span class="tslider"></span></label>`;
+    }
+    case 'select':
+      return `<select onchange="layoutSetCfg(${i},'${f.key}',this.value)">${(f.options||[]).map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
+    case 'collection': {
+      const cur = val || f.default || 'all';
+      return `<select onchange="layoutSetCfg(${i},'${f.key}',this.value)">${COLLECTION_OPTIONS.map(o=>`<option value="${o.value}" ${cur===o.value?'selected':''}>${_dhEsc(o.label)}</option>`).join('')}</select>`;
+    }
+    case 'number':
+      return `<input type="number" ${f.min!=null?`min="${f.min}"`:''} ${f.max!=null?`max="${f.max}"`:''} value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value===''?'':Number(this.value))" placeholder="${_dhEsc(f.label)}">`;
+    case 'color':
+      return `<input type="color" value="${_dhEsc(val||'#000000')}" onchange="layoutSetCfg(${i},'${f.key}',this.value)">`;
+    case 'image':
+      return `<input type="text" value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="https://… image URL">`;
+    case 'link': {
+      // Stored as { label, url }. Both parts optional — a label with no URL
+      // still renders a button that goes to the shop.
+      const o = (val && typeof val === 'object') ? val : {};
+      return `<div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="text" style="flex:1 1 140px" value="${_dhEsc(o.label)}" onchange="layoutSetLink(${i},'${f.key}','label',this.value)" placeholder="Button text">
+        <input type="text" style="flex:1 1 180px" value="${_dhEsc(o.url)}" onchange="layoutSetLink(${i},'${f.key}','url',this.value)" placeholder="Link URL (optional)">
+      </div>`;
+    }
+    case 'repeater': {
+      const rows = Array.isArray(val) ? val : [];
+      const max  = f.max || 20;
+      const body = rows.map((row,r)=>`<div class="layout-rep-row">
+        <div class="layout-rep-fields">${(f.fields||[]).map(sf=>
+          `<input type="text" value="${_dhEsc((row||{})[sf.key])}" onchange="layoutSetRep(${i},'${f.key}',${r},'${sf.key}',this.value)" placeholder="${_dhEsc(sf.label)}">`
+        ).join('')}</div>
+        <div class="layout-rep-btns">
+          <button type="button" onclick="layoutRepMove(${i},'${f.key}',${r},-1)" ${r===0?'disabled':''} title="Move up">▲</button>
+          <button type="button" onclick="layoutRepMove(${i},'${f.key}',${r},1)" ${r===rows.length-1?'disabled':''} title="Move down">▼</button>
+          <button type="button" onclick="layoutRepDel(${i},'${f.key}',${r})" title="Remove">✕</button>
+        </div>
+      </div>`).join('');
+      const addBtn = rows.length >= max
+        ? `<div style="font-size:11px;color:var(--muted)">Maximum ${max} reached.</div>`
+        : `<button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px" onclick="layoutRepAdd(${i},'${f.key}')">+ Add ${_dhEsc((f.label||'item').replace(/s$/,'').toLowerCase())}</button>`;
+      return `<div class="layout-rep">${body || '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">None yet.</div>'}${addBtn}</div>`;
+    }
+    default:
+      return `<input type="text" value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="${_dhEsc(f.label)}">`;
+  }
 }
 
 function _layoutFormHTML(i){
   const s = editorSections[i]; const sc = SECTION_SCHEMAS[s.type];
   if(!sc) return `<div class="layout-form"><div style="font-size:12px;color:var(--muted)">This section type isn’t editable here.</div></div>`;
   const cfg = s.config || {};
-  return `<div class="layout-form">${sc.fields.map(f=>`<div class="field"><label>${f.label}</label>${_layoutFieldHTML(i,f,cfg)}</div>`).join('')}</div>`;
+  return `<div class="layout-form">${(sc.schema||[]).map(f=>`<div class="field"><label>${_dhEsc(f.label)}</label>${_layoutFieldHTML(i,f,cfg)}</div>`).join('')}</div>`;
 }
 
 function renderLayoutList(){
@@ -2301,6 +2356,47 @@ function renderLayoutList(){
 
 function layoutEdit(i){ layoutEditingIndex = (layoutEditingIndex===i) ? -1 : i; renderLayoutList(); }
 function layoutSetCfg(i, key, val){ if(editorSections[i]){ editorSections[i].config = editorSections[i].config || {}; editorSections[i].config[key] = val; layoutTouch(); } }
+
+// ── nested config setters (link objects + repeater rows) ──
+function _layoutCfg(i){
+  const s = editorSections[i];
+  if(!s) return null;
+  s.config = s.config || {};
+  return s.config;
+}
+function layoutSetLink(i, key, part, val){
+  const cfg = _layoutCfg(i); if(!cfg) return;
+  const cur = (cfg[key] && typeof cfg[key]==='object') ? cfg[key] : {};
+  cfg[key] = { label: cur.label || '', url: cur.url || '' };
+  cfg[key][part] = val;
+  layoutTouch();
+}
+function _layoutRows(i, key){
+  const cfg = _layoutCfg(i); if(!cfg) return null;
+  if(!Array.isArray(cfg[key])) cfg[key] = [];
+  return cfg[key];
+}
+function layoutSetRep(i, key, row, subKey, val){
+  const rows = _layoutRows(i, key); if(!rows || !rows[row]) return;
+  rows[row][subKey] = val;
+  layoutTouch();
+}
+function layoutRepAdd(i, key){
+  const rows = _layoutRows(i, key); if(!rows) return;
+  rows.push({});
+  layoutTouch(); renderLayoutList();
+}
+function layoutRepDel(i, key, row){
+  const rows = _layoutRows(i, key); if(!rows) return;
+  rows.splice(row, 1);
+  layoutTouch(); renderLayoutList();
+}
+function layoutRepMove(i, key, row, dir){
+  const rows = _layoutRows(i, key); if(!rows) return;
+  const j = row + dir; if(j < 0 || j >= rows.length) return;
+  const t = rows[row]; rows[row] = rows[j]; rows[j] = t;
+  layoutTouch(); renderLayoutList();
+}
 function layoutMove(i, dir){
   const j = i+dir; if(j<0 || j>=editorSections.length) return;
   const t = editorSections[i]; editorSections[i] = editorSections[j]; editorSections[j] = t;

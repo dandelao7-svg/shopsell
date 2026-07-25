@@ -3049,12 +3049,13 @@ app.put('/api/seller/storefront-content', requireAuth, async (req, res) => {
 /* ============================================================
    Storefront page-builder layout (Phase 1)
    PUT /api/seller/storefront-sections  — save the ordered section array.
-   Section render lives client-side (index.html SECTION_REGISTRY); the
+   Section render lives client-side (public/storefront-sections.js); the
    server's job is to REJECT unsafe/oversized input before it's stored and
-   later served to buyers. Keep SECTION_TYPES_ALLOWED in sync with the
-   client registry (a shared module can replace this duplication later).
+   later served to buyers. The allowed-type list comes from the SAME module
+   the storefront and the dashboard editor load, so adding a section type in
+   one place can't leave the validator rejecting it.
    ============================================================ */
-const SECTION_TYPES_ALLOWED = ['hero', 'featured_carousel', 'product_grid', 'promo_banner'];
+const { SECTION_TYPES: SECTION_TYPES_ALLOWED } = require('./public/storefront-sections.js');
 const MAX_SECTIONS   = 30;
 const MAX_STR_LEN    = 5000;
 const MAX_URL_LEN    = 2000;

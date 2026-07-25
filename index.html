@@ -17,6 +17,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://js.stripe.com/v3/"></script>
+<!-- Shared section registry — also loaded by the dashboard editor and
+     require()d by server.js. Must load before the inline script below. -->
+<script src="/storefront-sections.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 /* readability: scale UI ~12% on screen only (never print) */
@@ -136,6 +139,48 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .ss-promo--solid{background:var(--accent);color:#fff}
 .ss-promo--outline{background:transparent;color:var(--accent);border:1px solid var(--accent)}
 .ss-promo-countdown{font-variant-numeric:tabular-nums;font-weight:800;letter-spacing:.5px}
+/* ── Phase 3 sections: category_tiles · image_with_text · newsletter ──
+   All theme-token styled so they inherit the seller's preset + accent. */
+.ss-section-hd{font-family:var(--font-head);font-size:1.5rem;font-weight:700;margin:0 0 1rem}
+.ss-tiles-section,.ss-iwt,.ss-news{max-width:1100px;margin:0 auto;padding:2rem 1.5rem}
+/* auto-FIT, not auto-fill: with 4 tiles in a 5-track row auto-fill leaves a dead
+   column and a ragged right edge; auto-fit collapses empty tracks so the tiles
+   always span the row evenly, whatever the count. */
+.ss-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.ss-tile{position:relative;display:flex;align-items:flex-end;min-height:170px;padding:16px;
+  border-radius:var(--radius);overflow:hidden;text-decoration:none;color:#fff;
+  box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s}
+a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.ss-tile--plain{background:var(--light2);color:var(--text)}
+.ss-tile-label{font-weight:600;font-size:15px;line-height:1.3;text-shadow:0 1px 8px rgba(0,0,0,.35)}
+.ss-tile--plain .ss-tile-label{text-shadow:none}
+.ss-iwt{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center}
+.ss-iwt--right .ss-iwt-media{order:2}
+.ss-iwt-media{min-height:300px;border-radius:var(--radius);background-size:cover;
+  background-position:center;box-shadow:var(--shadow)}
+.ss-iwt-body{color:var(--muted);line-height:1.7;margin:0 0 1.25rem}
+.ss-iwt-btn{display:inline-block;background:var(--accent);color:#fff;border:none;
+  padding:12px 26px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;
+  text-decoration:none;font-family:inherit}
+.ss-iwt-btn:hover{opacity:.9}
+.ss-news{text-align:center;background:var(--light2);border-radius:var(--radius);
+  max-width:1000px;margin:2rem auto;padding:2.5rem 1.5rem}
+.ss-news-sub{color:var(--muted);margin:0 auto 1.5rem;max-width:52ch;line-height:1.6}
+.ss-news-form{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.ss-news-input{flex:1 1 260px;max-width:340px;padding:12px 16px;border:1px solid var(--border);
+  border-radius:999px;font-size:14px;font-family:inherit;background:var(--card);color:var(--text)}
+.ss-news-btn{background:var(--accent);color:#fff;border:none;padding:12px 28px;
+  border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.ss-news-btn:hover{opacity:.9}
+.ss-news-btn:disabled{opacity:.6;cursor:default}
+.ss-news-msg{margin-top:12px;font-size:14px;font-weight:600}
+.ss-news-msg[hidden]{display:none}
+@media(max-width:760px){
+  .ss-iwt{grid-template-columns:1fr;gap:20px}
+  .ss-iwt--right .ss-iwt-media{order:0}
+  .ss-iwt-media{min-height:220px}
+  .ss-tiles{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+}
 .featured-rail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .featured-rail-hd h2{font-family:var(--font-head);font-size:1.5rem;font-weight:700;margin:0}
 .featured-rail-hint{font-size:12px;color:var(--muted)}
@@ -977,162 +1022,13 @@ function renderGrid(gId,cId,cat,sort,search=''){
   if(cId) document.getElementById(cId).textContent=list.length+' product'+(list.length!==1?'s':'');
 }
 
-// Apply the seller's saved appearance: theme preset (body class), optional accent
-// color (inline on <body>, overrides the theme), and logo (image or store name).
 /* ============================================================
-   STOREFRONT SECTIONS — registry  (Phase 1, tasks 1–2)
-   The storefront is moving from a fixed layout to an ordered array of
-   {type, config} section blocks. This is the single catalog of allowed
-   section types. Each entry declares:
-     • label  — human name (for the Phase 2 editor)
-     • schema — editable settings; will DRIVE the editor UI automatically
-     • render — (config, ctx) => HTML string, built only from theme tokens
-   The render fns reproduce today's markup exactly (verified DOM-identical),
-   so wiring the render loop (task 4) + legacy fallback (task 5) is visually
-   a no-op. NOT yet called anywhere — see TODO.md Phase 1 tasks 4–7.
-   Schema field-type vocabulary:
-     text · textarea · richtext · image · link · select ·
-     toggle · number · color · collection · repeater
+   STOREFRONT SECTIONS — registry
+   Moved to /storefront-sections.js (public/storefront-sections.js), which is
+   ALSO loaded by the dashboard editor and require()d by server.js for the
+   type allowlist — one definition, no drift. It sets window.SECTION_REGISTRY,
+   window.SECTION_TYPES and window._ssEsc, used below.
    ============================================================ */
-const _ssEsc = s => String(s == null ? '' : s)
-  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-
-const SECTION_REGISTRY = {
-  hero: {
-    label: 'Hero',
-    schema: [
-      { key:'eyebrow', type:'text',     label:'Eyebrow' },
-      { key:'title',   type:'richtext', label:'Headline' },
-      { key:'subtext', type:'textarea', label:'Subtext' },
-      { key:'cta1',    type:'link',     label:'Primary button' },
-      { key:'cta2',    type:'link',     label:'Secondary button' },
-      { key:'image',   type:'image',    label:'Background image' },
-    ],
-    // Reproduces the static .hero exactly when config is empty. title is
-    // richtext → inserted as HTML (the built-in default contains <br><em>);
-    // config-supplied HTML will be sanitized server-side in task 6.
-    render(c={}) {
-      c = c || {};
-      const eyebrow = (c.eyebrow && c.eyebrow.trim()) || 'New arrivals · Free shipping always';
-      const titleRaw = (c.title && c.title.trim());
-      // Default is trusted built-in HTML (<br><em>); a seller-supplied title is
-      // escaped (plain text), matching the old applyHomepage() textContent path.
-      // Task 6 will add a proper richtext allowlist sanitizer.
-      const title    = titleRaw ? _ssEsc(titleRaw) : 'Shop smarter,<br><em>live better.</em>';
-      const subtext = (c.subtext && c.subtext.trim()) || 'Curated products from independent sellers — free shipping on every single order, no minimums.';
-      const cta1    = (c.cta1 && c.cta1.label) || 'Shop now';
-      const cta2    = (c.cta2 && c.cta2.label) || 'New arrivals';
-      const bg = c.image
-        ? ` style="background-image:linear-gradient(rgba(15,15,26,0.55),rgba(15,15,26,0.55)),url('${_ssEsc(c.image)}');background-size:cover;background-position:center"`
-        : '';
-      return `<div class="hero"${bg}>
-    <div class="hero-eyebrow" id="heroEyebrow">${_ssEsc(eyebrow)}</div>
-    <h1 id="heroTitle">${title}</h1>
-    <p class="hero-sub" id="heroSub">${_ssEsc(subtext)}</p>
-    <div class="hero-actions">
-      <button class="btn-hero primary" id="heroCta1" onclick="navTo('shop')">${_ssEsc(cta1)}</button>
-      <button class="btn-hero secondary" id="heroCta2" onclick="navTo('shop')">${_ssEsc(cta2)}</button>
-    </div>
-    <div class="hero-stats">
-      <div><div class="hero-stat-val">500+</div><div class="hero-stat-label">Products</div></div>
-      <div><div class="hero-stat-val">Free</div><div class="hero-stat-label">Shipping always</div></div>
-      <div><div class="hero-stat-val">4.9★</div><div class="hero-stat-label">Avg. rating</div></div>
-    </div>
-  </div>`;
-    },
-  },
-
-  featured_carousel: {
-    label: 'Featured carousel',
-    schema: [
-      { key:'heading',  type:'text',       label:'Heading' },
-      { key:'source',   type:'collection', label:'Products', default:'featured' },
-      { key:'autoplay', type:'toggle',     label:'Auto-scroll', default:true },
-    ],
-    // Reproduces the static #featuredRail shell. The track is filled by the
-    // existing renderFeatured() at hydration (task 4).
-    render(c={}) {
-      c = c || {};
-      const heading = (c.heading && c.heading.trim()) || 'Featured';
-      return `<section class="featured-rail" id="featuredRail" hidden>
-    <div class="featured-rail-hd">
-      <h2 id="featuredTitle">${_ssEsc(heading)}</h2>
-      <span class="featured-rail-hint">Hover to pause</span>
-    </div>
-    <div class="featured-track" id="featuredTrack"></div>
-  </section>`;
-    },
-  },
-
-  product_grid: {
-    label: 'Product grid',
-    schema: [
-      { key:'source',      type:'collection', label:'Products', default:'all' },
-      { key:'showFilters', type:'toggle',     label:'Category tabs', default:true },
-      { key:'columns',     type:'number',     label:'Columns', default:4 },
-    ],
-    // Reproduces the static .cat-strip + .shop-section. The grid (#homeGrid)
-    // is filled by the existing renderGrid() at hydration (task 4). Categories
-    // are still hard-coded here; collections land in Phase 3 (design doc §8).
-    render(c={}) {
-      c = c || {};
-      const filters = c.showFilters === false ? '' : `<div class="cat-strip">
-    <div class="cat-strip-inner" id="homeCatStrip">
-      <div class="cat-tab active" onclick="setHomeCat('all',this)">All</div>
-      <div class="cat-tab" onclick="setHomeCat('clothing',this)">Clothing</div>
-      <div class="cat-tab" onclick="setHomeCat('accessories',this)">Accessories</div>
-      <div class="cat-tab" onclick="setHomeCat('home',this)">Home & Living</div>
-      <div class="cat-tab" onclick="setHomeCat('beauty',this)">Beauty</div>
-    </div>
-  </div>
-  `;
-      return `${filters}<div class="shop-section">
-    <div class="shop-toolbar">
-      <span class="results-count" id="homeCount">12 products</span>
-      <select class="sort-select" onchange="setHomeSort(this.value)">
-        <option value="default">Featured</option>
-        <option value="price-asc">Price: low to high</option>
-        <option value="price-desc">Price: high to low</option>
-        <option value="rating">Top rated</option>
-        <option value="newest">Newest</option>
-      </select>
-    </div>
-    <div class="products-grid" id="homeGrid"></div>
-  </div>`;
-    },
-  },
-
-  // promo_banner — schema defined now (task 1); render implemented in task 3.
-  promo_banner: {
-    label: 'Promo banner',
-    schema: [
-      { key:'text',        type:'text',   label:'Text' },
-      { key:'countdownTo', type:'text',   label:'Countdown to (ISO date)' },
-      { key:'link',        type:'link',   label:'Link' },
-      { key:'style',       type:'select', label:'Style', options:['solid','outline'], default:'solid' },
-    ],
-    // Newegg-style deal bar with an optional live countdown (hydrated by
-    // hydratePromoCountdowns). Renders nothing if there's no text and no
-    // countdown, so an empty banner never leaves a bar on the page.
-    render(c={}) {
-      c = c || {};
-      const text  = _ssEsc((c.text || '').trim());
-      const until = (c.countdownTo || '').trim();
-      if(!text && !until) return '';
-      const cls = c.style === 'outline' ? 'ss-promo ss-promo--outline' : 'ss-promo ss-promo--solid';
-      const cd  = until ? `<span class="ss-promo-countdown" data-until="${_ssEsc(until)}"></span>` : '';
-      const inner = `${text ? `<span class="ss-promo-text">${text}</span>` : ''}${cd}`;
-      const url = (c.link && c.link.url) ? _ssEsc(c.link.url) : '';
-      return url
-        ? `<a class="${cls}" href="${url}">${inner}</a>`
-        : `<div class="${cls}">${inner}</div>`;
-    },
-  },
-};
-
-// Ordered list of allowed types — used by the render loop and later by
-// server-side validation (task 6).
-const SECTION_TYPES = Object.keys(SECTION_REGISTRY);
 
 // Live countdown timers inside promo_banner sections. Browser Date is fine here
 // (the no-Date rule is only for Workflow scripts).
@@ -1151,8 +1047,44 @@ function hydratePromoCountdowns(root){
   });
 }
 
+// Inline newsletter section — posts to the SAME /api/store/subscribe endpoint as
+// the email-capture popup, so the seller's discount percent and one-time-code
+// email apply unchanged. Returns false to keep the form from navigating.
+async function submitNewsletterSection(e, form){
+  e.preventDefault();
+  const input = form.querySelector('.ss-news-input');
+  const btn   = form.querySelector('.ss-news-btn');
+  const msg   = form.parentElement.querySelector('.ss-news-msg');
+  const email = (input.value || '').trim();
+  const show = (text, ok) => {
+    if(!msg) return;
+    msg.textContent = text;
+    msg.style.color = ok ? 'var(--green)' : 'var(--accent)';
+    msg.hidden = false;
+  };
+  if(!email){ show('Please enter your email.', false); return false; }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await fetch('/api/store/subscribe', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ storeSlug: STORE_SLUG, email, consent: true }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ show(data.error || 'Something went wrong.', false); btn.disabled=false; btn.textContent=orig; return false; }
+    form.style.display = 'none';
+    show(data.code ? `You're in — use code ${data.code} at checkout.` : (data.message || 'Check your email for your code.'), true);
+    try { localStorage.setItem(popupSeenKey(), '1'); } catch(e){}   // don't also popup at them
+  } catch(_){
+    show('Network error — please try again.', false);
+    btn.disabled = false; btn.textContent = orig;
+  }
+  return false;
+}
+
 // Per-section JS wiring after #page-home is (re)built. Featured + grid are
 // hydrated by the existing renderFeatured()/renderGrid() calls in loadStorefront().
+// The newsletter form binds via its inline onsubmit, so it needs nothing here.
 function hydrateSections(root){
   hydratePromoCountdowns(root);
 }
@@ -1218,6 +1150,8 @@ function renderStorefront(sc){
   hydrateSections(home);
 }
 
+// Apply the seller's saved appearance: theme preset (body class), optional accent
+// color (inline on <body>, overrides the theme), and logo (image or store name).
 const APPEARANCE_THEMES = ['classic','boutique','minimal'];
 function applyAppearance(){
   const sc = (STORE_CONFIG && STORE_CONFIG.storefrontContent) || {};
@@ -1387,7 +1321,12 @@ function layoutFeatured(){
   FEAT_POS    = 0;
   strip.style.transition='none'; strip.style.transform='translateX(0)';
   void strip.offsetWidth; strip.style.transition='';
-  FEAT_ROTATE = n > perPage && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The section's Auto-scroll setting (data-autoplay) can switch rotation off;
+  // it can never switch it on when there's nothing to rotate or the visitor
+  // asked for reduced motion.
+  const railEl = document.getElementById('featuredRail');
+  const autoplayOff = railEl && railEl.dataset.autoplay === 'false';
+  FEAT_ROTATE = n > perPage && !autoplayOff && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function featuredPlay(){
