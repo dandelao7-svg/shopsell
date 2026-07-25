@@ -43,8 +43,14 @@ design doc (like the storefront one) before starting. Components:
   picker gains UPS Worldwide / FedEx International / USPS Intl options when the
   destination is outside the US; rate shopping now sends the real recipient
   country so cross-border routes return international services.
-- [ ] **Duties & taxes** — DDP vs DDU choice (who pays duties); optional landed-cost
-  estimate at checkout.
+- [x] **Duties & taxes (DDU/DDP)** _(DONE 6a4bc5f, design-doc **Phase 4**,
+  verified live)_ — store-level DDU/DDP setting (dashboard International-shipping
+  card, stored in storefront_content); order-based customs uses it; Quick Ship
+  has a per-shipment override; buyer checkout shows a duties notice for non-US
+  countries (collected-on-delivery vs prepaid, per the store setting).
+- [ ] _(Phase 5, later)_ **Landed-cost estimate** at checkout (show buyers the
+  actual duty/tax amount) — needs a third-party service (Zonos/Easyship) or a
+  simplified estimate. Optional.
 - [ ] **Compliance** — restricted/prohibited items, denied-party screening,
   export EEL/PFC (AES) threshold handling.
 - [x] **Design doc written** — see [INTERNATIONAL-SHIPPING-DESIGN.md](INTERNATIONAL-SHIPPING-DESIGN.md) (data model, per-carrier customs payloads, addresses, duties, compliance, 5-phase plan). Phase 1 = product customs fields; Phase 2 = customs on labels.
