@@ -2,8 +2,9 @@
 /* ============================================================
    seed-demo.js — create/refresh the public demo store.
    ------------------------------------------------------------
-     node seed-demo.js          # create or refresh the demo store
-     node seed-demo.js --wipe   # delete its products first, then reseed
+     node seed-demo.js           # create or refresh the demo store
+     node seed-demo.js --wipe    # delete its products first, then reseed
+     node seed-demo.js --remove  # delete the demo store entirely (clean exit)
 
    Builds a fully-populated storefront at /?store=demo (and
    demo.<PLATFORM_DOMAIN>) so prospects can see a finished store, and so
@@ -26,7 +27,8 @@ const crypto = require('crypto');
 const db = require('./database');
 const { SLUG, EMAIL, PRODUCTS, FEATURED, SECTIONS, STOREFRONT_CONTENT } = require('./demo-content');
 
-const WIPE = process.argv.includes('--wipe');
+const WIPE   = process.argv.includes('--wipe');
+const REMOVE = process.argv.includes('--remove');
 
 async function main() {
   if (!process.env.DATABASE_URL) {
@@ -34,6 +36,28 @@ async function main() {
     process.exit(1);
   }
   await db.initSchema();
+
+  // ── --remove: delete the demo store entirely, then stop ──
+  // db.deleteDemoSeller carries a plan = 'demo' guard in its own SQL, so this
+  // cannot delete a real seller even if the slug were pointed somewhere odd.
+  if (REMOVE) {
+    const existing = await db.getSellerBySlug(SLUG);
+    if (!existing) {
+      console.log(`No store with slug "${SLUG}" — nothing to remove.`);
+      process.exit(0);
+    }
+    if (existing.plan !== 'demo') {
+      console.error(`Refusing to remove: seller #${existing.id} has slug "${SLUG}" but plan "${existing.plan}", not "demo".`);
+      console.error('That is not the seeded demo store. Resolve by hand.');
+      process.exit(1);
+    }
+    const removed = await db.deleteDemoSeller(SLUG);
+    console.log(removed
+      ? `Removed demo seller #${existing.id} and all its rows (products, orders, settings cascade).`
+      : 'Nothing removed.');
+    console.log('The images under public/demo/ are untouched — delete them separately if you want them gone.');
+    process.exit(0);
+  }
 
   // ── seller ──
   let seller = await db.getSellerBySlug(SLUG);

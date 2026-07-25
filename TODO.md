@@ -146,6 +146,10 @@ back to today's exact layout. No editor yet (that's Phase 2).
   excludes it from operator metrics (`getAdminStats` / `getRecentSellers`).
 - [ ] **Run it** — needs `DATABASE_URL` pointed at production: `node seed-demo.js`.
   Not run yet (no DB access locally). Until then `/?store=demo` 404s.
+  **Use Railway's PUBLIC database URL** (`DATABASE_PUBLIC_URL` / Connect → Public
+  Network) — the default `DATABASE_URL` points at `postgres.railway.internal`,
+  which only resolves inside Railway. `--remove` deletes the store cleanly if
+  you change your mind (guarded by `plan='demo'` in the SQL itself).
 - [ ] **Decide whether to link it publicly** from the landing page / signup —
   deliberately NOT linked yet.
 - [ ] _(optional)_ Reuse `demo-content.js` as **starter content for new signups**

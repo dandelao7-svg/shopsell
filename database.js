@@ -1142,6 +1142,17 @@ async function setSellerStorefrontContent(sellerId, content) {
   );
 }
 
+// Remove the seeded demo store (seed-demo.js --remove). The plan = 'demo' guard
+// is IN the query on purpose: this can never delete a paying seller, whatever it
+// is handed. Everything referencing sellers is ON DELETE CASCADE, so products,
+// orders and settings go with it. Returns the number of rows removed (0 or 1).
+async function deleteDemoSeller(slug) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM sellers WHERE store_slug = $1 AND plan = $2`, [slug, DEMO_PLAN]
+  );
+  return rowCount;
+}
+
 async function createReturn(data) {
   const { rows } = await pool.query(
     `INSERT INTO returns
@@ -1714,6 +1725,7 @@ module.exports = {
   // Storefront content
   getSellerStorefrontContent,
   setSellerStorefrontContent,
+  deleteDemoSeller,
 
   // Buyers
   createBuyer,
