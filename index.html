@@ -565,10 +565,10 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
         <div class="field"><label>Apt / Suite (optional)</label><input type="text" id="co-addr2" placeholder="Apt 4B"></div>
         <div class="three-col">
           <div class="field"><label>City</label><input type="text" id="co-city" placeholder="Los Angeles" onblur="recalcTax()"></div>
-          <div class="field"><label>State / Province</label><select id="co-state" onchange="recalcTax()"></select></div>
-          <div class="field"><label>ZIP / Postal</label><input type="text" id="co-zip" placeholder="90001" maxlength="10" onblur="recalcTax()"></div>
+          <div class="field"><label>State / Province</label><select id="co-state" onchange="recalcTax()"></select><input type="text" id="co-state-free" placeholder="State / Province / Region" maxlength="60" onblur="recalcTax()" style="display:none"></div>
+          <div class="field"><label>ZIP / Postal</label><input type="text" id="co-zip" placeholder="90001" maxlength="12" onblur="recalcTax()"></div>
         </div>
-        <div class="field"><label>Country</label><select id="co-country" onchange="populateStates();recalcTax()"><option>United States</option><option>Canada</option><option>United Kingdom</option><option>Australia</option></select></div>
+        <div class="field"><label>Country</label><select id="co-country" onchange="populateStates();recalcTax()"></select></div>
       </div>
       <div class="co-card">
         <div class="co-sec-hd">Payment <span style="float:right;font-size:11px;color:#635bff;font-weight:500;text-transform:none;letter-spacing:0">🔒 Secured by Stripe</span></div>
@@ -1851,12 +1851,7 @@ function updateCheckoutUI(){
 // Read the checkout ship-to address as { address1, city, state, zip, country }.
 function readCheckoutAddress(){
   const v = id => (document.getElementById(id)?.value || '').trim();
-  const country = v('co-country');
-  const countryCode = country === 'United States' ? 'US'
-                   : country === 'Canada' ? 'CA'
-                   : country === 'United Kingdom' ? 'GB'
-                   : country === 'Australia' ? 'AU' : 'US';
-  return { address1:v('co-addr1'), city:v('co-city'), state:v('co-state'), zip:v('co-zip'), country:countryCode };
+  return { address1:v('co-addr1'), city:v('co-city'), state:coState(), zip:v('co-zip'), country:coCountry() };
 }
 
 // Ask the server to finalize sales tax (Stripe Tax) from the ship-to address
@@ -2120,25 +2115,58 @@ async function setupWalletButton(){
   });
 }
 
-// State/province options per country. Populated into #co-state so buyers can
-// pick their real region (previously only 6 US states were offered).
-const REGIONS = {
-  'United States': [['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['DC','District of Columbia'],['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming']],
-  'Canada': [['AB','Alberta'],['BC','British Columbia'],['MB','Manitoba'],['NB','New Brunswick'],['NL','Newfoundland and Labrador'],['NS','Nova Scotia'],['NT','Northwest Territories'],['NU','Nunavut'],['ON','Ontario'],['PE','Prince Edward Island'],['QC','Quebec'],['SK','Saskatchewan'],['YT','Yukon']],
-  'United Kingdom': [['ENG','England'],['SCT','Scotland'],['WLS','Wales'],['NIR','Northern Ireland']],
-  'Australia': [['NSW','New South Wales'],['VIC','Victoria'],['QLD','Queensland'],['WA','Western Australia'],['SA','South Australia'],['TAS','Tasmania'],['ACT','Australian Capital Territory'],['NT','Northern Territory']],
-};
-function populateStates(){
-  const sel = document.getElementById('co-state');
+// Full shipping country list (ISO-2 + name). US/CA/GB/AU first, then A→Z.
+const COUNTRIES = [
+  ['US','United States'],['CA','Canada'],['GB','United Kingdom'],['AU','Australia'],
+  ['AE','United Arab Emirates'],['AR','Argentina'],['AT','Austria'],['BE','Belgium'],['BR','Brazil'],['BG','Bulgaria'],
+  ['CL','Chile'],['CN','China'],['CO','Colombia'],['CR','Costa Rica'],['HR','Croatia'],['CZ','Czechia'],['DK','Denmark'],
+  ['EG','Egypt'],['EE','Estonia'],['FI','Finland'],['FR','France'],['DE','Germany'],['GR','Greece'],['HK','Hong Kong'],
+  ['HU','Hungary'],['IS','Iceland'],['IN','India'],['ID','Indonesia'],['IE','Ireland'],['IL','Israel'],['IT','Italy'],
+  ['JP','Japan'],['KE','Kenya'],['KR','South Korea'],['KW','Kuwait'],['LV','Latvia'],['LT','Lithuania'],['LU','Luxembourg'],
+  ['MY','Malaysia'],['MX','Mexico'],['MA','Morocco'],['NL','Netherlands'],['NZ','New Zealand'],['NG','Nigeria'],['NO','Norway'],
+  ['PA','Panama'],['PE','Peru'],['PH','Philippines'],['PL','Poland'],['PT','Portugal'],['QA','Qatar'],['RO','Romania'],
+  ['SA','Saudi Arabia'],['RS','Serbia'],['SG','Singapore'],['SK','Slovakia'],['SI','Slovenia'],['ZA','South Africa'],
+  ['ES','Spain'],['SE','Sweden'],['CH','Switzerland'],['TW','Taiwan'],['TH','Thailand'],['TR','Turkey'],['UA','Ukraine'],
+  ['UY','Uruguay'],['VN','Vietnam'],
+];
+function populateCountries(){
+  const sel = document.getElementById('co-country');
   if(!sel) return;
-  const country = (document.getElementById('co-country')||{}).value || 'United States';
-  const list = REGIONS[country] || REGIONS['United States'];
-  const prev = sel.value;
-  sel.innerHTML = '<option value="" disabled selected>Select…</option>' +
-    list.map(([code,name]) => `<option value="${code}">${name}</option>`).join('');
-  // keep prior selection if it still exists in the new list
-  if(prev && list.some(([code]) => code === prev)) sel.value = prev;
+  sel.innerHTML = COUNTRIES.map(([code,name]) => `<option value="${code}">${name}</option>`).join('');
+  sel.value = 'US';
 }
+
+// State/province options for countries with a fixed region set (keyed by ISO-2).
+// Every other country gets a free-text region input (#co-state-free) instead.
+const REGIONS = {
+  US: [['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['DC','District of Columbia'],['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming']],
+  CA: [['AB','Alberta'],['BC','British Columbia'],['MB','Manitoba'],['NB','New Brunswick'],['NL','Newfoundland and Labrador'],['NS','Nova Scotia'],['NT','Northwest Territories'],['NU','Nunavut'],['ON','Ontario'],['PE','Prince Edward Island'],['QC','Quebec'],['SK','Saskatchewan'],['YT','Yukon']],
+  GB: [['ENG','England'],['SCT','Scotland'],['WLS','Wales'],['NIR','Northern Ireland']],
+  AU: [['NSW','New South Wales'],['VIC','Victoria'],['QLD','Queensland'],['WA','Western Australia'],['SA','South Australia'],['TAS','Tasmania'],['ACT','Australian Capital Territory'],['NT','Northern Territory']],
+};
+function coCountry(){ return (document.getElementById('co-country')||{}).value || 'US'; }
+function coState(){
+  const list = REGIONS[coCountry()];
+  return list ? ((document.getElementById('co-state')||{}).value || '')
+              : ((document.getElementById('co-state-free')||{}).value || '');
+}
+function populateStates(){
+  const sel  = document.getElementById('co-state');
+  const free = document.getElementById('co-state-free');
+  if(!sel) return;
+  const list = REGIONS[coCountry()];
+  if(list){
+    const prev = sel.value;
+    sel.innerHTML = '<option value="" disabled selected>Select…</option>' +
+      list.map(([code,name]) => `<option value="${code}">${name}</option>`).join('');
+    if(prev && list.some(([code]) => code === prev)) sel.value = prev;
+    sel.style.display = ''; if(free) free.style.display = 'none';
+  } else {
+    // No fixed region set → free-text (some countries have no states at all).
+    sel.style.display = 'none'; sel.innerHTML = ''; if(free) free.style.display = '';
+  }
+}
+populateCountries();
 populateStates();
 
 // Validate contact + shipping before charging, so an order can always be
@@ -2150,7 +2178,9 @@ function checkoutError(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Please enter a valid email address.';
   if(!v('co-addr1')) return 'Please enter your street address.';
   if(!v('co-city'))  return 'Please enter your city.';
-  if(!v('co-state')) return 'Please select your state / province.';
+  // Region required only for countries with a fixed set (US/CA/GB/AU); others
+  // use a free-text region that may legitimately be blank.
+  if(REGIONS[coCountry()] && !coState()) return 'Please select your state / province.';
   if(!v('co-zip'))   return 'Please enter your ZIP / postal code.';
   return null;
 }
@@ -2205,11 +2235,6 @@ async function placeOrder(){
     //    Include the shipping address so return labels can use it as the
     //    shipper (buyer ships back to seller).
     const v = id => (document.getElementById(id)?.value || '').trim();
-    const country = v('co-country');
-    const countryCode = country === 'United States' ? 'US'
-                     : country === 'Canada' ? 'CA'
-                     : country === 'United Kingdom' ? 'GB'
-                     : country === 'Australia' ? 'AU' : 'US';
     const customerInfo = {
       firstName: v('co-fname'),
       lastName:  v('co-lname'),
@@ -2218,9 +2243,9 @@ async function placeOrder(){
       address1:  v('co-addr1'),
       address2:  v('co-addr2'),
       city:      v('co-city'),
-      state:     v('co-state'),
+      state:     coState(),
       zip:       v('co-zip'),
-      country:   countryCode,
+      country:   coCountry(),
     };
 
     await finalizeOrder(paymentIntent.id, customerInfo);
