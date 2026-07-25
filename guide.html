@@ -172,7 +172,7 @@ td:first-child{font-weight:640}
       <div class="mark">S</div>
       <div>
         <h1>ShopSell</h1>
-        <span class="sub">seller guide · v1</span>
+        <span class="sub">seller guide · v2</span>
       </div>
     </div>
     <h2>Everything you can do in ShopSell</h2>
@@ -194,6 +194,7 @@ td:first-child{font-weight:640}
       <li><a href="#pay">Get paid — connect Stripe</a></li>
       <li><a href="#channels">Sell on marketplaces</a></li>
       <li><a href="#shipping">Ship your orders</a></li>
+      <li><a href="#international">Ship internationally</a></li>
       <li><a href="#returns">Returns</a></li>
       <li><a href="#buyer">What your customers see</a></li>
       <li><a href="#billing">Plans &amp; billing</a></li>
@@ -229,7 +230,7 @@ td:first-child{font-weight:640}
           <tr><td>Orders</td><td>Every order across all your sales channels. Search, filter, refund.</td></tr>
           <tr><td>Products / Add product</td><td>Your catalog — create, edit, duplicate, and delete products.</td></tr>
           <tr><td>Customers</td><td>People who've bought from you, with order counts and totals.</td></tr>
-          <tr><td>Storefront</td><td>Customize your public store: theme &amp; branding (colors, logo), homepage &amp; banner (announcement + hero), email-capture popup, plus the About / FAQ / Privacy / Terms footer text.</td></tr>
+          <tr><td>Storefront</td><td>Customize your public store: <b>page layout</b> (rearrange homepage sections), theme &amp; branding (colors, logo), homepage &amp; banner (announcement + hero), email-capture popup, international duties setting, plus the About / FAQ / Privacy / Terms footer text.</td></tr>
           <tr><td>Discounts</td><td>Create coupon codes (the email-capture popup also generates these automatically).</td></tr>
           <tr><td>Domain</td><td>Your free store address, and where you connect your own domain.</td></tr>
           <tr><td>Stripe setup / Payouts</td><td>Connect your Stripe account so you can take payments.</td></tr>
@@ -251,6 +252,7 @@ td:first-child{font-weight:640}
         <li><b>Options &amp; variants</b> — add up to three options (e.g. Size, Color) and ShopSell builds a row for every combination, each with its own price, SKU, and stock.</li>
         <li><b>Images</b> — drag and drop up to six photos (or click to browse). The first one is your main photo. They're shrunk automatically so your store stays fast.</li>
         <li><b>Returns policy</b> — mark an item returnable, set a return window, and an optional restocking fee.</li>
+        <li><b>Customs (international shipping)</b> — HS code, country of origin, and a plain customs description. Fill these in only if you ship abroad; they auto-fill the customs form on international labels. There's also a <b>Not for international shipping</b> checkbox that blocks the item from cross-border orders. See <a href="#international">section 8</a>.</li>
         <li>Click <b>Publish product</b> to make it live.</li>
       </ul>
       <div class="note warn"><p class="h">Heads-up: use “Publish”, not “Save draft”</p><p>The <b>Save draft</b> button doesn't store anything yet — it just shows a message. To keep a product, use <b>Publish product</b> (you can set its status to Draft in the form if you don't want it public).</p></div>
@@ -282,6 +284,21 @@ td:first-child{font-weight:640}
         <li><b>Announcement bar</b> — the thin banner across the very top (e.g. “Free shipping on every order”), with an optional link. Toggle on/off.</li>
         <li><b>Hero</b> — set the big eyebrow, headline, subtext, and both button labels, and upload a <b>hero background image</b> (a dark overlay is added automatically so the text stays readable). Any field left blank keeps the default.</li>
       </ul>
+
+      <h4>Page layout — rearrange your homepage <span class="chip live"><span class="dot live"></span>Live</span></h4>
+      <p>The <b>Page layout</b> card (top of <b>Storefront</b>) treats your homepage as a stack of <b>sections</b> you can reorder, hide, edit, add, or remove — no code. Today's building blocks:</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Section</th><th>What it is</th><th>What you can edit</th></tr></thead>
+        <tbody>
+          <tr><td>Hero</td><td>The big image + headline at the top.</td><td>Eyebrow, headline, subtext, background image URL.</td></tr>
+          <tr><td>Featured carousel</td><td>The auto-scrolling row of starred products.</td><td>Heading.</td></tr>
+          <tr><td>Product grid</td><td>Your main shop grid.</td><td>Show/hide the category tabs.</td></tr>
+          <tr><td>Promo banner</td><td>A deal bar with an optional live <b>countdown</b> — good for a sale ending Friday.</td><td>Text, countdown date, solid or outline style.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Each section in the list has <b>↑ / ↓</b> to move it, a toggle to enable or disable it, and a delete button. Pick a type from the dropdown and click <b>+ Add section</b> to add another (you can have more than one promo banner, for example).</p>
+      <div class="note key"><p class="h">Draft first, then publish</p><p><b>Save draft</b> stores your changes privately — <i>shoppers keep seeing the old layout</i>. <b>Preview ↗</b> opens your store showing the draft (with a banner so you know it's a preview); nobody else sees it. When you're happy, click <b>Publish</b> to make it live. <b>Discard draft</b> throws the draft away; <b>Reset to default</b> returns you to the standard hero + carousel + grid layout.</p></div>
+      <div class="note tip"><p class="h">Nothing changes until you touch it</p><p>If you never open Page layout, your store renders exactly as it always has. The Theme, Homepage &amp; banner, and Featured-carousel cards below still work the same way — Page layout is the extra control on top.</p></div>
 
       <h4>Featured carousel <span class="chip live"><span class="dot live"></span>Live</span></h4>
       <p>On the <b>Products</b> page, flip on <b>Featured carousel</b> and click the <b>★</b> on any products. They appear in an auto-scrolling row at the top of your homepage. Turn the toggle off to hide the whole row without un-starring anything.</p>
@@ -322,6 +339,16 @@ td:first-child{font-weight:640}
       </ol>
       <div class="note tip"><p class="h">Test mode vs live mode</p><p>Stripe gives you <b>test</b> keys and <b>live</b> keys. Test keys let you place practice orders with Stripe's test cards (like <code>4242 4242 4242 4242</code>) — no real money moves. Switch to your <b>live</b> keys when you're ready for real customers.</p></div>
       <p>Until you connect Stripe, your storefront checkout shows “Payment is not configured for this store.”</p>
+
+      <h4>What your customers can pay with <span class="chip beta"><span class="dot beta"></span>New · not live-tested</span></h4>
+      <p>Checkout now uses Stripe's modern <b>Payment Element</b> — a single payment box that automatically offers everything your Stripe account has enabled:</p>
+      <ul>
+        <li><b>Cards</b> — as before.</li>
+        <li><b>Stripe Link</b> — returning shoppers who've used Link anywhere get their saved card filled in from an email code. That's where “saved cards” come from; ShopSell never stores card details itself.</li>
+        <li><b>Apple Pay / Google Pay</b> — shown automatically on supported devices.</li>
+        <li><b>Anything else you turn on in Stripe</b> (e.g. Klarna, Cash App Pay) appears here without any change in ShopSell. Manage the list in Stripe → <b>Settings → Payment methods</b>.</li>
+      </ul>
+      <div class="note warn"><p class="h">Two things before you take real money</p><p><b>1. Place a test order first.</b> This checkout was rebuilt recently and hasn't been run against a real Stripe account yet. Connect <b>test</b> keys, buy something on your own storefront, and confirm the payment box loads and the order lands in Orders.</p><p><b>2. Apple Pay needs domain verification.</b> In Stripe → <b>Settings → Payment methods → Apple Pay</b>, add your store's domain. Without it, Apple Pay simply won't appear.</p></div>
     </section>
 
     <!-- 6 -->
@@ -351,7 +378,8 @@ td:first-child{font-weight:640}
       <p class="lead">Open <b>Shipping</b> from the dashboard. This is where you connect carriers, compare rates, buy labels, and track packages.</p>
 
       <h4>Connect your carriers <span class="chip live"><span class="dot live"></span>Live</span></h4>
-      <p>Under <b>Settings</b> in the shipping screen, add your own <b>UPS</b>, <b>FedEx</b>, and/or <b>USPS</b> account credentials and click Save &amp; verify. As with Stripe, you bring your own carrier accounts.</p>
+      <p>Under <b>Settings</b> in the shipping screen, add your own <b>UPS</b>, <b>FedEx</b>, and/or <b>USPS</b> account credentials and click Save &amp; verify. As with Stripe, you bring your own carrier accounts. Each connected carrier now has a <b>Disconnect</b> button if you need to clear out bad credentials and start over.</p>
+      <div class="note warn"><p class="h">UPS: use a production app</p><p>If UPS rejects everything with error <code>250002</code>, your UPS developer app isn't provisioned for production. Create/promote the app in the UPS developer portal, then paste the updated Client ID + Secret into ShopSell <b>Settings</b> — that's the only place that matters. Carrier errors now show you the carrier's own error code, which makes this kind of thing much faster to spot.</p></div>
 
       <h4>Buy a label — use Quick Ship <span class="chip live"><span class="dot live"></span>Live</span></h4>
       <p><b>Quick Ship</b> is the real, end-to-end label flow. This is the one to use.</p>
@@ -375,8 +403,57 @@ td:first-child{font-weight:640}
     </section>
 
     <!-- 8 -->
+    <section id="international">
+      <p class="eyebrow"><span class="n">08</span> Ship internationally</p>
+      <h3 class="sec">Selling and shipping across borders <span class="chip live"><span class="dot live"></span>Live</span></h3>
+      <p class="lead">ShopSell used to be US-only. It now handles overseas orders end to end — foreign addresses at checkout, international rates and services, and the customs paperwork filled in for you.</p>
+
+      <h4>The short version</h4>
+      <p>A buyer abroad checks out → the order captures their foreign address → you buy a label from Orders or Quick Ship → ShopSell builds the customs declaration from your product data and sends it to the carrier. In the common case there is nothing extra for you to fill in.</p>
+
+      <h4>1 · Tell ShopSell about your products</h4>
+      <p>On <b>Add product</b> (and <b>Edit product</b>) there's a <b>Customs (international shipping)</b> box:</p>
+      <ul>
+        <li><b>HS code</b> — the Harmonized System number that classifies the item for customs. Your supplier or invoice usually has it; otherwise search the official HS lookup for your category.</li>
+        <li><b>Country of origin</b> — the 2-letter code for where the item was <i>made</i> (e.g. <code>CN</code>), not where you ship from.</li>
+        <li><b>Customs description</b> — a plain description customs will understand (“cotton t-shirt”, not “Midnight Fade Tee”). Defaults to the product name if you leave it blank.</li>
+        <li><b>Not for international shipping</b> — tick this for anything you can't or won't send abroad (batteries, aerosols, liquids, restricted goods). Overseas buyers are blocked from ordering it at checkout, and international labels for orders containing it are refused.</li>
+      </ul>
+      <div class="note tip"><p class="h">You can skip this at first</p><p>All of it is optional — leave it blank for domestic-only items. If a product has no customs data, ShopSell falls back to the product name and value, which is enough for most low-value shipments.</p></div>
+
+      <h4>2 · Choose who pays duties &amp; taxes</h4>
+      <p>Under <b>Storefront → International shipping</b>, set <b>Duties &amp; taxes paid by</b>:</p>
+      <ul>
+        <li><b>Recipient — collected on delivery (DDU)</b> — the default. The carrier collects import charges from your customer before handing the parcel over.</li>
+        <li><b>Me / the store — prepaid (DDP)</b> — you're billed for duties on your carrier account. Smoother for the buyer, more expensive for you.</li>
+      </ul>
+      <p>Overseas shoppers see a matching notice at checkout (“import duties &amp; taxes may be collected by the carrier on delivery,” or “are prepaid, nothing extra to pay”), so there are no surprises at the door. The setting also flows onto the customs paperwork. You can override it per shipment in Quick Ship.</p>
+
+      <h4>3 · Buy the international label</h4>
+      <p>In <b>Quick Ship</b>, pick a country other than the United States and the form adapts:</p>
+      <ul>
+        <li>The <b>State</b> dropdown becomes a free-text <b>region/province</b> box (US, Canada, UK, and Australia keep their dropdowns), and postal-code rules relax.</li>
+        <li>The service list gains <b>UPS Worldwide</b>, <b>FedEx International</b>, and <b>USPS International</b> options, and <b>Compare rates</b> price-shops the real cross-border routes.</li>
+        <li>A <b>🌍 Customs declaration</b> panel appears. Set the <b>contents type</b> (merchandise, gift, sample, documents, returned goods) and <b>incoterm</b> (DDU/DDP), then add a line for each item: description, quantity, value, HS code, and origin. <b>+ Add item</b> adds more rows. You need at least one item with a description and a value above zero before ShopSell will generate the label.</li>
+      </ul>
+      <p>Buying a label for a <b>real order</b> is easier — ShopSell assembles the customs declaration automatically from the order's line items and your product customs fields. The manual panel exists because Quick Ship shipments have no order behind them.</p>
+
+      <h4>4 · Paperwork</h4>
+      <ul>
+        <li><b>Commercial invoice</b> — when the carrier returns a printable customs invoice (UPS accounts not enrolled in Paperless Invoice), a <b>Print customs invoice</b> button appears next to the label. Print <b>three copies</b> and attach them to the parcel in a documents pouch.</li>
+        <li><b>UPS Paperless Invoice</b> <span class="chip beta"><span class="dot beta"></span>Needs UPS setup</span> — enroll your UPS account once with UPS and the invoice is transmitted electronically instead, so there's nothing to print. Until you enroll, use the printed copies above.</li>
+        <li><b>Export filing (AES/EEL)</b> — shipments under <b>$2,500</b> per commodity are filed automatically with the standard low-value exemption; you do nothing. At $2,500 and above US law requires an <b>AES filing</b>: file with the government, then paste the <b>ITN</b> you get back into the <b>AES ITN</b> field in Quick Ship (format <code>AES X20180101987654</code>).</li>
+      </ul>
+
+      <h4>What your overseas customers see</h4>
+      <p>Checkout offers a full country list (67 countries), with a region dropdown for the US, Canada, UK, and Australia and a free-text region everywhere else. They get the duties notice described above, and any product you flagged <b>Not for international shipping</b> stops the order with a clear explanation rather than failing later.</p>
+
+      <div class="note warn"><p class="h">Two honest caveats</p><p><b>Not yet proven on a live cross-border label.</b> The customs code is built to each carrier's published specification and unit-tested, but no international label has been purchased on a real account here yet. Your first overseas shipment is the real test — do a cheap one.</p><p><b>No denied-party screening and no landed-cost quote.</b> ShopSell doesn't check recipients against restricted-party lists, and buyers see a duties <i>notice</i>, not a calculated duty amount. Both need a paid third-party data source; they're on the list, not built.</p></div>
+    </section>
+
+    <!-- 9 -->
     <section id="returns">
-      <p class="eyebrow"><span class="n">08</span> Returns</p>
+      <p class="eyebrow"><span class="n">09</span> Returns</p>
       <h3 class="sec">Let customers print a return label <span class="chip live"><span class="dot live"></span>Live</span></h3>
       <p class="lead">Your customers handle returns themselves through the return portal — you don't have to do anything per return, beyond setting your return address.</p>
       <ol class="steps">
@@ -387,30 +464,32 @@ td:first-child{font-weight:640}
       <div class="note warn"><p class="h">Two different “Returns” screens</p><p>The customer-facing portal at <code>/returns</code> is the real one. The <b>Returns</b> tab inside the Shipping suite currently shows sample data only — don't manage real returns from there yet.</p></div>
     </section>
 
-    <!-- 9 -->
+    <!-- 10 -->
     <section id="buyer">
-      <p class="eyebrow"><span class="n">09</span> What your customers see</p>
+      <p class="eyebrow"><span class="n">10</span> What your customers see</p>
       <h3 class="sec">The shopping experience</h3>
       <p class="lead">Here's the buyer's side, so you know what you're offering.</p>
       <ul>
         <li><b>Browse</b> — a storefront with your products, categories, sorting, and search; each product opens a detail view with photos, variants, quantity, and reviews.</li>
-        <li><b>Cart &amp; checkout</b> — add to cart, then check out with contact info, shipping address, and a card. Checkout now offers <b>all US states + Canadian/UK/Australian regions</b> and requires name, a valid email, and a full address before charging (recent fixes — it used to allow blank/wrong addresses).</li>
+        <li><b>Cart &amp; checkout</b> — add to cart, then check out with contact info and a shipping address. Checkout requires a name, a valid email, and a full address before charging, and accepts addresses <b>worldwide</b> — 67 countries, with region dropdowns for the US, Canada, UK, and Australia and free-text regions elsewhere.</li>
+        <li><b>Paying</b> — one payment box offering cards, <b>Stripe Link</b> (saved cards), and <b>Apple Pay / Google Pay</b> on supported devices, plus anything else you've enabled in Stripe. See <a href="#pay">section 5</a>.</li>
+        <li><b>Overseas orders</b> — buyers outside the US see a duties &amp; taxes notice matching your DDU/DDP setting, and can't order items you flagged as not shippable internationally.</li>
         <li><b>Accounts</b> — customers can create an account to see their order history; past guest orders link automatically by email.</li>
       </ul>
       <div class="note tip"><p class="h">Good to know</p><p>Payment on your storefront runs on <b>your</b> Stripe account. Reviews, order confirmation emails, and shipping-notification emails are all wired up and working.</p></div>
     </section>
 
-    <!-- 10 -->
+    <!-- 11 -->
     <section id="billing">
-      <p class="eyebrow"><span class="n">10</span> Plans &amp; billing</p>
+      <p class="eyebrow"><span class="n">11</span> Plans &amp; billing</p>
       <h3 class="sec">Your ShopSell subscription <span class="chip beta"><span class="dot beta"></span>Partial</span></h3>
-      <p>You picked a plan at signup (Starter / Growth / Pro) and you're on a 14-day free trial. Your plan and history live under <b>My subscription</b>.</p>
-      <div class="note warn"><p class="h">During beta</p><p>The upgrade / change-plan / cancel buttons on this page are placeholders right now. While you're pre-launch and testing, that's fine — subscription billing runs in Stripe test mode, so no one is charged real money.</p></div>
+      <p>You picked a plan at signup (Starter / Growth / Pro) and you're on a 14-day free trial. Your plan and history live under <b>My subscription</b>, where <b>Change plan</b> and <b>Cancel subscription</b> are wired to real Stripe subscriptions.</p>
+      <div class="note warn"><p class="h">During beta</p><p>Subscription billing still runs against ShopSell's Stripe <b>test</b> account, so no one is charged real money yet. <b>Manage billing in Stripe →</b> needs Stripe's Customer Portal switched on for the platform account; until that's done it returns an error rather than opening.</p></div>
     </section>
 
-    <!-- 11 -->
+    <!-- 12 -->
     <section id="limits">
-      <p class="eyebrow"><span class="n">11</span> Not wired up yet</p>
+      <p class="eyebrow"><span class="n">12</span> Not wired up yet</p>
       <h3 class="sec">Buttons that look real but aren't — yet</h3>
       <p class="lead">Being upfront so nothing trips you (or a beta tester) up. These show a success message but don't save or do the thing. Everything here is on the fix list.</p>
       <div class="tbl-wrap"><table>
@@ -427,18 +506,23 @@ td:first-child{font-weight:640}
           <tr><td>Store account</td><td>Buyer Wishlist / Addresses / Payment methods.</td><td>Marked “coming soon” to shoppers.</td></tr>
         </tbody>
       </table></div>
-      <div class="note key"><p class="h">The short version</p><p>The <b>core loop is solid</b>: create products → connect Stripe &amp; carriers → connect eBay → sync orders → buy real labels in Quick Ship → customers check out and can return items. The placeholders above are mostly reporting/settings polish.</p></div>
+      <div class="note key"><p class="h">The short version</p><p>The <b>core loop is solid</b>: create products → connect Stripe &amp; carriers → connect eBay → sync orders → buy real labels in Quick Ship → customers check out (at home or overseas) and can return items. The placeholders above are mostly reporting/settings polish.</p><p>Two newer areas are <b>built but unproven on real money/real freight</b>: the rebuilt Stripe checkout (<a href="#pay">section 5</a>) and cross-border labels (<a href="#international">section 8</a>). Run one small real transaction through each before relying on them.</p></div>
     </section>
 
-    <!-- 12 -->
+    <!-- 13 -->
     <section id="tips">
-      <p class="eyebrow"><span class="n">12</span> Tips &amp; troubleshooting</p>
+      <p class="eyebrow"><span class="n">13</span> Tips &amp; troubleshooting</p>
       <h3 class="sec">Handy to know</h3>
       <ul>
         <li><b>Store looks empty?</b> The storefront needs a store context. <b>View store</b> handles this for you; a bare link without <code>?store=your-slug</code> will look blank.</li>
         <li><b>Checkout says payment isn't configured?</b> Connect Stripe (section 5).</li>
         <li><b>Return portal says returns aren't available?</b> Set your return address in Settings and connect a carrier.</li>
         <li><b>Didn't get the password-reset email?</b> Check spam on the first one from a new store, then mark it “not spam.”</li>
+        <li><b>Layout changes not showing to customers?</b> You probably clicked <b>Save draft</b>. Drafts are private — click <b>Publish</b>.</li>
+        <li><b>No international services in Compare rates?</b> Set the destination <b>country</b> first — the service list and rates only switch to cross-border routes once the recipient country isn't the US.</li>
+        <li><b>“Add at least one customs item”?</b> International labels need a customs declaration. Fill in the 🌍 panel with a description and a value above $0 for at least one item.</li>
+        <li><b>An item won't ship abroad?</b> Check whether it's ticked <b>Not for international shipping</b> on the product.</li>
+        <li><b>Carrier rejecting everything?</b> The error now includes the carrier's own code — search that code, and use <b>Disconnect</b> in Shipping → Settings to re-enter credentials cleanly.</li>
         <li><b>Practice safely.</b> With Stripe in test mode, use test card <code>4242 4242 4242 4242</code>, any future expiry, any CVC — nothing is charged.</li>
       </ul>
     </section>

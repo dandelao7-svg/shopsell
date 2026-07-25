@@ -876,10 +876,10 @@ let cart={}, homeCat='all', homeSort='default', shopCat='all', shopSort='default
 let currentModal=null, mq=1, mobileNavOpen=false;
 
 // ── STRIPE STATE (set up lazily when entering checkout) ───────
-// Uses the legacy CardElement (not PaymentElement) so Link is structurally
-// impossible — CardElement only renders card number / expiry / CVC, with no
-// email recognition, no saved-card autofill, no Link prompt.
-let stripe=null, stripeElements=null, stripeCardElement=null, walletPR=null;
+// Uses PaymentElement, which renders cards, Stripe Link (incl. Link-based saved
+// cards), Apple/Google Pay, and any other method enabled on the seller's Stripe
+// account. Replaced the old card-only CardElement + standalone wallet button.
+let stripe=null, stripeElements=null, walletPR=null;
 let currentPaymentIntent=null;  // { clientSecret, orderId, subtotal, total }
 let currentTax=0;               // finalized sales tax (Stripe Tax), 0 until an address is entered
 let currentDiscount=0;          // dollars off from an applied discount code
@@ -2016,9 +2016,10 @@ function walletAmountCents(){
 }
 const WALLET_SHIPPING = [{ id:'free', label:'Free shipping', detail:'Arrives in 3–5 business days', amount:0 }];
 
-// Apple Pay / Google Pay via Stripe's Payment Request Button. Only shows when
-// the device actually supports a wallet; otherwise the card form stands alone.
-// Deliberately separate from PaymentElement so Stripe Link is never introduced.
+// DEAD CODE — no longer called. PaymentElement renders Apple/Google Pay itself,
+// so this standalone Payment Request Button was retired in the PaymentElement
+// migration. Kept only as a fallback reference until that checkout has been
+// verified against a real Stripe account; delete once it has.
 async function setupWalletButton(){
   const wrap = document.getElementById('walletBtnWrap');
   const btnEl = document.getElementById('walletBtn');
