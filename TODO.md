@@ -134,3 +134,19 @@ back to today's exact layout. No editor yet (that's Phase 2).
     (no DB locally). Walk the Page layout card once on the deployed site: add a
     Category tiles section, fill 2–3 tiles, Save draft → Preview → Publish.
 - [ ] **Phase 4** — starter templates ("Fashion" / "Electronics" / "Minimal") that seed a whole `sections` array.
+
+## Demo store
+- [x] **Public demo storefront built** — `seed-demo.js` + `demo-content.js`
+  (pure data) create/refresh a seller with slug `demo` ("Northwind Supply"):
+  8 products, a 7-section layout using every section type, and **self-hosted**
+  images in `public/demo/` (~1.5 MB, `CREDITS.md` records source + the
+  depicts-it / unbranded / no-faces selection rules). Idempotent — matches the
+  seller by slug and products by SKU. The account has a random password hash and
+  no Stripe subscription, so it can't be logged into or billed, and `plan='demo'`
+  excludes it from operator metrics (`getAdminStats` / `getRecentSellers`).
+- [ ] **Run it** — needs `DATABASE_URL` pointed at production: `node seed-demo.js`.
+  Not run yet (no DB access locally). Until then `/?store=demo` 404s.
+- [ ] **Decide whether to link it publicly** from the landing page / signup —
+  deliberately NOT linked yet.
+- [ ] _(optional)_ Reuse `demo-content.js` as **starter content for new signups**
+  so a brand-new store isn't empty. Shares the images + catalog; small follow-on.

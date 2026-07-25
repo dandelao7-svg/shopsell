@@ -1197,25 +1197,33 @@ function applyHomepage(){
       bar.hidden = true;
     }
   }
-  // Hero text — only override when the seller has provided a value.
-  const setText = (id, val) => { const el = document.getElementById(id); if(el && val && val.trim()) el.textContent = val.trim(); };
-  setText('heroEyebrow', sc.heroEyebrow);
-  setText('heroTitle',   sc.heroTitle);
-  setText('heroSub',     sc.heroSubtext);
-  setText('heroCta1',    sc.heroCta1);
-  setText('heroCta2',    sc.heroCta2);
-  // Hero background image (dark gradient overlaid so the white hero text stays
-  // legible over any photo). Cleared → falls back to the theme's brand color.
-  const hero = document.querySelector('.hero');
-  if(hero){
-    if(sc.heroImage){
-      hero.style.backgroundImage = 'linear-gradient(rgba(15,15,26,0.55),rgba(15,15,26,0.55)), url("' + sc.heroImage + '")';
-      hero.style.backgroundSize = 'cover';
-      hero.style.backgroundPosition = 'center';
-    } else {
-      hero.style.backgroundImage = '';
-      hero.style.backgroundSize = '';
-      hero.style.backgroundPosition = '';
+  // These flat fields are the LEGACY hero controls (Storefront → Homepage &
+  // banner). When the seller has a custom `sections` layout, the hero section's
+  // own config owns the hero — applying them here would let a blank legacy field
+  // override, and in the image's case actively CLEAR, what the section rendered.
+  // That is what broke the Page layout editor's hero "Background image" field.
+  const usingSections = Array.isArray(sc.sections) && sc.sections.length > 0;
+  if(!usingSections){
+    // Hero text — only override when the seller has provided a value.
+    const setText = (id, val) => { const el = document.getElementById(id); if(el && val && val.trim()) el.textContent = val.trim(); };
+    setText('heroEyebrow', sc.heroEyebrow);
+    setText('heroTitle',   sc.heroTitle);
+    setText('heroSub',     sc.heroSubtext);
+    setText('heroCta1',    sc.heroCta1);
+    setText('heroCta2',    sc.heroCta2);
+    // Hero background image (dark gradient overlaid so the white hero text stays
+    // legible over any photo). Cleared → falls back to the theme's brand color.
+    const hero = document.querySelector('.hero');
+    if(hero){
+      if(sc.heroImage){
+        hero.style.backgroundImage = 'linear-gradient(rgba(15,15,26,0.55),rgba(15,15,26,0.55)), url("' + sc.heroImage + '")';
+        hero.style.backgroundSize = 'cover';
+        hero.style.backgroundPosition = 'center';
+      } else {
+        hero.style.backgroundImage = '';
+        hero.style.backgroundSize = '';
+        hero.style.backgroundPosition = '';
+      }
     }
   }
 }

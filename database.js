@@ -1173,6 +1173,11 @@ async function getReturnsByOrder(orderId) {
 }
 
 // ── ADMIN / OPERATOR ─────────────────────────────────────────
+// The seeded public demo storefront (seed-demo.js) is a real seller row so it
+// exercises the normal code paths, but it is not a customer — excluding it here
+// keeps signup counts, the plan breakdown and the seller list honest.
+const DEMO_PLAN = 'demo';
+
 // Platform-wide rollups for the operator's internal admin console.
 async function getAdminStats() {
   const sellers = await pool.query(`
@@ -1181,9 +1186,9 @@ async function getAdminStats() {
       count(*) FILTER (WHERE store_active)::int                             AS active_stores,
       count(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int   AS new_7d,
       count(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days')::int  AS new_30d
-    FROM sellers`);
+    FROM sellers WHERE plan <> $1`, [DEMO_PLAN]);
   const plans = await pool.query(
-    `SELECT plan, count(*)::int AS n FROM sellers GROUP BY plan ORDER BY plan`);
+    `SELECT plan, count(*)::int AS n FROM sellers WHERE plan <> $1 GROUP BY plan ORDER BY plan`, [DEMO_PLAN]);
   const orders = await pool.query(`
     SELECT count(*)::int AS total_orders,
            COALESCE(SUM(total) FILTER (WHERE paid_at IS NOT NULL), 0)::float AS gmv
@@ -1249,7 +1254,8 @@ async function getRecentSellers(limit = 50) {
   const { rows } = await pool.query(`
     SELECT id, first_name, last_name, email, store_name, store_slug, plan,
            subscription_status, store_active, created_at
-      FROM sellers ORDER BY created_at DESC LIMIT $1`, [Math.min(parseInt(limit) || 50, 200)]);
+      FROM sellers WHERE plan <> $2 ORDER BY created_at DESC LIMIT $1`,
+    [Math.min(parseInt(limit) || 50, 200), DEMO_PLAN]);
   return camelizeAll(rows);
 }
 

@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install        # install dependencies
 node server.js     # run locally (same as `npm start` / `npm dev`) — needs a filled-in .env
 node fix-order.js <orderId>   # one-off admin script: overwrite an order's customer_info
+node seed-demo.js             # create/refresh the public demo store (slug `demo`); --wipe to reset its products
 ```
 
 There is **no build step, no test suite, and no linter**. The frontend is plain HTML files served statically — there is nothing to compile. Node >= 18 is required (`carriers.js` and `lib/` rely on global `fetch`/`crypto` and dynamic `import()` of `node-fetch`).
