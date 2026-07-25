@@ -25,9 +25,17 @@ const { Pool } = require('pg');
 // ── CONNECTION ───────────────────────────────────────────────
 // Railway sets DATABASE_URL automatically when Postgres is referenced.
 // SSL is required for Railway's managed Postgres in production.
+//
+// Match BOTH Railway hostname families: the internal/legacy `*.railway.internal`
+// and `*.railway.app`, and the current public proxy on `*.rlwy.net`. Matching
+// only "railway" silently disabled SSL for a `roundhouse.proxy.rlwy.net` URL,
+// which is exactly the public URL you need to connect from outside Railway —
+// the connection was then rejected for want of SSL. Anything else (localhost,
+// a plain Postgres) still connects without SSL.
+const NEEDS_SSL = /\brailway\b|\brlwy\.net\b/i;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('railway')
+  ssl: process.env.DATABASE_URL && NEEDS_SSL.test(process.env.DATABASE_URL)
     ? { rejectUnauthorized: false }
     : false,
 });

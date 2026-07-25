@@ -2,9 +2,19 @@
 /* ============================================================
    seed-demo.js — create/refresh the public demo store.
    ------------------------------------------------------------
-     node seed-demo.js           # create or refresh the demo store
-     node seed-demo.js --wipe    # delete its products first, then reseed
-     node seed-demo.js --remove  # delete the demo store entirely (clean exit)
+     node seed-demo.js                    # create or refresh the demo store
+     node seed-demo.js --wipe             # delete its products first, then reseed
+     node seed-demo.js --remove           # delete the demo store entirely
+     node seed-demo.js --db "postgres://…" # pass the connection string inline
+                                          # (otherwise DATABASE_URL from .env)
+
+   On Railway pass the PUBLIC url (DATABASE_PUBLIC_URL, or Postgres → Connect →
+   Public Network). The default DATABASE_URL points at postgres.railway.internal,
+   which only resolves from inside Railway's own network.
+
+   NOTE: an inline --db value lands in your shell history and is visible in the
+   process list. Prefer it for a one-off run from your own machine; use .env on
+   anything shared.
 
    Builds a fully-populated storefront at /?store=demo (and
    demo.<PLATFORM_DOMAIN>) so prospects can see a finished store, and so
@@ -24,6 +34,33 @@
    ============================================================ */
 require('dotenv').config();
 const crypto = require('crypto');
+
+// ── --db must be handled BEFORE ./database is required ──
+// database.js builds its pg Pool from process.env.DATABASE_URL at require time,
+// so setting it afterwards would be ignored and the script would connect to
+// whatever .env held (or nothing). Accepts `--db <url>` and `--db=<url>`.
+function readDbFlag(argv) {
+  const i = argv.findIndex(a => a === '--db' || a.startsWith('--db='));
+  if (i === -1) return null;
+  const val = argv[i].startsWith('--db=') ? argv[i].slice(5) : argv[i + 1];
+  if (!val || val.startsWith('--')) {
+    console.error('--db needs a connection string, e.g. --db "postgresql://user:pass@host:port/db"');
+    process.exit(1);
+  }
+  return val;
+}
+const dbFlag = readDbFlag(process.argv);
+if (dbFlag) process.env.DATABASE_URL = dbFlag;
+
+// Never print the connection string — it carries the database password, and
+// this output tends to get pasted into chats and issues.
+function redactDbUrl(url) {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.username ? u.username + ':***@' : ''}${u.host}${u.pathname}`;
+  } catch { return '(unparseable connection string)'; }
+}
+
 const db = require('./database');
 const { SLUG, EMAIL, PRODUCTS, FEATURED, SECTIONS, STOREFRONT_CONTENT } = require('./demo-content');
 
@@ -32,10 +69,38 @@ const REMOVE = process.argv.includes('--remove');
 
 async function main() {
   if (!process.env.DATABASE_URL) {
-    console.error('DATABASE_URL is not set. Point it at the target database first.');
+    console.error('No database connection string.');
+    console.error('Either pass one:   node seed-demo.js --db "postgresql://user:pass@host:port/db"');
+    console.error('or set DATABASE_URL in .env.');
+    console.error('\nOn Railway use the PUBLIC url (DATABASE_PUBLIC_URL, or Postgres → Connect →');
+    console.error('Public Network). The default DATABASE_URL points at postgres.railway.internal,');
+    console.error('which only resolves from inside Railway.');
     process.exit(1);
   }
-  await db.initSchema();
+  console.log(`Connecting to ${redactDbUrl(process.env.DATABASE_URL)}`);
+
+  // database.js kicks off initSchema() on require and exports the promise;
+  // there is no callable initSchema. Awaiting it both guarantees the tables
+  // exist and surfaces connection failures here, where they can be explained.
+  try {
+    await db.schemaReady;
+  } catch (err) {
+    console.error(`\nCould not connect: ${err.message}`);
+    if (/railway\.internal/i.test(process.env.DATABASE_URL)) {
+      console.error('\nThat is Railway\'s INTERNAL host — it only resolves inside Railway\'s network.');
+      console.error('Use DATABASE_PUBLIC_URL instead (Postgres service → Variables, or Connect →');
+      console.error('Public Network); it looks like ...proxy.rlwy.net:PORT.');
+    } else if (/ENOTFOUND|EAI_AGAIN/i.test(err.message)) {
+      console.error('\nHostname did not resolve — check the host in the connection string.');
+    } else if (/ETIMEDOUT|ECONNREFUSED/i.test(err.message)) {
+      console.error('\nReachable host but no answer — check the port, and that you copied the');
+      console.error('PUBLIC connection string rather than the internal one.');
+    } else if (/password|authentication/i.test(err.message)) {
+      console.error('\nThe host answered but rejected the credentials — re-copy the URL in full;');
+      console.error('the password often contains characters that break on a partial copy.');
+    }
+    process.exit(1);
+  }
 
   // ── --remove: delete the demo store entirely, then stop ──
   // db.deleteDemoSeller carries a plan = 'demo' guard in its own SQL, so this
