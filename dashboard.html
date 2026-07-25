@@ -1167,6 +1167,19 @@ tr:hover td{background:#fafaf7}
       </div>
 
       <div class="form-card">
+        <div class="form-section-hd">International shipping</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Who pays import duties &amp; taxes on international orders. Shown to overseas buyers at checkout and used on the customs paperwork.</div>
+        <div class="field">
+          <label>Duties &amp; taxes paid by</label>
+          <select id="intlDuties">
+            <option value="DDU">Recipient — collected on delivery (DDU)</option>
+            <option value="DDP">Me / the store — prepaid (DDP)</option>
+          </select>
+        </div>
+        <button class="btn primary" onclick="saveIntlSettings()" id="intlSaveBtn">Save</button>
+      </div>
+
+      <div class="form-card">
         <div class="form-section-hd">Homepage &amp; banner</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Customize the top announcement bar and your hero section. Leave a field blank to use the default.</div>
 
@@ -2147,7 +2160,26 @@ async function loadStorefrontContent(){
     loadHomepageInto(c);
     loadEmailPopupInto(c);
     loadLayoutEditor(c.sections, c.draftSections);
+    const idut = document.getElementById('intlDuties');
+    if(idut) idut.value = (c.dutiesIncoterm === 'DDP') ? 'DDP' : 'DDU';
   } catch(e){ /* not fatal */ }
+}
+
+async function saveIntlSettings(){
+  const token = localStorage.getItem('ss_token');
+  if(!token){ toast('Please log in first'); return; }
+  const val = document.getElementById('intlDuties').value;
+  const btn = document.getElementById('intlSaveBtn'); const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/seller/international-settings', {
+      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ dutiesIncoterm: val }),
+    });
+    const data = await res.json().catch(()=>({}));
+    toast(res.ok ? 'International settings saved ✓' : (data.error || 'Save failed'));
+  } catch(e){ toast('Network error'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 // ── PAGE LAYOUT — storefront sections editor (Phase 2) ──

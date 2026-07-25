@@ -569,6 +569,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
           <div class="field"><label>ZIP / Postal</label><input type="text" id="co-zip" placeholder="90001" maxlength="12" onblur="recalcTax()"></div>
         </div>
         <div class="field"><label>Country</label><select id="co-country" onchange="populateStates();recalcTax()"></select></div>
+        <div id="co-duties-notice" style="display:none;font-size:12px;line-height:1.5;background:rgba(15,15,26,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:2px"></div>
       </div>
       <div class="co-card">
         <div class="co-sec-hd">Payment <span style="float:right;font-size:11px;color:#635bff;font-weight:500;text-transform:none;letter-spacing:0">🔒 Secured by Stripe</span></div>
@@ -2165,6 +2166,19 @@ function populateStates(){
     // No fixed region set → free-text (some countries have no states at all).
     sel.style.display = 'none'; sel.innerHTML = ''; if(free) free.style.display = '';
   }
+  updateDutiesNotice();
+}
+// Show international buyers whether import duties/taxes are prepaid (DDP) or
+// collected on delivery (DDU) — per the store's setting. US buyers see nothing.
+function updateDutiesNotice(){
+  const el = document.getElementById('co-duties-notice');
+  if(!el) return;
+  if(coCountry() === 'US'){ el.style.display = 'none'; return; }
+  const incoterm = (STORE_CONFIG && STORE_CONFIG.storefrontContent && STORE_CONFIG.storefrontContent.dutiesIncoterm) || 'DDU';
+  el.textContent = incoterm === 'DDP'
+    ? '🌍 International order — import duties & taxes are prepaid, nothing extra to pay on delivery.'
+    : '🌍 International order — import duties & taxes may be collected by the carrier on delivery.';
+  el.style.display = 'block';
 }
 populateCountries();
 populateStates();

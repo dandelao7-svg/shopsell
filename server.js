@@ -1749,6 +1749,9 @@ app.get('/api/checkout/config', async (req, res) => {
       // legacy fixed layout. Written only via PUT /api/seller/storefront-sections,
       // which validates + sanitizes before storing, so this is safe to pass through.
       sections:      Array.isArray(content.sections) ? content.sections : null,
+      // International duties: who pays import duties/taxes — DDU (recipient, the
+      // default) or DDP (seller prepays). Drives the checkout duties notice.
+      dutiesIncoterm: content.dutiesIncoterm === 'DDP' ? 'DDP' : 'DDU',
     };
 
     res.json({
@@ -3003,6 +3006,7 @@ app.get('/api/seller/storefront-content', requireAuth, async (req, res) => {
         popupSubtext:  content.popupSubtext || '',
         sections:      Array.isArray(content.sections) ? content.sections : null,
         draftSections: Array.isArray(content.draftSections) ? content.draftSections : null,
+        dutiesIncoterm: content.dutiesIncoterm === 'DDP' ? 'DDP' : 'DDU',
       },
     });
   } catch (err) {
@@ -3151,6 +3155,21 @@ app.put('/api/seller/storefront-draft', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save storefront draft error:', err);
     res.status(500).json({ error: 'Failed to save draft layout.' });
+  }
+});
+
+// International shipping settings — who pays import duties/taxes (DDU/DDP).
+// Feeds the checkout duties notice + the order-based customs incoterm.
+app.put('/api/seller/international-settings', requireAuth, async (req, res) => {
+  try {
+    const incoterm = String(req.body && req.body.dutiesIncoterm || '').toUpperCase() === 'DDP' ? 'DDP' : 'DDU';
+    const existing = (await db.getSellerStorefrontContent(req.seller.sellerId)) || {};
+    const content = { ...existing, dutiesIncoterm: incoterm };
+    await db.setSellerStorefrontContent(req.seller.sellerId, content);
+    res.json({ message: 'International settings saved.', dutiesIncoterm: incoterm });
+  } catch (err) {
+    console.error('Save international settings error:', err);
+    res.status(500).json({ error: 'Failed to save international settings.' });
   }
 });
 
@@ -4861,6 +4880,9 @@ async function assembleCustomsFromOrder(orderId, sellerId) {
   if (oid === null) return null;
   const ord = await db.getOrderById(oid);
   if (!ord || ord.sellerId !== sellerId || !Array.isArray(ord.items) || !ord.items.length) return null;
+  // Store-level duties choice (DDU default) — set in the dashboard.
+  const sc = (await db.getSellerStorefrontContent(sellerId).catch(() => null)) || {};
+  const incoterm = sc.dutiesIncoterm === 'DDP' ? 'DDP' : 'DDU';
   const items = [];
   for (const it of ord.items) {
     const p = it.productId ? await db.getProductById(it.productId).catch(() => null) : null;
@@ -4874,7 +4896,7 @@ async function assembleCustomsFromOrder(orderId, sellerId) {
       originCountry: (p && p.countryOfOrigin) || '',
     });
   }
-  return { contentsType: 'merchandise', incoterm: 'DDU', invoiceNumber: String(oid), items };
+  return { contentsType: 'merchandise', incoterm, invoiceNumber: String(oid), items };
 }
 
 // CREATE SHIPPING LABEL
