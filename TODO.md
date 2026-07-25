@@ -48,7 +48,7 @@ design doc (like the storefront one) before starting. Components:
 - [ ] **Compliance** — restricted/prohibited items, denied-party screening,
   export EEL/PFC (AES) threshold handling.
 - [x] **Design doc written** — see [INTERNATIONAL-SHIPPING-DESIGN.md](INTERNATIONAL-SHIPPING-DESIGN.md) (data model, per-carrier customs payloads, addresses, duties, compliance, 5-phase plan). Phase 1 = product customs fields; Phase 2 = customs on labels.
-- [~] **UPS Paperless Invoice** — hardened efa4b81 (SoldTo contact added; response `customsForm` image captured for non-enrolled/printed fallback). **Remaining:** (1) seller must enroll their UPS account in UPS Paperless Invoice (one-time, UPS-side); (2) live cross-border label on an enrolled account to confirm + fill any destination-specific fields (EORI/VAT); (3) frontend "Print customs invoice" button to surface `label.customsForm` for the printed case.
+- [~] **UPS Paperless Invoice** — hardened efa4b81 (SoldTo contact) + printed-invoice fallback done fe67aee (`customsForm` captured; Quick Ship "Print customs invoice" button, GIF/PDF-aware, verified live to show only for intl non-paperless labels). **Remaining (UPS-side / live only):** (1) seller enrolls their UPS account in UPS Paperless Invoice (one-time); (2) live cross-border label on an enrolled account to confirm + fill any destination-specific fields (EORI/VAT).
 
 ## Feature roadmap — "make it yours" + growth
 - [x] **Email-capture popup (phase 1)** — popup → unique single-use welcome code (reuses `discount_codes`) → emailed via Resend → dashboard subscriber list + CSV export. _(done 2026-07-19, deployed + verified)_ **Phase 2 (todo):** bulk marketing send + unsubscribe management.
