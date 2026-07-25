@@ -27,11 +27,21 @@ design doc (like the storefront one) before starting. Components:
   description per product. _(DONE ad1b731 — additive DB columns, create/update
   routes, Add-product + Edit-product forms; verified live: save/normalize/
   round-trip + edit-modal populate. This is design-doc **Phase 1**.)_
-- [ ] **International addresses** — drop the US state/ZIP assumptions in the
-  buyer checkout (`index.html`) and Quick Ship (`shipping.html`): full country
-  list, free-form region + postal code, required phone/country.
+- [~] **International addresses** — design-doc **Phase 3**.
+  - [x] **Buyer checkout** _(DONE 41ba94e, verified live: 67-country ISO list;
+    region dropdown for US/CA/GB/AU, free-text region for everywhere else;
+    relaxed validation)._ **This completes the primary international flow:**
+    buyer abroad checks out → order captures the foreign address → seller ships
+    the order → Phase 2 auto-builds customs from product data. End-to-end works.
+  - [ ] **Quick Ship (`shipping.html`) manual international** — a distinct
+    sub-feature: needs the country/region UI **plus a manual customs-entry UI**
+    (Quick Ship has no order to auto-assemble customs from, so an intl label
+    without it would be rejected) **plus** international service options in the
+    service picker. Do these together as one coherent piece.
 - [ ] **International services & rates** — surface UPS Worldwide / FedEx
-  International / USPS Intl (via Shippo) in rate shopping + service pickers.
+  International / USPS Intl (via Shippo) in rate shopping + Quick Ship service
+  picker (rate shopping already returns intl services for cross-border routes;
+  the Quick Ship picker's options are still hard-coded domestic).
 - [ ] **Duties & taxes** — DDP vs DDU choice (who pays duties); optional landed-cost
   estimate at checkout.
 - [ ] **Compliance** — restricted/prohibited items, denied-party screening,
