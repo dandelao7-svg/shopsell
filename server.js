@@ -1759,6 +1759,12 @@ app.get('/api/checkout/config', async (req, res) => {
     res.json({
       publishableKey:  stripeConfig?.publishableKey || '',
       paymentsEnabled: !!(stripeConfig && stripeConfig.publishableKey && stripeConfig.secretKey),
+      // The public demo store (seed-demo.js, plan 'demo') has no Stripe account
+      // and never will. Flagged here off the plan rather than sniffing the slug
+      // client-side, so the storefront can explain an unbuyable cart as "this is
+      // a demo" instead of showing a real seller's setup instructions to the
+      // prospects the landing page now sends here.
+      isDemo:          seller.plan === 'demo',
       storeName:       seller.storeName,
       storeSlug:       seller.storeSlug,
       storefrontContent,

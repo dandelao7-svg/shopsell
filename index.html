@@ -1931,6 +1931,19 @@ async function setupStripeCheckout(){
   showStripeMsg('', false);
 
   if(!STORE_CONFIG.publishableKey){
+    // Same dead end, two audiences. On the public demo store the visitor is a
+    // prospect evaluating ShopSell, so explain it as a deliberate demo rather
+    // than showing them a real seller's setup instructions.
+    if(STORE_CONFIG.isDemo){
+      mountEl.innerHTML = '<div style="color:var(--muted);font-size:13px">'
+        + '<strong style="color:var(--text)">This is a demo store, so checkout is switched off.</strong><br>'
+        + 'Everything else here is real: browse, search, filter, add to cart. A live ShopSell store '
+        + 'connects your own Stripe account and takes payment right here. '
+        + '<a href="https://shopsell.nextlao.com/signup" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Start a free trial →</a>'
+        + '</div>';
+      setPlaceBtn({label:'Demo store', total:fmt(cartTotal()), disabled:true});
+      return;
+    }
     mountEl.innerHTML = '<div style="color:var(--accent);font-size:13px">Payment is not configured for this store. The seller needs to add their Stripe publishable key.</div>';
     setPlaceBtn({label:'Unavailable', total:fmt(cartTotal()), disabled:true});
     return;
