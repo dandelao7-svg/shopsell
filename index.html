@@ -302,7 +302,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
    area and pushed .cart-footer — which holds the Checkout button — underneath
    the browser chrome. Only .cart-list scrolls, so there was no way to reach it.
    100vh stays first as the fallback for browsers without dvh. */
-.cart-sidebar{position:fixed;top:0;right:-100%;width:min(400px,100%);height:100vh;height:100dvh;background:var(--card);z-index:401;transition:right 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,0.12)}
+.cart-sidebar{position:fixed;top:0;right:-100%;width:min(400px,100%);height:100vh;height:100dvh;overflow-y:auto;background:var(--card);z-index:401;transition:right 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,0.12)}
 .cart-sidebar.open{right:0}
 .cart-hd{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .cart-title{font-family:var(--font-head);font-size:1.1rem;font-weight:700}
@@ -325,9 +325,14 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .cart-qty-num{font-size:13px;font-weight:600;min-width:18px;text-align:center}
 .cart-rm{background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;margin-left:4px}
 .cart-rm:hover{color:var(--accent)}
-/* flex-shrink:0 keeps the footer at full height when the cart is long; the
-   safe-area pad keeps the Checkout button clear of the iPhone home indicator. */
-.cart-footer{flex-shrink:0;padding:18px 20px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--light)}
+/* Safety net for the store's primary CTA. position:sticky + the drawer's own
+   overflow-y:auto means that if ANYTHING ever makes this column taller than the
+   drawer, the drawer scrolls and the footer pins to the bottom edge instead of
+   being pushed out of reach. Normally .cart-list absorbs the overflow and the
+   drawer never scrolls, so this costs nothing and simply cannot regress into an
+   unreachable Checkout button. flex-shrink:0 holds its height when the cart is
+   long; the safe-area pad clears the iPhone home indicator. */
+.cart-footer{position:sticky;bottom:0;z-index:2;flex-shrink:0;padding:18px 20px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--light)}
 .cart-row{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:6px}
 .free-badge{background:var(--green-bg);color:var(--green);font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px}
 .cart-total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:600;margin-bottom:14px;padding-top:10px;border-top:1px solid var(--border)}
