@@ -181,6 +181,15 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
   .ss-iwt-media{min-height:220px}
   .ss-tiles{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
 }
+/* Phones: pin the grid to 2-up rather than letting auto-fill land on 2 or 3
+   depending on device width, then let an odd last tile span the row — 3 tiles
+   otherwise leave a lone orphan that reads as a wrap accident. Scoped to this
+   narrower breakpoint on purpose: at ~760px the grid can be 4-up, where
+   spanning the last tile would push it onto a row of its own. */
+@media(max-width:560px){
+  .ss-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ss-tiles > :last-child:nth-child(odd){grid-column:1/-1;min-height:130px}
+}
 .featured-rail-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .featured-rail-hd h2{font-family:var(--font-head);font-size:1.5rem;font-weight:700;margin:0}
 .featured-rail-hint{font-size:12px;color:var(--muted)}
