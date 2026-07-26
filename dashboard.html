@@ -2201,7 +2201,9 @@ async function saveIntlSettings(){
 // implemented in _layoutFieldHTML below.
 const SECTION_SCHEMAS    = window.SECTION_REGISTRY   || {};
 const SECTION_TYPE_ORDER = window.SECTION_TYPE_ORDER || Object.keys(SECTION_SCHEMAS);
-const COLLECTION_OPTIONS = [
+// Also from the shared module — a local copy had already drifted out of sight
+// here, which is the same failure mode the registry exists to prevent.
+const COLLECTION_OPTIONS = window.COLLECTION_OPTIONS || [
   { value:'all',      label:'All products' },
   { value:'featured', label:'Featured products' },
 ];
@@ -2281,8 +2283,12 @@ function _layoutFieldHTML(i, f, cfg){
       const on = val === undefined ? (f.default !== false) : (val !== false);
       return `<label class="toggle"><input type="checkbox" ${on?'checked':''} onchange="layoutSetCfg(${i},'${f.key}',this.checked)"><span class="tslider"></span></label>`;
     }
-    case 'select':
-      return `<select onchange="layoutSetCfg(${i},'${f.key}',this.value)">${(f.options||[]).map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
+    case 'select': {
+      // Fall back to the schema default so the control shows what will actually
+      // render, rather than relying on the default happening to be listed first.
+      const cur = val !== undefined ? val : f.default;
+      return `<select onchange="layoutSetCfg(${i},'${f.key}',this.value)">${(f.options||[]).map(o=>`<option value="${_dhEsc(o)}" ${cur===o?'selected':''}>${_dhEsc(o)}</option>`).join('')}</select>`;
+    }
     case 'collection': {
       const cur = val || f.default || 'all';
       return `<select onchange="layoutSetCfg(${i},'${f.key}',this.value)">${COLLECTION_OPTIONS.map(o=>`<option value="${o.value}" ${cur===o.value?'selected':''}>${_dhEsc(o.label)}</option>`).join('')}</select>`;

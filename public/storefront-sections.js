@@ -28,10 +28,11 @@
   var api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root && typeof window !== 'undefined') {
-    root.SECTION_REGISTRY   = api.SECTION_REGISTRY;
-    root.SECTION_TYPES      = api.SECTION_TYPES;
-    root.SECTION_TYPE_ORDER = api.SECTION_TYPE_ORDER;
-    root._ssEsc             = api.esc;
+    root.SECTION_REGISTRY    = api.SECTION_REGISTRY;
+    root.SECTION_TYPES       = api.SECTION_TYPES;
+    root.SECTION_TYPE_ORDER  = api.SECTION_TYPE_ORDER;
+    root.COLLECTION_OPTIONS  = api.COLLECTION_OPTIONS;
+    root._ssEsc              = api.esc;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 'use strict';
@@ -98,14 +99,25 @@ var SECTION_REGISTRY = {
     schema: [
       { key: 'heading', type: 'text', label: 'Heading' },
       { key: 'tiles', type: 'repeater', label: 'Tiles', max: 12, fields: [
-        { key: 'label', type: 'text',  label: 'Label' },
-        { key: 'image', type: 'image', label: 'Image URL' },
-        { key: 'href',  type: 'text',  label: 'Link (e.g. /?store=slug or a category)' },
+        { key: 'label',    type: 'text',  label: 'Label' },
+        { key: 'image',    type: 'image', label: 'Image URL' },
+        { key: 'category', type: 'text',  label: 'Category (e.g. clothing) — filters the grid' },
+        { key: 'href',     type: 'text',  label: 'Or a link URL (/path or https://…)' },
       ] },
     ],
     // Macy's-style department grid. A tile with no image falls back to a tinted
     // panel so a half-configured tile still looks deliberate. Renders nothing
     // when there are no tiles, so an empty section leaves no gap on the page.
+    //
+    // Two ways to make a tile clickable, and they are NOT interchangeable:
+    //   • category — filters the product_grid in place (hydrateTileLinks wires
+    //     the click; data-cat is read there). This is the common case.
+    //   • href     — a real URL for anything else.
+    // `category` is a separate key on purpose: the server scheme-checks every
+    // URL-bearing key (_safeUrl), so a bare token like "clothing" typed into
+    // href is silently dropped on save — which is exactly the trap the old
+    // "or a category" hint in this schema led sellers into. category wins if
+    // both are set.
     render: function (c) {
       c = c || {};
       var tiles = Array.isArray(c.tiles) ? c.tiles.filter(function (t) {
@@ -120,7 +132,11 @@ var SECTION_REGISTRY = {
           : '';
         var inner = '<span class="ss-tile-label">' + label + '</span>';
         var cls = 'ss-tile' + (t.image ? '' : ' ss-tile--plain');
+        var cat  = (t.category || '').trim();
         var href = (t.href || '').trim();
+        if (cat) {
+          return '<a class="' + cls + '" href="#" data-cat="' + esc(cat) + '"' + bg + '>' + inner + '</a>';
+        }
         return href
           ? '<a class="' + cls + '" href="' + esc(href) + '"' + bg + '>' + inner + '</a>'
           : '<div class="' + cls + '"' + bg + '>' + inner + '</div>';
@@ -166,13 +182,15 @@ var SECTION_REGISTRY = {
     // collections are design-doc §8.
     render: function (c) {
       c = c || {};
+      // data-cat mirrors each tab's category so category_tiles can light up the
+      // matching tab when a tile filters the grid (see hydrateTileLinks).
       var filters = c.showFilters === false ? '' : '<div class="cat-strip">\n' +
 '    <div class="cat-strip-inner" id="homeCatStrip">\n' +
-'      <div class="cat-tab active" onclick="setHomeCat(\'all\',this)">All</div>\n' +
-'      <div class="cat-tab" onclick="setHomeCat(\'clothing\',this)">Clothing</div>\n' +
-'      <div class="cat-tab" onclick="setHomeCat(\'accessories\',this)">Accessories</div>\n' +
-'      <div class="cat-tab" onclick="setHomeCat(\'home\',this)">Home & Living</div>\n' +
-'      <div class="cat-tab" onclick="setHomeCat(\'beauty\',this)">Beauty</div>\n' +
+'      <div class="cat-tab active" data-cat="all" onclick="setHomeCat(\'all\',this)">All</div>\n' +
+'      <div class="cat-tab" data-cat="clothing" onclick="setHomeCat(\'clothing\',this)">Clothing</div>\n' +
+'      <div class="cat-tab" data-cat="accessories" onclick="setHomeCat(\'accessories\',this)">Accessories</div>\n' +
+'      <div class="cat-tab" data-cat="home" onclick="setHomeCat(\'home\',this)">Home & Living</div>\n' +
+'      <div class="cat-tab" data-cat="beauty" onclick="setHomeCat(\'beauty\',this)">Beauty</div>\n' +
 '    </div>\n' +
 '  </div>\n' +
 '  ';
@@ -265,9 +283,10 @@ var SECTION_REGISTRY = {
     ],
     // Inline twin of the email-capture popup — posts to the same
     // /api/store/subscribe endpoint, so the seller's existing discount-percent
-    // setting and one-time-code emailing apply unchanged. Wired at hydration by
-    // hydrateNewsletterForms(); the discount % is NOT configurable here on
-    // purpose, so both entry points can't disagree about what's on offer.
+    // setting and one-time-code emailing apply unchanged. Wired by the inline
+    // onsubmit below (no hydration step needed); the discount % is NOT
+    // configurable here on purpose, so both entry points can't disagree about
+    // what's on offer.
     render: function (c) {
       c = c || {};
       var headline = (c.headline && c.headline.trim()) || 'Get the good stuff first';

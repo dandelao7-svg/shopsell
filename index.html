@@ -1085,8 +1085,29 @@ async function submitNewsletterSection(e, form){
 // Per-section JS wiring after #page-home is (re)built. Featured + grid are
 // hydrated by the existing renderFeatured()/renderGrid() calls in loadStorefront().
 // The newsletter form binds via its inline onsubmit, so it needs nothing here.
+// Category tiles that filter the product grid. The category lives in data-cat
+// rather than the href because the server scheme-checks URL-bearing keys, so a
+// bare category token can't survive in an href. Falls back to navTo('shop') when
+// this page has no product_grid section — setHomeCat/renderGrid assume #homeGrid
+// exists and would throw.
+function hydrateTileLinks(root){
+  (root || document).querySelectorAll('.ss-tile[data-cat]').forEach(el=>{
+    el.addEventListener('click', e=>{
+      e.preventDefault();
+      const cat = el.getAttribute('data-cat') || 'all';
+      if(!document.getElementById('homeGrid')){ navTo('shop'); return; }
+      // Light up the matching tab, if the grid is showing its category strip.
+      const tab = [...document.querySelectorAll('#homeCatStrip .cat-tab')]
+        .find(t => t.dataset.cat === cat);
+      setHomeCat(cat, tab);
+      document.querySelector('.shop-section')?.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+}
+
 function hydrateSections(root){
   hydratePromoCountdowns(root);
+  hydrateTileLinks(root);
 }
 
 // Synthesize the default section list from the legacy flat fields, so a store

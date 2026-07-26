@@ -46,11 +46,13 @@ const SECTIONS = [
       cta1:{ label:'Shop the collection' },
       cta2:{ label:'New arrivals' },
       image:'/demo/hero.jpg' } },
+  // `category` makes each tile filter the product grid below. Only the three
+  // categories the demo actually stocks are shown — a Beauty tile leading to an
+  // empty grid reads as broken (tile-beauty.jpg stays unused, ready for it).
   { type:'category_tiles', config:{ heading:'Shop by department', tiles:[
-      { label:'Clothing',      image:'/demo/tile-clothing.jpg' },
-      { label:'Accessories',   image:'/demo/tile-accessories.jpg' },
-      { label:'Home & Living', image:'/demo/tile-home.jpg' },
-      { label:'Beauty',        image:'/demo/tile-beauty.jpg' },
+      { label:'Clothing',      image:'/demo/tile-clothing.jpg',    category:'clothing' },
+      { label:'Accessories',   image:'/demo/tile-accessories.jpg', category:'accessories' },
+      { label:'Home & Living', image:'/demo/tile-home.jpg',        category:'home' },
     ] } },
   { type:'featured_carousel', config:{ heading:'This season’s favorites', source:'featured', autoplay:true } },
   { type:'image_with_text', config:{

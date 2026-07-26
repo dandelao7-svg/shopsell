@@ -3059,7 +3059,9 @@ const { SECTION_TYPES: SECTION_TYPES_ALLOWED } = require('./public/storefront-se
 const MAX_SECTIONS   = 30;
 const MAX_STR_LEN    = 5000;
 const MAX_URL_LEN    = 2000;
-const URL_KEYS       = new Set(['url', 'image', 'href', 'src', 'logoUrl', 'link']);
+// Config keys whose value is a URL and must be scheme-checked. `link` is NOT
+// here — it's an object ({label,url}) handled separately below.
+const URL_KEYS       = new Set(['url', 'image', 'href', 'src', 'logoUrl']);
 
 // URL scheme whitelist: HTML-escaping does NOT neutralize `javascript:` in an
 // href/src, so URL-bearing values are scheme-checked here. Allow only relative
@@ -3083,7 +3085,7 @@ function _sanitizeConfig(v, depth) {
   if (v && typeof v === 'object') {
     const out = {};
     for (const k of Object.keys(v).slice(0, 50)) {
-      if (k === 'url' || k === 'image' || k === 'href' || k === 'src' || k === 'logoUrl') {
+      if (URL_KEYS.has(k)) {
         out[k] = _safeUrl(v[k]);
       } else if (k === 'link' && v[k] && typeof v[k] === 'object') {
         // { label, url } — keep the label as text, scheme-check the url.
