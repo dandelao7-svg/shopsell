@@ -252,6 +252,15 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .modal-handle-wrap{display:flex;justify-content:center;margin-bottom:1rem}
 .modal-handle{width:40px;height:4px;background:var(--border);border-radius:4px;cursor:pointer}
 .modal-emoji{font-size:5rem;text-align:center;background:var(--light2);border-radius:14px;padding:2rem;margin-bottom:1rem}
+/* Thumbnail strip. Only shown when a product has more than one photo — before
+   this, images 2-6 were stored and uploaded but nothing ever displayed them.
+   Scrolls sideways rather than wrapping, so a 6-photo product can't push the
+   Add to cart button further down an already tall modal. */
+.modal-thumbs{display:none;gap:8px;margin-bottom:1rem;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.modal-thumb{flex:0 0 58px;height:58px;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:var(--light2);cursor:pointer;transition:border-color 0.15s}
+.modal-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.modal-thumb.active{border-color:var(--accent)}
+.modal-thumb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .modal-cat{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px}
 .modal-name{font-family:var(--font-head);font-size:1.4rem;font-weight:700;line-height:1.2;margin-bottom:8px}
 .modal-price-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -846,6 +855,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
   <div class="product-modal" id="productModal">
     <div class="modal-handle-wrap"><div class="modal-handle" onclick="closeModal()"></div></div>
     <div class="modal-emoji" id="modalEmoji"></div>
+    <div class="modal-thumbs" id="modalThumbs"></div>
     <div class="modal-cat" id="modalCat"></div>
     <div class="modal-name" id="modalName"></div>
     <div class="modal-price-row">
@@ -1459,16 +1469,54 @@ function searchProducts(q){
   renderGrid('homeGrid','homeCount',homeCat,homeSort,q);
 }
 
+/* Thumbnail strip for products with more than one photo.
+
+   The uploader has always accepted up to 6 images and stored them all, but
+   every render path in the app used images[0] and nothing else — dashboard
+   grid, storefront grid, this modal, cart lines, order summaries. Extra photos
+   were write-only. This is the one surface that shows them.
+
+   Hidden entirely for 0 or 1 image, so single-photo products look exactly as
+   they did. */
+function renderModalThumbs(p){
+  const wrap = document.getElementById('modalThumbs');
+  if(!wrap) return;
+  const imgs = (p && Array.isArray(p.images)) ? p.images.filter(Boolean) : [];
+  if(imgs.length < 2){ wrap.innerHTML = ''; wrap.style.display = 'none'; return; }
+  wrap.style.display = 'flex';
+  wrap.innerHTML = imgs.map((src, i) => `
+    <button type="button" class="modal-thumb${i === 0 ? ' active' : ''}"
+            onclick="setModalImage(${i})"
+            aria-label="Show image ${i + 1} of ${imgs.length}">
+      <img src="${escapeHtml(src)}" alt="">
+    </button>`).join('');
+}
+
+// Swap the main modal image. Deliberately does not re-render the modal — only
+// the <img> src and which thumbnail reads as active change, so the scroll
+// position and everything below stay put.
+function setModalImage(i){
+  const p = currentModal;
+  if(!p || !Array.isArray(p.images)) return;
+  const imgs = p.images.filter(Boolean);
+  if(!imgs[i]) return;
+  const main = document.getElementById('modalMainImg');
+  if(main) main.src = imgs[i];
+  document.querySelectorAll('#modalThumbs .modal-thumb')
+    .forEach((b, n) => b.classList.toggle('active', n === i));
+}
+
 // ── MODAL ─────────────────────────────────────────────────────
 function openModal(id){
   const p=PRODUCTS.find(x=>x.id===id);
   currentModal=p; mq=1;
   document.title = p.name + ' — ' + ((STORE_CONFIG&&STORE_CONFIG.storeName)||'ShopSell');
+  renderModalThumbs(p);
   const modalImgEl = document.getElementById('modalEmoji');
   if(p.images && p.images.length){
     modalImgEl.style.padding = '0';
     modalImgEl.style.height  = '280px';
-    modalImgEl.innerHTML = `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;display:block">`;
+    modalImgEl.innerHTML = `<img id="modalMainImg" src="${p.images[0]}" alt="${escapeHtml(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;display:block">`;
   } else {
     modalImgEl.style.padding = '';
     modalImgEl.style.height  = '';
