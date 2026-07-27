@@ -5926,6 +5926,16 @@ function goHistoryPage(p){
 }
 
 // ── ROW ACTION MENU ──────────────────────────────────────────
+// The page zoom (see the ZOOM TRAP note in the stylesheet). Anything that mixes
+// getBoundingClientRect() — which is in painted coordinates — with a CSS length
+// it sets itself must divide by this, or the two disagree by the zoom factor.
+// Read from computed style rather than hard-coded so it tracks the stylesheet,
+// and so it correctly falls back to 1 in print, where the zoom rule is scoped out.
+function pageZoom(){
+  const z = parseFloat(getComputedStyle(document.documentElement).zoom);
+  return (z && isFinite(z) && z > 0) ? z : 1;
+}
+
 let openRowMenuTracking = null;
 
 function toggleRowMenu(trackingNumber, btn){
@@ -5967,12 +5977,35 @@ function toggleRowMenu(trackingNumber, btn){
     </div>
   `;
 
-  // Position menu next to the button
-  const rect = btn.getBoundingClientRect();
-  menu.style.position = 'fixed';
-  menu.style.top  = `${rect.bottom + 4}px`;
-  menu.style.left = `${rect.right - 180}px`; // align right edge with button
+  // Position the menu next to the button — ZOOM TRAP, third variant.
+  // getBoundingClientRect() reports PAINTED coordinates (html{zoom:1.12} is
+  // already baked in), but the top/right we set are specified lengths that get
+  // multiplied by that same zoom again when painted. Left unconverted, the menu
+  // landed ~12% further down and right than intended; on a wide window that put
+  // it clean off the right edge of the screen, and body{overflow-x:hidden} meant
+  // no scrollbar ever hinted at it — the ⋯ button looked completely dead.
+  // Divide painted coordinates by the zoom to get the specified value.
+  // Anchoring with `right` rather than `left` also avoids needing the menu's own
+  // width, which varies with the item labels (min-width:180px is only a floor).
+  const z = pageZoom();
+  menu.style.position   = 'fixed';
+  menu.style.visibility = 'hidden';   // measure before committing to a side
+  menu.style.top        = '0';
+  menu.style.left       = '0';
   document.body.appendChild(menu);
+
+  const rect = btn.getBoundingClientRect();
+  const menuH = menu.getBoundingClientRect().height;   // painted, like rect
+  // Flip above the button when there isn't room below: the menu is fixed, so
+  // anything past the bottom edge would be unreachable rather than scrollable.
+  const fitsBelow  = rect.bottom + 4 + menuH <= window.innerHeight - 8;
+  const paintedTop = fitsBelow ? rect.bottom + 4
+                               : Math.max(8, rect.top - 4 - menuH);
+
+  menu.style.top        = `${paintedTop / z}px`;
+  menu.style.left       = 'auto';
+  menu.style.right      = `${Math.max(8, window.innerWidth - rect.right) / z}px`;
+  menu.style.visibility = 'visible';
 
   openRowMenuTracking = trackingNumber;
 
