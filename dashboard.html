@@ -3121,7 +3121,10 @@ function showDash(name){
   document.getElementById('topbarTitle').textContent = titles[name]||name;
   window.scrollTo(0,0);
 
-  if(name === 'products') loadFeaturedRailToggle();
+  // loadProducts() as well as the rail toggle: every other page refreshes its
+  // own contents on entry, but Products only refreshed at init, so anything
+  // added since page load was missing until a manual reload.
+  if(name === 'products'){ loadProducts(); loadFeaturedRailToggle(); }
   if(name === 'storefront') loadSubscribers();
   if(name === 'stripe') loadStripeConfig();
   if(name === 'discounts') loadDiscounts();
@@ -3778,10 +3781,15 @@ async function publishProduct(overrideStatus){
       return;
     }
 
+    // Refresh the grid on BOTH paths. Publishing used to skip this and only
+    // show the success banner, so a newly published product was missing from
+    // the Products page until a full page reload — loadProducts() otherwise
+    // runs only at init, and switching pages doesn't re-fetch. It looked for
+    // all the world like the product hadn't saved.
+    loadProducts();
+
     if(isDraft){
-      // Drafts are hidden from the storefront; just confirm and refresh the grid.
       toast('✓ '+name+' saved as draft');
-      loadProducts();
     } else {
       const successEl = document.getElementById('productSuccess');
       successEl.style.display='flex';
