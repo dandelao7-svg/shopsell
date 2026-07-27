@@ -570,9 +570,13 @@ app.get('/', async (req, res) => {
     // Explicit ?store=<slug> serves the storefront on ANY host — used by the
     // dashboard "View store" preview and works before a seller's subdomain /
     // custom domain is set up. The storefront JS reads the slug from ?store=.
-    if (req.query.store) return res.sendFile(path.join(__dirname, 'index.html'));
+    if (req.query.store) {
+      const bySlug = await db.getSellerBySlug(String(req.query.store));
+      if (bySlug) return res.send(await storeRootHtml(bySlug));
+      return res.sendFile(path.join(__dirname, 'index.html'));
+    }
     const seller = await resolveStoreByHost(req.hostname);
-    if (seller) return res.sendFile(path.join(__dirname, 'index.html'));
+    if (seller) return res.send(await storeRootHtml(seller));
     // No seller: the bare platform apex (nextlao.com / www.nextlao.com) shows the
     // NextLao umbrella; everything else (shopsell.nextlao.com, the Railway app
     // host, other reserved subdomains) shows the ShopSell marketing site.
@@ -605,6 +609,58 @@ function htmlEsc(s) {
 function storeCanonicalBase(seller) {
   if (seller.customDomain && seller.customDomainVerified) return `https://${seller.customDomain}`;
   return `https://${seller.storeSlug}.${PLATFORM_DOMAIN}`;
+}
+
+// Store home page, server-rendered head. index.html ships a generic placeholder
+// head ("ShopSell — Your Store", the platform og.png) that the storefront JS
+// rewrites once it knows the store — but social scrapers never run JS, so every
+// seller's home link shared anywhere produced the same generic ShopSell card,
+// and every storefront root competed in search under one identical title.
+// Same substitution the /product/:id route uses.
+//
+// og:image comes from the store's own hero or logo; there's deliberately no
+// fallback to a product photo, which would cost an extra query on the hottest
+// page for the common case of a store that has set neither.
+async function storeRootHtml(seller) {
+  const html = indexHtml();
+  let content = {};
+  try { content = (await db.getSellerStorefrontContent(seller.id)) || {}; } catch (_) { /* head degrades, page still serves */ }
+
+  const base  = storeCanonicalBase(seller);
+  const name  = seller.storeName || 'Online Store';
+  const desc  = String(content.heroSubtext || content.about || `Shop ${name} — quality products with fast, tracked shipping.`)
+    .replace(/\s+/g, ' ').trim().slice(0, 155);
+  const raw   = content.heroImage || content.logoUrl || '';
+  const image = (typeof raw === 'string' && raw.startsWith('/')) ? `${base}${raw}`
+              : (/^https?:\/\//i.test(raw) ? raw : 'https://shopsell.nextlao.com/og.png');
+
+  const ld = {
+    '@context': 'https://schema.org', '@type': 'Store',
+    name, description: desc, url: `${base}/`,
+    image: image || undefined,
+  };
+  const head =
+`<title>${htmlEsc(name)}</title>
+<meta name="description" content="${htmlEsc(desc)}">
+<link rel="canonical" href="${htmlEsc(base)}/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${htmlEsc(name)}">
+<meta property="og:title" content="${htmlEsc(name)}">
+<meta property="og:description" content="${htmlEsc(desc)}">
+<meta property="og:url" content="${htmlEsc(base)}/">
+<meta property="og:image" content="${htmlEsc(image)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${htmlEsc(image)}">
+<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`;
+
+  const noscript =
+`<noscript><article style="max-width:640px;margin:24px auto;padding:0 16px;font-family:sans-serif">
+<h1>${htmlEsc(name)}</h1>
+<p>${htmlEsc(desc)}</p>
+</article></noscript>`;
+
+  return html.replace(/<!--SEO_START-->[\s\S]*?<!--SEO_END-->/, `<!--SEO_START-->${head}<!--SEO_END-->`)
+             .replace('<!--SSR_BODY-->', noscript);
 }
 
 app.get('/product/:id', async (req, res) => {
