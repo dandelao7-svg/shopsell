@@ -2613,13 +2613,23 @@ function loadHomepageInto(c){
   hpHeroImg = c.heroImage || '';
   renderHeroImgPreview();
 }
-function handleHeroImgFile(files){
+async function handleHeroImgFile(files){
   const file = files && files[0];
   if(!file) return;
-  if(file.size > 819200){ toast('Hero image is too large — use one under 800KB.'); return; }
-  const reader = new FileReader();
-  reader.onload = e => { hpHeroImg = e.target.result; renderHeroImgPreview(); };
-  reader.readAsDataURL(file);
+  if(!file.type.startsWith('image/')){ toast('That file is not an image.'); return; }
+  // No size gate any more: the hero used to be stored inline, so an 800KB file
+  // had to be refused outright. It's compressed and uploaded now, so a big
+  // camera original is fine — it just gets scaled down. 1600px because the hero
+  // spans the full storefront width, wider than a product photo.
+  const box = document.getElementById('hpHeroImgPreview');
+  if(box) box.textContent = 'Uploading…';
+  try {
+    hpHeroImg = await uploadImage(await compressImage(file, 1600, 0.85));
+  } catch(err){
+    console.error('Hero image upload failed:', err);
+    toast('Could not upload the hero image: ' + err.message);
+  }
+  renderHeroImgPreview();
 }
 function removeHeroImg(){
   hpHeroImg = '';
@@ -2691,13 +2701,23 @@ function setAccentNote(){
   const n=document.getElementById('apAccentNote');
   if(n) n.textContent = apAccentCustom ? 'Custom accent' : 'Using theme default';
 }
-function handleLogoFile(files){
+async function handleLogoFile(files){
   const file = files && files[0];
   if(!file) return;
-  if(file.size > 512000){ toast('Logo is too large — use an image under 500KB.'); return; }
-  const reader = new FileReader();
-  reader.onload = e => { apLogo = e.target.result; renderLogoPreview(); };
-  reader.readAsDataURL(file);
+  if(!file.type.startsWith('image/')){ toast('That file is not an image.'); return; }
+  if(file.size > 8 * 1024 * 1024){ toast('Logo is too large — use an image under 8MB.'); return; }
+  const box = document.getElementById('apLogoPreview');
+  if(box) box.textContent = 'Uploading…';
+  try {
+    // Uploaded as-is, NOT through compressImage: logos are usually PNGs with a
+    // transparent background, and canvas re-encoding to JPEG would flatten that
+    // onto solid black. The 8MB cap above is the only guard.
+    apLogo = await uploadImage(await fileToDataUrl(file));
+  } catch(err){
+    console.error('Logo upload failed:', err);
+    toast('Could not upload the logo: ' + err.message);
+  }
+  renderLogoPreview();
 }
 function removeLogo(){
   apLogo = '';
@@ -3483,6 +3503,36 @@ function calcMargin(){
   } else {bar.style.display='none';}
 }
 
+/* Upload a data URL and get back a hosted path like `/img/<id>`.
+
+   Images used to be stored inline as base64 data URIs, which meant they could
+   never be used as OG/social images (a crawler needs a real URL) and they rode
+   along on every product payload. Everything that accepts an image now uploads
+   first and stores only the returned path. */
+async function uploadImage(dataUrl){
+  const token = localStorage.getItem('ss_token');
+  const res = await fetch('/api/seller/images', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+    body: JSON.stringify({ dataUrl }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+  return data.url;
+}
+
+// Read a file unchanged, preserving its format. Used where re-encoding would
+// lose something — a logo's transparency, most of all: canvas-to-JPEG would
+// flatten a transparent PNG onto black.
+function fileToDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function compressImage(file, maxDim, quality){
   maxDim  = maxDim  || 1200;
   quality = quality || 0.85;
@@ -3513,14 +3563,19 @@ function compressImage(file, maxDim, quality){
 async function handleFiles(files){
   const slots = 6 - uploadedImages.length;
   const arr = Array.from(files).slice(0, slots).filter(f => f.type.startsWith('image/'));
+  const hint = document.getElementById('imgHint');
   for(const f of arr){
     try {
+      if(hint) hint.textContent = `Uploading ${f.name}…`;
+      // Compress first: the upload is the slow part, and 1200px/q0.85 is
+      // already what the storefront displays.
       const dataUrl = await compressImage(f);
-      uploadedImages.push(dataUrl);
+      uploadedImages.push(await uploadImage(dataUrl));
       renderImgPreviews();
     } catch(err){
-      console.error('Image compression failed for', f.name, err);
-      toast('Could not process image: ' + f.name);
+      console.error('Image upload failed for', f.name, err);
+      toast(`Could not add ${f.name}: ${err.message}`);
+      renderImgPreviews();   // clears the "Uploading…" hint
     }
   }
 }

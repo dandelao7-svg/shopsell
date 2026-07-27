@@ -21,6 +21,7 @@
 'use strict';
 
 const { Pool } = require('pg');
+const crypto = require('crypto');
 
 // ── CONNECTION ───────────────────────────────────────────────
 // Railway sets DATABASE_URL automatically when Postgres is referenced.
@@ -135,6 +136,32 @@ async function initSchema() {
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS returnable          BOOLEAN NOT NULL DEFAULT TRUE;`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS return_window_days  INTEGER NOT NULL DEFAULT 30;`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS restocking_fee_pct  NUMERIC(5,2) NOT NULL DEFAULT 0;`);
+
+    /* Uploaded image bytes. Product photos, store logos and hero images used to
+       be inlined into products.image_urls / storefront_content as base64 data
+       URIs, which meant they could never be used as OG/social images (those
+       need a real URL), and they rode along on every product API payload.
+       They now live here and are referenced by the path `/img/<id>`.
+
+       Storing the PATH rather than an absolute URL keeps rows host-independent
+       — the same row works on the Railway host, a <slug> subdomain and a
+       verified custom domain — and leaves a clean seam: pointing /img at
+       object storage later is a server-side change with no data migration.
+
+       id is a random token, not a serial: these URLs are handed to browsers and
+       crawlers, and a guessable sequential id would let anyone enumerate every
+       seller's uploads. */
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS images (
+        id          TEXT PRIMARY KEY,
+        seller_id   INTEGER REFERENCES sellers(id) ON DELETE CASCADE,
+        mime        TEXT NOT NULL,
+        bytes       BYTEA NOT NULL,
+        byte_size   INTEGER NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_images_seller ON images (seller_id);`);
     // Product options (e.g. Size, Color). Variants (already present) hold one
     // priced/stocked entry per option combination.
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS options JSONB DEFAULT '[]'::jsonb;`);
@@ -1613,8 +1640,94 @@ async function buyerHasPurchased(buyerId, email, productId) {
   return rows.length > 0;
 }
 
+// ── IMAGES ───────────────────────────────────────────────────
+// Uploaded bytes for product photos, store logos and hero images. See the
+// `images` table comment in initSchema for why these are paths, not data URIs.
+
+// Extensions are cosmetic — GET /img/:id strips them and serves the stored
+// mime. They exist so a crawler or a human sees a plausible image URL.
+const IMAGE_EXT = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+  'image/gif': 'gif',  'image/avif': 'avif',
+};
+
+// Which mime types we accept at all. SVG is deliberately absent: it can carry
+// script, and these are served from our own origin.
+const IMAGE_MIMES = Object.keys(IMAGE_EXT);
+
+async function createImage({ sellerId, mime, buffer }) {
+  if (!IMAGE_MIMES.includes(mime)) throw new Error(`Unsupported image type: ${mime}`);
+  // 24 random bytes: long enough that the URLs aren't enumerable.
+  const id = `${crypto.randomBytes(24).toString('hex')}.${IMAGE_EXT[mime]}`;
+  await pool.query(
+    `INSERT INTO images (id, seller_id, mime, bytes, byte_size)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, sellerId || null, mime, buffer, buffer.length]
+  );
+  return { id, path: `/img/${id}`, byteSize: buffer.length };
+}
+
+async function getImage(id) {
+  const { rows } = await pool.query(
+    `SELECT id, mime, bytes, byte_size FROM images WHERE id = $1`,
+    [String(id)]
+  );
+  if (!rows.length) return null;
+  const r = rows[0];
+  return { id: r.id, mime: r.mime, bytes: r.bytes, byteSize: r.byte_size };
+}
+
+/* ── One-off migration support (migrate-images.js) ──
+   Finding rows that still carry inline base64. Kept here rather than in the
+   script so all SQL stays in this file. Safe to leave in place once the
+   migration has run: both queries simply return nothing. */
+
+// Products with at least one `data:` entry in image_urls.
+async function listProductsWithInlineImages() {
+  const { rows } = await pool.query(
+    `SELECT id, seller_id, image_urls
+       FROM products
+      WHERE image_urls::text LIKE '%data:image/%'
+      ORDER BY id`
+  );
+  return rows.map(r => ({ id: r.id, sellerId: r.seller_id, imageUrls: r.image_urls || [] }));
+}
+
+async function setProductImageUrls(productId, urls) {
+  await pool.query(
+    `UPDATE products SET image_urls = $1, updated_at = NOW() WHERE id = $2`,
+    [JSON.stringify(urls), productId]
+  );
+}
+
+// Sellers whose storefront_content still has an inline logo or hero image.
+async function listSellersWithInlineStorefrontImages() {
+  const { rows } = await pool.query(
+    `SELECT id, storefront_content
+       FROM sellers
+      WHERE storefront_content::text LIKE '%data:image/%'
+      ORDER BY id`
+  );
+  return rows.map(r => ({ id: r.id, content: r.storefront_content || {} }));
+}
+
+// Used by the backfill script to report progress without pulling byte columns.
+async function countImages() {
+  const { rows } = await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(byte_size),0)::bigint AS total FROM images`);
+  return { count: rows[0].n, totalBytes: Number(rows[0].total) };
+}
+
 // ── EXPORTS ──────────────────────────────────────────────────
 module.exports = {
+  // Images
+  createImage,
+  getImage,
+  countImages,
+  IMAGE_MIMES,
+  listProductsWithInlineImages,
+  setProductImageUrls,
+  listSellersWithInlineStorefrontImages,
+
   // Sellers
   createSeller,
   getSellerByEmail,

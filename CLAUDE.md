@@ -9,6 +9,7 @@ npm install        # install dependencies
 node server.js     # run locally (same as `npm start` / `npm dev`) — needs a filled-in .env
 node fix-order.js <orderId>   # one-off admin script: overwrite an order's customer_info
 node seed-demo.js             # create/refresh the public demo store (slug `demo`); --wipe to reset its products
+node migrate-images.js        # one-off backfill: inline base64 images → hosted /img/ URLs; --dry-run to preview
 ```
 
 There is **no build step, no test suite, and no linter**. The frontend is plain HTML files served statically — there is nothing to compile. Node >= 18 is required (`carriers.js` and `lib/` rely on global `fetch`/`crypto` and dynamic `import()` of `node-fetch`).
@@ -40,7 +41,9 @@ Multi-tenant SaaS ecommerce + shipping platform. A single Express server backs v
 
 - **Multi-tenant host routing.** `resolveStoreByHost(host)` maps an incoming hostname to a seller: a verified custom domain (apex form), or a `<slug>.PLATFORM_DOMAIN` subdomain (`RESERVED_SUBDOMAINS` excluded). Custom domains are verified via a DNS TXT challenge and pointed at `CUSTOM_DOMAIN_TARGET` by CNAME.
 
-- **Webhook raw body.** Stripe (`/api/stripe/webhook`) and Shopify (`/api/webhooks/shopify`) need the raw request body for HMAC verification, so `express.raw()` is registered for those paths **before** `express.json()`. Keep that ordering when touching middleware.
+- **Webhook raw body.** Stripe (`/api/stripe/webhook`) and Shopify (`/api/webhooks/shopify`) need the raw request body for HMAC verification, so `express.raw()` is registered for those paths **before** `express.json()`. Keep that ordering when touching middleware. `/api/seller/images` relies on the same rule for the opposite reason — a larger `express.json({ limit })` registered ahead of the global parser, whose 100KB default would otherwise reject every upload.
+
+- **Uploaded images.** Product photos, store logos and hero images are stored as bytes in the `images` table and referenced by the path `/img/<id>` (served by a public route; the id is a random token, so the URL is the capability). Store the **path**, never an absolute URL — rows must stay valid across the Railway host, `<slug>` subdomains and verified custom domains; SSR/OG code absolutizes with `storeCanonicalBase(seller)`. Do not reintroduce base64 `data:` URIs: they can't be used as OG/social images and they ride along on every API payload. `migrate-images.js` converts any that predate this.
 
 - **Sales channels.** Orders can be imported from Shopify (public-app OAuth, one shared app credential set) and Amazon into the local `orders` table, deduped by external id. When a label is bought, tracking is pushed back to the source channel as a fulfillment — best-effort, a channel failure must never break the label purchase (`pushChannelFulfillment`).
 

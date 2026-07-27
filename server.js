@@ -487,6 +487,17 @@ app.use(helmet({
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use('/api/webhooks/shopify', express.raw({ type: 'application/json' }));
 
+// Image uploads carry a base64 payload and need a bigger ceiling than the rest
+// of the API. Scoped to the one route rather than raised globally, so a large
+// body is only ever accepted where it's expected — same ordering rule as the
+// raw webhook bodies above: the specific parser must be registered BEFORE the
+// general express.json() or the 100KB default wins.
+//
+// The 100KB default is why uploads used to fail: MAX_LOGO_CHARS allowed ~700KB
+// but body-parser rejected anything over 100KB before the route ever ran, with
+// a generic error that never mentioned size.
+app.use('/api/seller/images', express.json({ limit: '12mb' }));
+
 // Parse JSON for all other routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -516,6 +527,40 @@ app.use('/api',      apiLimiter);
 
 // ── SERVE STATIC FILES ────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
+
+/* Uploaded images (product photos, store logos, hero images), stored as bytes
+   in Postgres. Public and unauthenticated by design — these URLs go into
+   storefronts, OG tags and JSON-LD, so crawlers and social scrapers must be
+   able to fetch them without a session. The id is a 24-byte random token, so
+   the URL itself is the capability; nothing here is enumerable.
+
+   Cached immutably: the id is derived from random bytes at upload time and a
+   given id's content never changes, so a replaced photo is always a new URL. */
+app.get('/img/:id', async (req, res) => {
+  try {
+    const img = await db.getImage(req.params.id);
+    if (!img) return res.status(404).send('Not found');
+
+    const etag = `"${img.id}"`;
+    if (req.headers['if-none-match'] === etag) return res.status(304).end();
+
+    // Content-Length is left to express, which derives it from the buffer —
+    // setting it by hand from byte_size would only create a chance to disagree.
+    res.set({
+      'Content-Type':  img.mime,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'ETag':          etag,
+      // These are seller-supplied bytes on our own origin. The mime is
+      // whitelisted at upload, but pin it anyway so a browser can never be
+      // talked into treating one as script.
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.send(img.bytes);
+  } catch (err) {
+    console.error('GET /img/:id failed:', err);
+    res.status(500).send('Error');
+  }
+});
 
 // Root: a seller host (custom domain or <slug>.PLATFORM_DOMAIN) serves that
 // seller's storefront; the platform domain (apex / reserved subdomain like
@@ -585,7 +630,17 @@ app.get('/product/:id', async (req, res) => {
     const url    = `${base}/product/${product.id}`;
     const name   = product.name || 'Product';
     const desc   = String(product.description || `${name} from ${seller.storeName}`).replace(/\s+/g, ' ').trim().slice(0, 155);
-    const images = (Array.isArray(product.imageUrls) ? product.imageUrls : []).filter(u => /^https?:\/\//i.test(u));
+    // OG tags and JSON-LD need ABSOLUTE urls — a social scraper has no page
+    // context to resolve a relative path against. Uploaded images are stored
+    // host-independently as `/img/<id>` (and the demo store uses `/demo/*.jpg`),
+    // so absolutize those against the store's canonical base rather than
+    // dropping them. Dropping was the old behaviour, and it's why a product
+    // with an uploaded photo showed the generic ShopSell card when shared.
+    // Anything still not http(s) after that (a leftover data: URI from before
+    // the migration) is skipped — it can't be fetched by a crawler.
+    const images = (Array.isArray(product.imageUrls) ? product.imageUrls : [])
+      .map(u => (typeof u === 'string' && u.startsWith('/')) ? `${base}${u}` : u)
+      .filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
     const price  = (Number(product.price) || 0).toFixed(2);
     const inStock = (product.quantity || 0) > 0 || (Array.isArray(product.variants) && product.variants.length > 0);
     const title  = `${name} — ${seller.storeName}`;
@@ -1465,6 +1520,57 @@ function normalizeVariants(rawOptions, rawVariants) {
   }
   return { options, variants };
 }
+
+/* POST /api/seller/images — turn an uploaded image into a hosted URL.
+
+   Takes a data URL (what FileReader/canvas produce in the dashboard) and
+   returns { url: '/img/<id>' } to store in products.image_urls or
+   storefront_content. Deliberately dumb: it does not touch either of those
+   records, so the caller stays in control of where the URL lands and a failed
+   product save can't strand a half-written reference.
+
+   Orphans are possible — upload succeeds, product save is abandoned — and are
+   accepted for now: a stray row costs a few hundred KB. Worth a sweep later if
+   it ever adds up. */
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;  // decoded, not base64
+
+app.post('/api/seller/images', requireAuth, async (req, res) => {
+  try {
+    const dataUrl = String(req.body?.dataUrl || '');
+    const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,(.+)$/i.exec(dataUrl);
+    if (!m) {
+      return res.status(400).json({ error: 'Expected a base64 data URL.' });
+    }
+
+    const mime = m[1].toLowerCase();
+    if (!db.IMAGE_MIMES.includes(mime)) {
+      return res.status(415).json({
+        error: `Unsupported image type. Use ${db.IMAGE_MIMES.map(t => t.replace('image/', '')).join(', ')}.`,
+      });
+    }
+
+    let buffer;
+    try {
+      buffer = Buffer.from(m[2], 'base64');
+    } catch {
+      return res.status(400).json({ error: 'Image data could not be decoded.' });
+    }
+    if (!buffer.length) {
+      return res.status(400).json({ error: 'Image is empty.' });
+    }
+    if (buffer.length > MAX_UPLOAD_BYTES) {
+      return res.status(413).json({
+        error: `Image is too large (${(buffer.length / 1048576).toFixed(1)}MB). The limit is ${MAX_UPLOAD_BYTES / 1048576}MB.`,
+      });
+    }
+
+    const img = await db.createImage({ sellerId: req.seller.sellerId, mime, buffer });
+    res.status(201).json({ url: img.path, bytes: img.byteSize });
+  } catch (err) {
+    console.error('Image upload failed:', err);
+    res.status(500).json({ error: 'Could not save the image.' });
+  }
+});
 
 app.post('/api/seller/products', requireAuth, async (req, res) => {
   try {
@@ -3205,6 +3311,15 @@ app.put('/api/seller/featured-rail', requireAuth, async (req, res) => {
 // Stored (merged) in the storefront_content JSONB blob.
 const APPEARANCE_THEMES = ['classic', 'boutique', 'minimal'];
 const MAX_LOGO_CHARS = 700000; // ~500KB as a data URL — keeps the JSONB row sane
+
+/* What counts as a usable image reference in storefront_content.
+
+   `/…` covers uploads, which are stored host-independently as `/img/<id>` by
+   POST /api/seller/images. `data:image/` is still accepted so rows written
+   before the migration keep working and an old dashboard tab can still save —
+   but nothing writes new data URIs, and migrate-images.js converts the ones
+   already stored. Drop the data: branch once no rows carry them. */
+const IMAGE_REF = /^(https?:\/\/|\/|data:image\/)/;
 app.put('/api/seller/appearance', requireAuth, async (req, res) => {
   try {
     const { theme, accentColor, logoUrl } = req.body || {};
@@ -3225,7 +3340,7 @@ app.put('/api/seller/appearance', requireAuth, async (req, res) => {
     }
     if (logoUrl !== undefined) {
       const u = String(logoUrl).trim();
-      if (u && !/^(https?:\/\/|data:image\/)/.test(u)) {
+      if (u && !IMAGE_REF.test(u)) {
         return res.status(400).json({ error: 'Logo must be an image URL or uploaded image.' });
       }
       if (u.length > MAX_LOGO_CHARS) {
@@ -3276,7 +3391,7 @@ app.put('/api/seller/homepage', requireAuth, async (req, res) => {
     }
     if (body.heroImage !== undefined) {
       const u = String(body.heroImage || '').trim();
-      if (u && !/^(https?:\/\/|data:image\/)/.test(u)) {
+      if (u && !IMAGE_REF.test(u)) {
         return res.status(400).json({ error: 'Hero image must be an image URL or uploaded image.' });
       }
       if (u.length > 1200000) { // ~800KB as a data URL
