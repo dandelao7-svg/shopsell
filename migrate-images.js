@@ -21,6 +21,9 @@
 
 'use strict';
 
+// Must come before ./database, which reads DATABASE_URL at require time.
+require('dotenv').config();
+
 const db = require('./database');
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -29,40 +32,41 @@ const DATA_URL_RE = /^data:([a-z]+\/[a-z0-9.+-]+);base64,(.+)$/i;
 
 const stats = { products: 0, sellers: 0, images: 0, bytes: 0, skipped: 0, failed: 0 };
 
-/* Convert one value. Returns the value unchanged if it isn't an inline image,
-   so callers can map over a mixed array without special-casing. */
+/* Convert one value. Returns { value, changed } — `changed` is what the caller
+   counts, and it must be reported on a dry run too, where `value` is returned
+   untouched. Comparing before/after would silently under-report there. */
 async function convert(value, sellerId, label) {
-  if (typeof value !== 'string') return value;
+  const unchanged = { value, changed: false };
+  if (typeof value !== 'string') return unchanged;
   const m = DATA_URL_RE.exec(value.trim());
-  if (!m) return value;                       // already a URL or path — leave it
+  if (!m) return unchanged;                   // already a URL or path — leave it
 
   const mime = m[1].toLowerCase();
   if (!db.IMAGE_MIMES.includes(mime)) {
     console.warn(`  ! ${label}: unsupported type ${mime} — left as-is`);
     stats.skipped++;
-    return value;
+    return unchanged;
   }
 
   const buffer = Buffer.from(m[2], 'base64');
   if (!buffer.length) {
     console.warn(`  ! ${label}: decoded to zero bytes — left as-is`);
     stats.skipped++;
-    return value;
+    return unchanged;
   }
 
   const kb = (buffer.length / 1024).toFixed(0);
+  stats.images++;
+  stats.bytes += buffer.length;
+
   if (DRY_RUN) {
     console.log(`  · ${label}: would store ${kb}KB ${mime}`);
-    stats.images++;
-    stats.bytes += buffer.length;
-    return value;
+    return { value, changed: true };          // value untouched, but it COUNTS
   }
 
   const img = await db.createImage({ sellerId, mime, buffer });
   console.log(`  ✓ ${label}: ${kb}KB ${mime} → ${img.path}`);
-  stats.images++;
-  stats.bytes += buffer.length;
-  return img.path;
+  return { value: img.path, changed: true };
 }
 
 async function migrateProducts() {
@@ -76,9 +80,9 @@ async function migrateProducts() {
 
     for (let i = 0; i < p.imageUrls.length; i++) {
       try {
-        const next = await convert(p.imageUrls[i], p.sellerId, `image ${i + 1}`);
-        if (next !== p.imageUrls[i]) changed = true;
-        converted.push(next);
+        const r = await convert(p.imageUrls[i], p.sellerId, `image ${i + 1}`);
+        if (r.changed) changed = true;
+        converted.push(r.value);
       } catch (err) {
         // Keep the original so nothing is lost, and keep going — one bad image
         // must not strand the rest of the catalogue.
@@ -88,12 +92,9 @@ async function migrateProducts() {
       }
     }
 
-    if (changed && !DRY_RUN) {
-      await db.setProductImageUrls(p.id, converted);
-      stats.products++;
-    } else if (changed) {
-      stats.products++;
-    }
+    if (!changed) continue;
+    if (!DRY_RUN) await db.setProductImageUrls(p.id, converted);
+    stats.products++;
   }
 }
 
@@ -109,20 +110,17 @@ async function migrateStorefronts() {
     for (const key of ['logoUrl', 'heroImage']) {
       if (typeof content[key] !== 'string' || !content[key]) continue;
       try {
-        const next = await convert(content[key], s.id, key);
-        if (next !== content[key]) { content[key] = next; changed = true; }
+        const r = await convert(content[key], s.id, key);
+        if (r.changed) { content[key] = r.value; changed = true; }
       } catch (err) {
         console.error(`  ✗ ${key} failed: ${err.message}`);
         stats.failed++;
       }
     }
 
-    if (changed && !DRY_RUN) {
-      await db.setSellerStorefrontContent(s.id, content);
-      stats.sellers++;
-    } else if (changed) {
-      stats.sellers++;
-    }
+    if (!changed) continue;
+    if (!DRY_RUN) await db.setSellerStorefrontContent(s.id, content);
+    stats.sellers++;
   }
 }
 
