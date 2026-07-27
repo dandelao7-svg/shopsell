@@ -51,6 +51,10 @@
 *{box-sizing:border-box}
 /* readability: scale UI ~12% on screen only (never print) */
 @media screen{html{zoom:1.12}}
+/* ZOOM TRAP — viewport units are NOT divided by the zoom above, so a 100vh box
+   is computed against the full window and THEN painted 1.12x, overflowing by
+   12%. Use var(--vh) instead of 100vh here; keep the divisor in sync. */
+:root{--vh:calc(100vh / 1.12)}
 html{scroll-behavior:smooth}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
@@ -90,7 +94,7 @@ a:hover{text-decoration:underline}
 
 /* ── Sidebar TOC ── */
 .toc{position:sticky;top:24px;align-self:start;font-size:.9rem;
-  max-height:calc(100vh - 48px);overflow:auto;padding-bottom:40px}
+  max-height:calc(var(--vh) - 48px);overflow:auto;padding-bottom:40px}
 .toc .ey{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;
   text-transform:uppercase;color:var(--faint);margin:0 0 10px}
 .toc ol{list-style:none;margin:0;padding:0;counter-reset:toc}

@@ -20,11 +20,15 @@
 *{box-sizing:border-box;margin:0;padding:0}
 /* readability: scale UI ~12% on screen only (never print) */
 @media screen{html{zoom:1.12}}
+/* ZOOM TRAP — vh is NOT divided by the zoom above, so 100vh painted 12% taller
+   than the window and left ~109px of empty scroll below the card. Keep the
+   divisor in sync with the zoom factor. */
+:root{--vh:calc(100vh / 1.12)}
 body{
   font-family:'Outfit',sans-serif;
   background:var(--bg);
   color:var(--text);
-  min-height:100vh;
+  min-height:var(--vh);
   display:flex;
   align-items:center;
   justify-content:center;

@@ -49,13 +49,23 @@
   --radius:10px;
 }
 
-html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden}
+/* No height:100% here — under the zoom below it resolved to the full window and
+   was then painted 1.12x, leaving every page scrollable by ~12% of empty space.
+   .app carries the full-height floor instead. */
+html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden}
 /* Global readability bump: scale the whole UI up ~12% on screen. Scoped to
    @media screen so it never affects printed shipping labels. */
 @media screen{html{zoom:1.12}}
+/* ZOOM TRAP — read before using vh anywhere in this file. Viewport units are NOT
+   divided by the zoom above: 100vh computes to the full window height and is THEN
+   painted 1.12x, so any vh-sized box overflows the window by 12%. Prefer inset
+   (top/bottom/left/right) or a percentage of an inset:0 parent — both live in the
+   zoomed coordinate space. Where a real length is unavoidable use var(--vh), and
+   keep its divisor in sync with the zoom factor above. */
+:root{--vh:calc(100vh / 1.12)}
 
 /* ── LAYOUT ── */
-.app{display:flex;min-height:100vh}
+.app{display:flex;min-height:var(--vh)}
 
 /* ── SIDEBAR ── */
 /* top+bottom, NOT height:100vh. html{zoom:1.12} above scales the painted box but
@@ -94,7 +104,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .carrier-status-text{font-size:10px;color:var(--muted)}
 
 /* ── MAIN ── */
-.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:var(--vh)}
 
 /* ── TOPBAR ── */
 .topbar{height:var(--header-h);background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
@@ -187,7 +197,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 /* ── LABEL MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;display:none;align-items:center;justify-content:center;padding:2rem;backdrop-filter:blur(4px)}
 .modal-overlay.open{display:flex;animation:fadeIn 0.2s ease}
-.modal{background:var(--card);border-radius:16px;border:1px solid var(--border2);width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
+/* 100% of the inset:0 overlay's content box (its 2rem padding is already
+   subtracted), NOT 90vh — under the page zoom 90vh painted as ~101% of the
+   window, so a tall modal's footer buttons ran off the bottom of the screen. */
+.modal{background:var(--card);border-radius:16px;border:1px solid var(--border2);width:100%;max-width:560px;max-height:100%;overflow-y:auto}
 .modal-hd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .modal-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700}
 .modal-close{background:var(--bg3);border:none;color:var(--text2);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
@@ -2308,7 +2321,7 @@ function openAmazonModal(){
   modal.id='amazonModal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow:auto">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Amazon</div>
         <button onclick="closeAmazonModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
@@ -2413,7 +2426,7 @@ function openShopifyModal(){
   modal.id='shopifyModal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow:auto">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Shopify</div>
         <button onclick="closeShopifyModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
@@ -2517,7 +2530,7 @@ function openEbayModal(){
   modal.id='ebayModal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow:auto">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">eBay</div>
         <button onclick="closeEbayModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
@@ -2612,7 +2625,7 @@ function openEtsyModal(){
   modal.id='etsyModal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow:auto">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Etsy</div>
         <button onclick="closeEtsyModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
@@ -2707,7 +2720,7 @@ function openTiktokModal(){
   modal.id='tiktokModal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow:auto">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">TikTok Shop</div>
         <button onclick="closeTiktokModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
@@ -2801,7 +2814,7 @@ function openWalmartModal(){
   modal.id='walmartModal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow:auto">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Walmart Marketplace</div>
         <button onclick="closeWalmartModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
@@ -2900,7 +2913,7 @@ function openBatchModal(){
   modal.id = 'batchModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:520px;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:520px;max-height:100%;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4)">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Buy labels for ${n} order${n===1?'':'s'}</div>
         <button onclick="closeBatchModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">✕</button>
@@ -3181,7 +3194,7 @@ function openRuleEditor(id){
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   const numVal = v => (v==null?'':v);
   modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow:auto">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">${r?'Edit rule':'New rule'}</div>
         <button onclick="closeRuleModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>

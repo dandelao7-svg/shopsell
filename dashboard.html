@@ -47,10 +47,21 @@
   --shadow-lg:0 8px 32px rgba(0,0,0,0.10);
 }
 
-html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);font-size:14px}
+/* ZOOM TRAP — read before using vh anywhere in this file. Viewport units are NOT
+   divided by html{zoom:1.12} above: 100vh computes to the full window height and
+   is THEN painted 1.12x, so any vh-sized box overflows the window by 12%. Prefer
+   inset (top/bottom/left/right) or a percentage of an inset:0 parent — both live
+   in the zoomed coordinate space. Where a real length is unavoidable use
+   var(--vh), and keep its divisor in sync with the zoom factor above. */
+:root{--vh:calc(100vh / 1.12)}
+
+/* No height:100% here either — it resolved to the full window and was then
+   painted 1.12x, leaving every page scrollable by ~12% of empty space. .app
+   carries the full-height floor instead. */
+html,body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);font-size:14px}
 
 /* ── LAYOUT ── */
-.app{display:flex;min-height:100vh}
+.app{display:flex;min-height:var(--vh)}
 
 /* ── SIDEBAR ── */
 /* top+bottom, NOT height:100vh. html{zoom:1.12} above scales the painted box but
@@ -86,7 +97,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--light);co
 .sidebar-signout:hover{color:#fff}
 
 /* ── MAIN ── */
-.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:var(--vh)}
 
 /* ── TOP BAR ── */
 .topbar{height:var(--header-h);background:var(--card);border-bottom:1px solid var(--border);padding:0 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}

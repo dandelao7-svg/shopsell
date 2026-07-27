@@ -17,8 +17,12 @@
   --green:#2d6a4f;--green-bg:#d8f3dc;
   --red:#c1121f;--red-bg:#fde2e4;
   --radius:14px;--shadow:0 4px 24px rgba(0,0,0,0.07);
+  /* ZOOM TRAP — vh is NOT divided by html{zoom:1.12} above, so 100vh painted
+     12% taller than the window and left ~109px of empty scroll. Keep the
+     divisor in sync with the zoom factor. */
+  --vh:calc(100vh / 1.12);
 }
-body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);min-height:100vh}
+body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);min-height:var(--vh)}
 
 .site-header{background:var(--card);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:64px}
 .logo{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:var(--brand);text-decoration:none}
