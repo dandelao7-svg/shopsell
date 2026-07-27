@@ -56,15 +56,19 @@ async function convert(value, sellerId, label) {
   }
 
   const kb = (buffer.length / 1024).toFixed(0);
-  stats.images++;
-  stats.bytes += buffer.length;
 
   if (DRY_RUN) {
+    stats.images++;
+    stats.bytes += buffer.length;
     console.log(`  · ${label}: would store ${kb}KB ${mime}`);
     return { value, changed: true };          // value untouched, but it COUNTS
   }
 
+  // Count only after the write lands. Incrementing up front reported a failed
+  // image as "moved" — the summary claimed a migration that had not happened.
   const img = await db.createImage({ sellerId, mime, buffer });
+  stats.images++;
+  stats.bytes += buffer.length;
   console.log(`  ✓ ${label}: ${kb}KB ${mime} → ${img.path}`);
   return { value: img.path, changed: true };
 }
@@ -168,6 +172,11 @@ async function migrateStorefronts() {
     : '── Migrating inline images to hosted URLs ──');
 
   try {
+    // Requiring ./database kicks off initSchema() in the background. Without
+    // this wait the first createImage races its ALTER TABLEs and dies with
+    // "deadlock detected" — reproducibly, on every run.
+    await db.schemaReady;
+
     const before = await db.countImages();
     console.log(`images table currently holds ${before.count} image(s), ${(before.totalBytes / 1048576).toFixed(2)}MB`);
 
