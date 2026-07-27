@@ -4359,17 +4359,25 @@ async function duplicateProductById(id){
   }
 }
 
+// Mirror of handleFiles for the edit modal. Both MUST upload rather than inline:
+// this one was missed when product photos moved to hosted /img/ URLs, and the
+// symptom was a photo that previewed fine but never saved — the edit modal PUTs
+// through the global express.json(), whose 100KB default rejected the base64
+// body before the route ever ran.
 async function epHandleFiles(files){
   const slots = 6 - editUploadedImages.length;
   const arr = Array.from(files).slice(0, slots).filter(f => f.type.startsWith('image/'));
+  const hint = document.getElementById('epImgHint');
   for(const f of arr){
     try {
+      if(hint) hint.textContent = `Uploading ${f.name}…`;
       const dataUrl = await compressImage(f);
-      editUploadedImages.push(dataUrl);
+      editUploadedImages.push(await uploadImage(dataUrl));
       epRenderImgPreviews();
     } catch(err){
-      console.error('Image compression failed for', f.name, err);
-      toast('Could not process image: ' + f.name);
+      console.error('Image upload failed for', f.name, err);
+      toast(`Could not add ${f.name}: ${err.message}`);
+      epRenderImgPreviews();   // clears the "Uploading…" hint
     }
   }
 }
