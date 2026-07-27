@@ -1650,6 +1650,22 @@ app.post('/api/seller/images', requireAuth, async (req, res) => {
   }
 });
 
+/* Product photos must be stored as hosted /img/<id> paths, never as inline
+   base64 `data:` URIs — those can't be used as OG/social images and they ride
+   along on every API payload. The dashboard uploads first and only ever sends a
+   path, but a browser tab left open across a deploy runs the OLD code and will
+   happily post base64. That is not hypothetical: product #47 was created seven
+   minutes after the fix shipped, from a stale tab, and stored two inline images.
+   So the rule is enforced here, where a stale client can't get around it.
+   Returns an error string, or null when the list is fine. */
+function inlineImageError(imageUrls) {
+  if (!Array.isArray(imageUrls)) return null;
+  const inline = imageUrls.some(u => typeof u === 'string' && /^data:/i.test(u.trim()));
+  if (!inline) return null;
+  return 'Photos were sent as inline image data instead of uploaded files. '
+       + 'This page is out of date — press Ctrl+Shift+R to reload it, then add the photos again.';
+}
+
 app.post('/api/seller/products', requireAuth, async (req, res) => {
   try {
     const {
@@ -1670,6 +1686,8 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
     if (!variants.length && !(parseFloat(price) > 0)) {
       return res.status(400).json({ error: 'Price is required for a product without variants.' });
     }
+    const inlineErr = inlineImageError(imageUrls);
+    if (inlineErr) return res.status(400).json({ error: inlineErr, staleClient: true });
 
     // With variants, the product-level price/quantity are derived from them
     // (price shown = lowest variant; quantity = sum of variant stock).
@@ -1835,6 +1853,10 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'You do not own this product.' });
     }
     const body = { ...req.body };
+    if ('imageUrls' in body) {
+      const inlineErr = inlineImageError(body.imageUrls);
+      if (inlineErr) return res.status(400).json({ error: inlineErr, staleClient: true });
+    }
     // Dimensions are optional NUMERICs — coerce '' / undefined to null so the
     // UPDATE doesn't try to cast an empty string.
     for (const dim of ['length', 'width', 'height']) {

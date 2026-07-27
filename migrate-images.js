@@ -98,27 +98,60 @@ async function migrateProducts() {
   }
 }
 
+/* Walk the whole storefront_content tree and convert every inline image found,
+   wherever it sits. This used to check only the legacy `logoUrl` / `heroImage`
+   keys — but a store built with the page-builder keeps its hero at
+   sections[].config.image and its tile art at sections[].config.tiles[].image,
+   so those stores were listed as needing migration (the SQL matches the whole
+   blob) and then silently left untouched. Anything that IS a data: image is an
+   image by definition, so no key whitelist is needed — the value identifies
+   itself. Returns the converted copy; `changed` is reported via the counter. */
+async function convertTree(node, sellerId, path, state) {
+  if (typeof node === 'string') {
+    const r = await convert(node, sellerId, path);
+    if (r.changed) state.changed = true;
+    return r.value;
+  }
+  if (Array.isArray(node)) {
+    const out = [];
+    for (let i = 0; i < node.length; i++) {
+      out.push(await convertTree(node[i], sellerId, `${path}[${i}]`, state));
+    }
+    return out;
+  }
+  if (node && typeof node === 'object') {
+    const out = {};
+    for (const k of Object.keys(node)) {
+      out[k] = await convertTree(node[k], sellerId, path ? `${path}.${k}` : k, state);
+    }
+    return out;
+  }
+  return node;
+}
+
 async function migrateStorefronts() {
   const rows = await db.listSellersWithInlineStorefrontImages();
   console.log(`\nStorefronts with inline images: ${rows.length}`);
 
   for (const s of rows) {
     console.log(`\nSeller #${s.id}`);
-    const content = { ...s.content };
-    let changed = false;
-
-    for (const key of ['logoUrl', 'heroImage']) {
-      if (typeof content[key] !== 'string' || !content[key]) continue;
-      try {
-        const r = await convert(content[key], s.id, key);
-        if (r.changed) { content[key] = r.value; changed = true; }
-      } catch (err) {
-        console.error(`  ✗ ${key} failed: ${err.message}`);
-        stats.failed++;
-      }
+    const state = { changed: false };
+    let content;
+    try {
+      content = await convertTree(s.content, s.id, '', state);
+    } catch (err) {
+      // Keep the original blob intact — a half-converted storefront is worse
+      // than an unconverted one.
+      console.error(`  ✗ seller ${s.id} failed: ${err.message}`);
+      stats.failed++;
+      continue;
     }
 
-    if (!changed) continue;
+    if (!state.changed) {
+      console.warn(`  ! seller ${s.id}: matched the inline-image search but nothing was converted`);
+      stats.skipped++;
+      continue;
+    }
     if (!DRY_RUN) await db.setSellerStorefrontContent(s.id, content);
     stats.sellers++;
   }
