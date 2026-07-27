@@ -603,6 +603,15 @@ function indexHtml() {
 function htmlEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
+// Collapse whitespace and cut to `max`, on a word boundary when one is close
+// enough — a hard slice ends social cards mid-word.
+function clip(s, max) {
+  const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const sp = cut.lastIndexOf(' ');
+  return (sp > max * 0.6 ? cut.slice(0, sp) : cut).replace(/[ ,;:.—-]+$/, '') + '…';
+}
 // Canonical public base for a store: its verified custom domain, else its
 // <slug>.PLATFORM_DOMAIN subdomain. Keeps product URLs single-canonical even
 // when reached via ?store= preview on another host.
@@ -626,11 +635,20 @@ async function storeRootHtml(seller) {
   let content = {};
   try { content = (await db.getSellerStorefrontContent(seller.id)) || {}; } catch (_) { /* head degrades, page still serves */ }
 
+  // A store on the page-builder layout leaves the legacy heroImage/heroSubtext
+  // empty — its hero lives in sections[].config. Look there too, or every
+  // layout-editor store (the modern path, including the demo) falls back to the
+  // platform card. Already in hand from the content row, so no extra query.
+  const sections = Array.isArray(content.sections) ? content.sections : [];
+  const sectionCfg = type => (sections.find(s => s && s.type === type) || {}).config || {};
+  const sectionImage = (sections.find(s => s && s.config && typeof s.config.image === 'string' && s.config.image) || {}).config;
+
   const base  = storeCanonicalBase(seller);
   const name  = seller.storeName || 'Online Store';
-  const desc  = String(content.heroSubtext || content.about || `Shop ${name} — quality products with fast, tracked shipping.`)
-    .replace(/\s+/g, ' ').trim().slice(0, 155);
-  const raw   = content.heroImage || content.logoUrl || '';
+  const desc  = clip(content.heroSubtext || sectionCfg('hero').subtext || content.about
+    || `Shop ${name} — quality products with fast, tracked shipping.`, 155);
+  const raw   = content.heroImage || sectionCfg('hero').image
+    || (sectionImage ? sectionImage.image : '') || content.logoUrl || '';
   const image = (typeof raw === 'string' && raw.startsWith('/')) ? `${base}${raw}`
               : (/^https?:\/\//i.test(raw) ? raw : 'https://shopsell.nextlao.com/og.png');
 
@@ -685,7 +703,7 @@ app.get('/product/:id', async (req, res) => {
     const base   = storeCanonicalBase(seller);
     const url    = `${base}/product/${product.id}`;
     const name   = product.name || 'Product';
-    const desc   = String(product.description || `${name} from ${seller.storeName}`).replace(/\s+/g, ' ').trim().slice(0, 155);
+    const desc   = clip(product.description || `${name} from ${seller.storeName}`, 155);
     // OG tags and JSON-LD need ABSOLUTE urls — a social scraper has no page
     // context to resolve a relative path against. Uploaded images are stored
     // host-independently as `/img/<id>` (and the demo store uses `/demo/*.jpg`),
