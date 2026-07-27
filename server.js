@@ -782,12 +782,16 @@ app.get('/sitemap.xml', async (req, res) => {
         for (const p of products) urls.push({ loc: `${base}/product/${p.id}`, priority: '0.8' });
       } catch (_) { /* store root alone is still a valid sitemap */ }
     } else {
-      const www  = `https://www.${PLATFORM_DOMAIN}`;
+      // Apex, not www: both hostnames serve the umbrella with no redirect
+      // between them, and nextlao.html declares <link rel="canonical"> on the
+      // apex. Listing the www form here submitted URLs the pages themselves
+      // disavow, which is a conflicting signal to a crawler.
+      const apex = `https://${PLATFORM_DOMAIN}`;
       const shop = `https://shopsell.${PLATFORM_DOMAIN}`;
       urls = [
-        { loc: `${www}/`,        priority: '1.0' },  // NextLao umbrella
-        { loc: `${shop}/`,       priority: '0.9' },  // ShopSell marketing site
-        { loc: `${www}/privacy`, priority: '0.3' },  // shared privacy policy
+        { loc: `${apex}/`,        priority: '1.0' },  // NextLao umbrella
+        { loc: `${shop}/`,        priority: '0.9' },  // ShopSell marketing site
+        { loc: `${apex}/privacy`, priority: '0.3' },  // shared privacy policy
       ];
     }
   } catch (e) {
