@@ -1225,6 +1225,20 @@ tr:hover td{background:#fafaf7}
           <input type="text" id="hpAnnounceLink" placeholder="https://…  or  /shop  (blank = no link)">
         </div>
 
+        <!-- Everything below edits the LEGACY flat hero fields, which the
+             storefront ignores once a published `sections` layout exists. Shown
+             disabled with an explanation in that case (see gateHomepageHero) —
+             a seller typing into dead boxes that silently save is worse than
+             not offering them at all. The announcement bar above is NOT part of
+             sections, so it always applies and is never gated. -->
+        <div id="hpHeroOverridden" style="display:none;font-size:12px;background:#fff8e6;border:1px solid #f0d98a;border-radius:9px;padding:10px 12px;margin-bottom:14px;color:#6b5518">
+          <b>These hero settings are switched off.</b> Your homepage is being built by
+          the <a href="#" onclick="showDash('storefront');document.getElementById('layoutSectionList').scrollIntoView({behavior:'smooth',block:'center'});return false" style="color:var(--accent);font-weight:600">Page layout</a>
+          editor at the top of this page, and its Hero section replaces everything here.
+          Edit your headline, eyebrow and banner image there instead — changes made below
+          would be saved but would never appear on your store.
+        </div>
+
         <div class="field">
           <label>Hero eyebrow (small text above the headline)</label>
           <input type="text" id="hpHeroEyebrow" maxlength="60" placeholder="New arrivals · Free shipping always">
@@ -1247,7 +1261,7 @@ tr:hover td{background:#fafaf7}
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <div id="hpHeroImgPreview" class="ap-logo-preview" style="min-width:160px;height:60px">No image</div>
             <input type="file" accept="image/*" id="hpHeroImgInput" onchange="handleHeroImgFile(this.files)" style="font-size:12px">
-            <button type="button" class="btn secondary" onclick="removeHeroImg()" style="padding:6px 12px;font-size:12px">Remove</button>
+            <button type="button" class="btn secondary" id="hpHeroImgRemove" onclick="removeHeroImg()" style="padding:6px 12px;font-size:12px">Remove</button>
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">A wide photo works best — a dark overlay is added automatically so your hero text stays readable. Under ~800KB.</div>
         </div>
@@ -2275,8 +2289,32 @@ function loadLayoutEditor(sections, draftSections, content){
   renderLayoutList();
 }
 
+/* The "Homepage & banner" card and the Page layout editor both edit the hero,
+   and they write to different places: the card writes the legacy flat fields,
+   the editor writes sections[].config. Once a layout is PUBLISHED the storefront
+   renders sections and never looks at the flat fields again — so the card's hero
+   boxes still accept input, still save, and change nothing. A seller hit exactly
+   this: typed a headline into the card, published, saw no change, and had no way
+   to tell which of two identical-looking forms was the live one.
+   Disable the dead half and say why. The announcement bar in the same card is
+   NOT part of sections, so it keeps working and is deliberately left alone. */
+const HP_HERO_FIELDS = ['hpHeroEyebrow','hpHeroTitle','hpHeroSub','hpHeroCta1','hpHeroCta2','hpHeroImgInput','hpHeroImgRemove'];
+function gateHomepageHero(){
+  const overridden = !!layoutPublished;
+  const note = document.getElementById('hpHeroOverridden');
+  if(note) note.style.display = overridden ? '' : 'none';
+  for(const id of HP_HERO_FIELDS){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    el.disabled = overridden;
+    el.style.opacity = overridden ? '0.5' : '';
+    el.title = overridden ? 'Edit this in the Page layout editor above — your published layout replaces these settings.' : '';
+  }
+}
+
 // Reflect publish/draft/dirty state in the status line + Discard button.
 function updateLayoutStatus(){
+  gateHomepageHero();
   const dbtn = document.getElementById('layoutDiscardBtn');
   if(dbtn) dbtn.style.display = layoutHasDraft ? '' : 'none';
   const el = document.getElementById('layoutStatus');
