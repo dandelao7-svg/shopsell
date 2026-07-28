@@ -2320,8 +2320,21 @@ function _layoutFieldHTML(i, f, cfg){
       return `<input type="number" ${f.min!=null?`min="${f.min}"`:''} ${f.max!=null?`max="${f.max}"`:''} value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value===''?'':Number(this.value))" placeholder="${_dhEsc(f.label)}">`;
     case 'color':
       return `<input type="color" value="${_dhEsc(val||'#000000')}" onchange="layoutSetCfg(${i},'${f.key}',this.value)">`;
-    case 'image':
-      return `<input type="text" value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="https://… image URL">`;
+    case 'image': {
+      // Upload + a URL box, not one or the other: pasting a URL still has to
+      // work (that was the only option before), but a seller with a photo on
+      // their machine had no way in — the Homepage card had an uploader and
+      // this did not. Uploads go through the same helper as every other image,
+      // so they land in the images table as /img/<id>, never inline base64.
+      const fid = `lyimg-${i}-${f.key}`;
+      return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${_layoutImgPreview(val)}
+        <input type="text" style="flex:1 1 160px" value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="Upload, or paste an image URL">
+        <input type="file" accept="image/*" id="${fid}" style="display:none" onchange="layoutUploadImg(${i},'${f.key}',this.files)">
+        <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px" onclick="document.getElementById('${fid}').click()">Upload</button>
+        ${val ? `<button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px" onclick="layoutClearImg(${i},'${f.key}')">Remove</button>` : ''}
+      </div>`;
+    }
     case 'link': {
       // Stored as { label, url }. Both parts optional — a label with no URL
       // still renders a button that goes to the shop.
@@ -2334,10 +2347,20 @@ function _layoutFieldHTML(i, f, cfg){
     case 'repeater': {
       const rows = Array.isArray(val) ? val : [];
       const max  = f.max || 20;
+      // Repeater subfields used to ignore sf.type and render as plain text
+      // boxes, so a tile's declared `image` field had no uploader either.
       const body = rows.map((row,r)=>`<div class="layout-rep-row">
-        <div class="layout-rep-fields">${(f.fields||[]).map(sf=>
-          `<input type="text" value="${_dhEsc((row||{})[sf.key])}" onchange="layoutSetRep(${i},'${f.key}',${r},'${sf.key}',this.value)" placeholder="${_dhEsc(sf.label)}">`
-        ).join('')}</div>
+        <div class="layout-rep-fields">${(f.fields||[]).map(sf=>{
+          const sv = (row||{})[sf.key];
+          const txt = `<input type="text" value="${_dhEsc(sv)}" onchange="layoutSetRep(${i},'${f.key}',${r},'${sf.key}',this.value)" placeholder="${_dhEsc(sf.label)}">`;
+          if(sf.type !== 'image') return txt;
+          const rid = `lyrep-${i}-${f.key}-${r}-${sf.key}`;
+          return `<span style="display:flex;gap:6px;align-items:center">
+            ${_layoutImgPreview(sv)}${txt}
+            <input type="file" accept="image/*" id="${rid}" style="display:none" onchange="layoutUploadRepImg(${i},'${f.key}',${r},'${sf.key}',this.files)">
+            <button type="button" class="btn secondary" style="padding:6px 9px;font-size:11px;white-space:nowrap" onclick="document.getElementById('${rid}').click()">Upload</button>
+          </span>`;
+        }).join('')}</div>
         <div class="layout-rep-btns">
           <button type="button" onclick="layoutRepMove(${i},'${f.key}',${r},-1)" ${r===0?'disabled':''} title="Move up">▲</button>
           <button type="button" onclick="layoutRepMove(${i},'${f.key}',${r},1)" ${r===rows.length-1?'disabled':''} title="Move down">▼</button>
@@ -2352,6 +2375,52 @@ function _layoutFieldHTML(i, f, cfg){
     default:
       return `<input type="text" value="${_dhEsc(val)}" onchange="layoutSetCfg(${i},'${f.key}',this.value)" placeholder="${_dhEsc(f.label)}">`;
   }
+}
+
+/* Thumbnail for an image field. Only a relative path or http(s) is previewed —
+   the value is free text a seller can paste into, and `javascript:`/`data:` in
+   an <img src> has no business rendering here. The server scheme-checks the
+   same values on save (_safeUrl); this is the editor's half of that rule. */
+function _layoutImgPreview(v){
+  if(typeof v !== 'string' || !v) return '';
+  const ok = (/^\/(?!\/)/.test(v) || /^https?:\/\//i.test(v));
+  if(!ok) return '';
+  return `<img src="${_dhEsc(v)}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex:0 0 auto">`;
+}
+
+// Shared by the plain and repeater image fields. Uses the dashboard's existing
+// compress+upload helpers, so a layout image is stored exactly like a product
+// photo or a hero: hosted at /img/<id>, never inlined.
+async function _layoutUploadFile(files){
+  const file = files && files[0];
+  if(!file) return null;
+  if(!file.type.startsWith('image/')){ toast('That file is not an image.'); return null; }
+  try {
+    // 1600px: section images span the full storefront width, like the hero.
+    return await uploadImage(await compressImage(file, 1600, 0.85));
+  } catch(err){
+    console.error('Layout image upload failed:', err);
+    toast('Could not upload that image: ' + err.message);
+    return null;
+  }
+}
+async function layoutUploadImg(i, key, files){
+  const url = await _layoutUploadFile(files);
+  if(!url) return;
+  layoutSetCfg(i, key, url);
+  renderLayoutList();
+  toast('Image added — Save draft or Publish to keep it');
+}
+async function layoutUploadRepImg(i, key, row, subKey, files){
+  const url = await _layoutUploadFile(files);
+  if(!url) return;
+  layoutSetRep(i, key, row, subKey, url);
+  renderLayoutList();
+  toast('Image added — Save draft or Publish to keep it');
+}
+function layoutClearImg(i, key){
+  layoutSetCfg(i, key, '');
+  renderLayoutList();
 }
 
 function _layoutFormHTML(i){
