@@ -2190,7 +2190,7 @@ async function loadStorefrontContent(){
     loadAppearanceInto(c);
     loadHomepageInto(c);
     loadEmailPopupInto(c);
-    loadLayoutEditor(c.sections, c.draftSections);
+    loadLayoutEditor(c.sections, c.draftSections, c);
     const idut = document.getElementById('intlDuties');
     if(idut) idut.value = (c.dutiesIncoterm === 'DDP') ? 'DDP' : 'DDU';
   } catch(e){ /* not fatal */ }
@@ -2238,12 +2238,14 @@ const _dhEsc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt
 
 // The default homepage layout — mirrors legacyToSections() in index.html, so a
 // store that never customized starts the editor from its current live layout.
+// The "Default layout" shown before anything is published. It MUST carry the
+// seller's legacy hero fields across: this list is what Publish writes, so
+// returning empty configs here silently overwrote a customized hero (text and
+// uploaded image) with stock copy the first time anyone published. Shared with
+// the storefront via /storefront-sections.js so the two can't drift again.
+let layoutLegacyContent = {};
 function layoutLegacyDefault(){
-  return [
-    { type:'hero', config:{} },
-    { type:'featured_carousel', config:{} },
-    { type:'product_grid', config:{ showFilters:true } },
-  ];
+  return window.legacyToSections(layoutLegacyContent);
 }
 
 // Deep clone — configs now hold nested link objects and repeater arrays, so a
@@ -2255,7 +2257,8 @@ const _cloneSections = arr => (arr||[]).map(s => ({
   config: (s.config && typeof s.config === 'object') ? JSON.parse(JSON.stringify(s.config)) : {},
 }));
 
-function loadLayoutEditor(sections, draftSections){
+function loadLayoutEditor(sections, draftSections, content){
+  layoutLegacyContent = content || {};
   layoutPublished = (Array.isArray(sections) && sections.length) ? sections : null;
   layoutHasDraft  = Array.isArray(draftSections) && draftSections.length > 0;
   // Edit the draft if one exists, else the live layout, else the default.

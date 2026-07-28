@@ -32,6 +32,7 @@
     root.SECTION_TYPES       = api.SECTION_TYPES;
     root.SECTION_TYPE_ORDER  = api.SECTION_TYPE_ORDER;
     root.COLLECTION_OPTIONS  = api.COLLECTION_OPTIONS;
+    root.legacyToSections    = api.legacyToSections;
     root._ssEsc              = api.esc;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
@@ -314,11 +315,40 @@ var SECTION_TYPE_ORDER = [
 // Allowed types — the render loop and the server's PUT validator both use this.
 var SECTION_TYPES = Object.keys(SECTION_REGISTRY);
 
+/* The default layout, seeded from the legacy flat hero fields.
+   ------------------------------------------------------------
+   A store that has never used the page-builder keeps its hero in
+   content.heroTitle / heroImage / … . Both the storefront (rendering a store
+   with no `sections`) and the dashboard editor (showing "Default layout") have
+   to turn those flat fields into the same section list — and they each had
+   their OWN copy. The storefront's mapped the legacy values across; the
+   editor's returned `config:{}`. So the editor showed a seller's customized
+   hero as blank, and the first Publish wrote those empty configs over it,
+   silently reverting the storefront to stock copy and dropping the uploaded
+   hero image. One definition, used by both, is the only thing that keeps them
+   from drifting apart again. */
+function legacyToSections(sc) {
+  sc = sc || {};
+  return [
+    { type: 'hero', config: {
+      eyebrow: sc.heroEyebrow,
+      title:   sc.heroTitle,
+      subtext: sc.heroSubtext,
+      cta1:    sc.heroCta1 ? { label: sc.heroCta1 } : undefined,
+      cta2:    sc.heroCta2 ? { label: sc.heroCta2 } : undefined,
+      image:   sc.heroImage || '',
+    } },
+    { type: 'featured_carousel', config: {} },
+    { type: 'product_grid',      config: { showFilters: true } },
+  ];
+}
+
 return {
   SECTION_REGISTRY: SECTION_REGISTRY,
   SECTION_TYPES: SECTION_TYPES,
   SECTION_TYPE_ORDER: SECTION_TYPE_ORDER,
   COLLECTION_OPTIONS: COLLECTION_OPTIONS,
+  legacyToSections: legacyToSections,
   esc: esc,
 };
 });

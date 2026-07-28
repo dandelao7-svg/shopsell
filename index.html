@@ -1161,19 +1161,10 @@ function hydrateSections(root){
 // Synthesize the default section list from the legacy flat fields, so a store
 // with no `sections` renders exactly as the old fixed layout. The featured
 // shell is always included; renderFeatured() gates its visibility as before.
-function legacyToSections(sc){
-  sc = sc || {};
-  return [
-    { type:'hero', config:{
-      eyebrow: sc.heroEyebrow, title: sc.heroTitle, subtext: sc.heroSubtext,
-      cta1: sc.heroCta1 ? { label: sc.heroCta1 } : undefined,
-      cta2: sc.heroCta2 ? { label: sc.heroCta2 } : undefined,
-      image: sc.heroImage || '',
-    }},
-    { type:'featured_carousel', config:{} },
-    { type:'product_grid', config:{ showFilters:true } },
-  ];
-}
+// Definition lives in /storefront-sections.js — the dashboard editor needs the
+// SAME mapping, and when it had its own copy that copy dropped every legacy
+// value, so publishing wiped the seller's hero.
+const legacyToSections = window.legacyToSections;
 
 // Merchant layout preview: when opened from the dashboard "Preview" button
 // (?preview=layout), render the in-progress editor layout stashed in
