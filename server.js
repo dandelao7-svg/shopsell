@@ -4039,7 +4039,7 @@ function normalizeRulePayload(body) {
   if (!a.service) throw new Error('Rule action needs a service.');
   return {
     name:     String(body.name).trim().slice(0, 80),
-    priority: body.priority == null ? 100 : parseInt(body.priority, 10) || 100,
+    priority: (p => Number.isFinite(p) ? p : 100)(parseInt(body.priority, 10)),
     enabled:  body.enabled !== false,
     conditions: {
       weightMin: num(c.weightMin),
@@ -4810,7 +4810,7 @@ function matchAutomationRule(rules, ctx) {
     if (c.weightMax != null && ctx.weight > Number(c.weightMax)) continue;
     if (c.valueMin  != null && ctx.value  < Number(c.valueMin))  continue;
     if (c.valueMax  != null && ctx.value  > Number(c.valueMax))  continue;
-    if (Array.isArray(c.states) && c.states.length && !c.states.includes(ctx.state)) continue;
+    if (Array.isArray(c.states) && c.states.length && !c.states.includes(String(ctx.state || '').toUpperCase())) continue;
     if (c.destinationType === 'domestic'     && ctx.country !== 'US') continue;
     if (c.destinationType === 'international' && ctx.country === 'US') continue;
     return rule;

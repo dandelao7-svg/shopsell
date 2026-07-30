@@ -3250,7 +3250,7 @@ async function saveRule(id){
   const num = elId => { const v=document.getElementById(elId).value.trim(); return v===''?null:Number(v); };
   const payload = {
     name:     document.getElementById('rule-name').value.trim(),
-    priority: parseInt(document.getElementById('rule-priority').value,10)||100,
+    priority: (p => Number.isFinite(p) ? p : 100)(parseInt(document.getElementById('rule-priority').value,10)),
     enabled:  document.getElementById('rule-enabled').value==='true',
     conditions: {
       weightMin: num('rule-wmin'), weightMax: num('rule-wmax'),
