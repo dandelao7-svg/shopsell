@@ -1817,6 +1817,8 @@ function mapDbOrderToUI(o){
     city:     customerInfo.city  || '',
     state:    customerInfo.state || '',
     zip:      customerInfo.zip   || '',
+    _customerInfo: customerInfo,   // raw ship-to for Quick Ship prefill
+
     items:    itemsLabel,
     rawItems: items,
     weight:   weightLabel,
@@ -1972,11 +1974,34 @@ async function getRate(){
 
 async function createAndPrintFromSidebar(){
   if(!selectedOrderId){ toast('Select an order first','error'); return; }
-  // Buying a real label (live carrier rate + purchase + real tracking, recorded
-  // to History and pushed back to the sales channel) happens on the Quick Ship
-  // page. The old inline flow here only fabricated a tracking number and marked
-  // the order "printed" without buying anything — route to the real flow instead.
-  toast('Buy this label on Quick Ship — real carrier rate & tracking.','info');
+  const order = ordersData.find(o => o.id === selectedOrderId);
+  // The real label buy (live carrier rate + purchase + real tracking, recorded
+  // to History and pushed back to the sales channel) happens on Quick Ship —
+  // the old inline flow here only fabricated tracking. Instead of leaving the
+  // seller to re-enter everything, pre-fill Quick Ship's ship-to from this
+  // order and jump there. All they still need to pick is box + carrier.
+  if(order){
+    const ci = order._customerInfo || {};
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = (val == null ? '' : val); };
+    set('qs-to-name',    (`${ci.firstName||''} ${ci.lastName||''}`).trim() || order.customer || '');
+    set('qs-to-company', ci.company || '');
+    set('qs-to-phone',   ci.phone   || '');
+    set('qs-to-addr',    ci.address1 || '');
+    set('qs-to-addr2',   ci.address2 || '');
+    set('qs-to-city',    ci.city || order.city || '');
+    set('qs-to-zip',     ci.zip  || order.zip  || '');
+    // Country → then state (which lives in either a select or a free-text
+    // input depending on country; qsOnToCountryChange toggles them).
+    const country = String(ci.country || 'US').toUpperCase();
+    set('qs-to-country', country);
+    if(typeof qsOnToCountryChange === 'function') qsOnToCountryChange();
+    const stateVal = ci.state || order.state || '';
+    set('qs-to-state', stateVal);
+    set('qs-to-state-free', stateVal);
+    toast(`Prefilled Quick Ship with ${order.id} — pick a box and buy the label`, 'success');
+  } else {
+    toast('Order not loaded — filling Quick Ship blank', 'info');
+  }
   if(typeof showPage === 'function') showPage('quickship');
 }
 
