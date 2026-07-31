@@ -5163,24 +5163,27 @@ async function buildLabelWithPickListPdf(pairs) {
       const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
       const page = doc.addPage([PAGE_W, PAGE_H]);
 
-      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
-      // Both the label AND the pick list rotate CCW so the whole sheet
-      // reads as landscape when the seller turns the paper 90° CW to view it.
+      // ── TOP HALF: label rotated 90° CW, centered ──────────────
+      // Carrier labels ship with their own "top" that ends up upside-down
+      // when rotated CCW alongside the pick list. Rotating the label CW
+      // (opposite direction of the pick list) puts the address block the
+      // right way up on the physical page — the reader turns the paper
+      // however they want, and both halves have a canonical "top."
       // Fit the ROTATED bounding box (natH × natW) into TOP_BOX.
       const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
       const scaledW = natW * scale, scaledH = natH * scale;
-      // pdf-lib rotates around (x, y) — with CCW 90° the image extends UP
-      // and LEFT of the anchor, so the rotated bbox spans
-      //   x = [anchorX - scaledH, anchorX], y = [anchorY, anchorY + scaledW].
-      // To centre the rotated bbox in TOP_BOX, anchor at (right-edge, bottom-edge):
+      // pdf-lib rotates around (x, y) — with CW 90° (degrees(-90)) the image
+      // extends DOWN and RIGHT of the anchor, so the rotated bbox spans
+      //   x = [anchorX, anchorX + scaledH], y = [anchorY - scaledW, anchorY].
+      // To centre the rotated bbox in TOP_BOX, anchor at (left-edge, top-edge):
       const cx = TOP_BOX.x + TOP_BOX.w / 2;
       const cy = TOP_BOX.y + TOP_BOX.h / 2;
       const drawOpts = {
-        x: cx + scaledH / 2,
-        y: cy - scaledW / 2,
+        x: cx - scaledH / 2,
+        y: cy + scaledW / 2,
         width: scaledW,
         height: scaledH,
-        rotate: degrees(90),
+        rotate: degrees(-90),
       };
       if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
       else                          page.drawImage(embedded, drawOpts);
