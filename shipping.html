@@ -329,7 +329,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 /* Escape hatch: on mobile the topbar (which holds the real Sign out) overflows
    off the right edge, and the sidebar takes 65% of a 375px screen. Until a
    full mobile nav lands, at least keep Sign out reachable — pinned top-right,
-   in viewport coordinates so it clears the sidebar. */
+   in viewport coordinates so it clears the sidebar. Default rule first, then
+   the @media rule flips it on; equal-specificity selectors, later wins. */
 .mobile-signout{position:fixed;top:10px;right:12px;z-index:200;width:36px;height:36px;border-radius:50%;background:var(--red-bg);border:1px solid rgba(230,57,70,0.28);color:var(--accent);display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.24)}
 .mobile-signout:hover{background:rgba(230,57,70,0.18)}
 @media(max-width:900px){.mobile-signout{display:flex}}
