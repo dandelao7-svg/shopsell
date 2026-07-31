@@ -1996,84 +1996,106 @@ async function sidebarBuyAndPrint(order){
   if(btn){ btn.disabled = true; btn.textContent = 'Buying label…'; }
   const restore = () => { if(btn){ btn.disabled = false; btn.innerHTML = origLabel; } };
 
-  // Ship-from: default profile if we have one, else the Quick Ship form's
-  // values via defaultShipper() (which itself falls back to a sensible stub).
-  const shipperFrom = (typeof shipperAccounts !== 'undefined' && Array.isArray(shipperAccounts))
-    ? shipperAccounts.find(a => a.isDefault) || shipperAccounts[0]
-    : null;
-  const shipper = shipperFrom ? {
-    name: shipperFrom.name || 'Store',
-    phone: shipperFrom.phone || '5550000000',
-    address1: shipperFrom.address1 || '',
-    city: shipperFrom.city || '',
-    state: shipperFrom.state || '',
-    zip: shipperFrom.zip || '',
-    country: 'US',
-  } : (typeof defaultShipper === 'function' ? defaultShipper() : null);
-  if(!shipper || !shipper.address1){
+  // Read the sidebar's shipping form (already populated on selectOrder with
+  // sensible defaults). Every value the seller sees is what we send.
+  const fromIdx = parseInt(document.getElementById('sb-from').value, 10);
+  const shipFromProfile = Number.isInteger(fromIdx) ? shipperAccounts[fromIdx] : null;
+  if(!shipFromProfile || !shipFromProfile.address1){
     restore();
-    toast('Add a ship-from address in Settings first', 'error');
+    toast('Pick a ship-from address (Settings → Ship-from profiles)', 'error');
+    return prefillQuickShipFromOrder(order);
+  }
+  const shipper = {
+    name:     shipFromProfile.name || 'Store',
+    phone:    shipFromProfile.phone || '5550000000',
+    address1: shipFromProfile.address1,
+    city:     shipFromProfile.city,
+    state:    shipFromProfile.state,
+    zip:      shipFromProfile.zip,
+    country:  'US',
+  };
+
+  const lbs = parseFloat(document.getElementById('sb-weight-lbs').value) || 0;
+  const oz  = parseFloat(document.getElementById('sb-weight-oz').value)  || 0;
+  const totalLbs = lbs + oz / 16;
+  const pkg = {
+    weight: totalLbs > 0 ? totalLbs : 1,
+    length: parseFloat(document.getElementById('sb-length').value) || 12,
+    width:  parseFloat(document.getElementById('sb-width').value)  || 9,
+    height: parseFloat(document.getElementById('sb-height').value) || 4,
+  };
+
+  const carrier = document.getElementById('sb-carrier').value || 'ups';
+  const service = document.getElementById('sb-service').value;
+
+  // Recipient comes from the order's customerInfo (Orders → sidebar didn't
+  // used to expose ship-to as editable fields, so we don't ask — server
+  // needs it to actually ship anywhere).
+  const ci = order._customerInfo || {};
+  const recipient = {
+    name:        (`${ci.firstName||''} ${ci.lastName||''}`).trim() || order.customer || 'Customer',
+    company:     ci.company || '',
+    phone:       ci.phone || '5550000000',
+    address1:    ci.address1 || '',
+    address2:    ci.address2 || '',
+    city:        ci.city  || order.city  || '',
+    state:       ci.state || order.state || '',
+    zip:         ci.zip   || order.zip   || '',
+    country:     (ci.country || 'US').toUpperCase(),
+    residential: true,
+  };
+  if(!recipient.address1 || !recipient.city || !recipient.zip){
+    restore();
+    toast('This order is missing a shipping address — open Quick Ship to fill it in', 'error');
     return prefillQuickShipFromOrder(order);
   }
 
-  // Package: seller's default box preset. Weight defaults to 1lb — the server
-  // recomputes from order line items when they carry weight, so a low default
-  // is fine.
-  const box = (typeof userBoxes !== 'undefined' && Array.isArray(userBoxes))
-    ? (userBoxes.find(b => b.isDefault) || userBoxes[0])
-    : null;
-  const pkg = box ? {
-    weight: parseFloat(box.weight) || 1,
-    length: parseFloat(box.l) || 12,
-    width:  parseFloat(box.w) || 9,
-    height: parseFloat(box.h) || 4,
-  } : { weight: 1, length: 12, width: 9, height: 4 };
+  const payload = {
+    carrier,
+    orderId:     order._dbId,           // links the shipment row → pick-list PDF can enumerate items
+    serviceCode: carrier === 'ups' ? service : undefined,
+    serviceType: (carrier === 'fedex' || carrier === 'usps') ? service : undefined,
+    shipper, recipient, package: pkg,
+  };
 
   try {
     const token = localStorage.getItem('ss_token');
-    const res = await fetch('/api/shipping/batch', {
+    const res = await fetch('/api/shipping/label', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ orderIds: [order._dbId], strategy: 'cheapest', shipper, package: pkg }),
+      body: JSON.stringify(payload),
     });
-    if(!res.ok){
-      const err = await res.json().catch(() => ({}));
-      restore();
-      if(err.carrierSetupRequired){
-        toast('Connect a carrier in Settings first — going to Quick Ship', 'error');
-        return prefillQuickShipFromOrder(order);
-      }
-      toast(err.error || 'Could not buy the label', 'error');
-      return;
-    }
     const data = await res.json();
-    const r = Array.isArray(data.results) && data.results[0];
-    if(!r || !r.success){
+    if(!res.ok || !data.success){
       restore();
-      toast((r && r.error) || 'Label buy failed', 'error');
+      if(data.carrierSetupRequired){
+        toast('Connect ' + carrier.toUpperCase() + ' in Settings first', 'error');
+        return;
+      }
+      toast(data.error || 'Could not buy the label', 'error');
       return;
     }
-    // Prime the Quick Ship state so printQSLabel() can render / route to the
-    // combined letter+pick-list endpoint when that profile is active.
+    const label = data.label || {};
+    // Prime qsLabelData so printQSLabel() renders the label right here — via
+    // iframe for Standard Paper, the new endpoint for letter-label-picklist,
+    // or Zebra for thermal profiles.
     qsLabelData = {
-      trackingNumber: r.trackingNumber,
-      carrier:        (r.carrier || 'ups').toUpperCase(),
-      service:        r.service || '',
-      serviceName:    r.service || '',
-      fromName: shipper.name, fromAddr: shipper.address1, fromCity: shipper.city,
+      trackingNumber: label.trackingNumber,
+      carrier:        carrier.toUpperCase(),
+      service:        service || '',
+      serviceName:    label.serviceName || service || '',
+      fromName:  shipper.name, fromAddr: shipper.address1, fromCity: shipper.city,
       fromState: shipper.state, fromZip: shipper.zip,
-      toName:  order.customer || 'Customer',
-      toCompany: '', toAddr: '', toAddr2: '',
-      toCity:  order.city || '', toState: order.state || '', toZip: order.zip || '',
+      toName: recipient.name, toCompany: recipient.company, toAddr: recipient.address1,
+      toAddr2: recipient.address2, toCity: recipient.city, toState: recipient.state, toZip: recipient.zip,
       residential: true,
-      weight:  String(r.weight || pkg.weight || ''),
+      weight:  String(pkg.weight),
       ref:     String(order._dbId),
-      labelImage: r.labelImage || null,
-      labelUrl:   r.labelUrl   || null,
+      labelImage: label.labelImage || null,
+      labelUrl:   label.labelUrl   || null,
     };
     restore();
-    toast(`Bought ${r.carrier?.toUpperCase() || 'label'} ${r.trackingNumber} — printing…`, 'success');
-    // Refresh the orders table so the row flips to shipped.
+    toast(`Bought ${carrier.toUpperCase()} ${label.trackingNumber} — printing…`, 'success');
     if(typeof loadOrders === 'function') loadOrders();
     printQSLabel();
   } catch(err){
