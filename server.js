@@ -5159,31 +5159,28 @@ async function buildLabelWithPickListPdf(pairs) {
 
   for (let i = 0; i < pairs.length; i++) {
     const { label, order, seller } = pairs[i];
+    const ship = pairs[i].shipment || {};
     try {
       const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
       const page = doc.addPage([PAGE_W, PAGE_H]);
 
-      // ── TOP HALF: label rotated 90° CW, centered ──────────────
-      // Carrier labels ship with their own "top" that ends up upside-down
-      // when rotated CCW alongside the pick list. Rotating the label CW
-      // (opposite direction of the pick list) puts the address block the
-      // right way up on the physical page — the reader turns the paper
-      // however they want, and both halves have a canonical "top."
-      // Fit the ROTATED bounding box (natH × natW) into TOP_BOX.
+      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
+      // Matches the Shippo layout: portrait letter sheet, label rotated so a
+      // wide 4×6 carrier label fills the top half. Packing slip below reads
+      // upright in normal portrait orientation. Reader looks at the whole
+      // sheet without turning it.
       const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
       const scaledW = natW * scale, scaledH = natH * scale;
-      // pdf-lib rotates around (x, y) — with CW 90° (degrees(-90)) the image
-      // extends DOWN and RIGHT of the anchor, so the rotated bbox spans
-      //   x = [anchorX, anchorX + scaledH], y = [anchorY - scaledW, anchorY].
-      // To centre the rotated bbox in TOP_BOX, anchor at (left-edge, top-edge):
       const cx = TOP_BOX.x + TOP_BOX.w / 2;
       const cy = TOP_BOX.y + TOP_BOX.h / 2;
+      // CCW 90° extends image UP and LEFT of the anchor; centre the rotated
+      // bbox by placing the anchor at (right-edge, bottom-edge).
       const drawOpts = {
-        x: cx - scaledH / 2,
-        y: cy + scaledW / 2,
+        x: cx + scaledH / 2,
+        y: cy - scaledW / 2,
         width: scaledW,
         height: scaledH,
-        rotate: degrees(-90),
+        rotate: degrees(90),
       };
       if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
       else                          page.drawImage(embedded, drawOpts);
@@ -5194,60 +5191,93 @@ async function buildLabelWithPickListPdf(pairs) {
         thickness: 0.5, color: rgb(0.75, 0.75, 0.75),
       });
 
-      // ── BOTTOM HALF: pick list, rotated 90° CCW ───────────────
-      // Design in LANDSCAPE reading coordinates (how the seller sees it after
-      // turning the paper 90° CW), then map to portrait using this transform:
-      // portrait (px, py) with rotate 90° CCW produces landscape (lx, ly)
-      //   where lx = py, ly = 612 - px.  Reverse: px = 612 - ly, py = lx.
-      // Rows stack downward in landscape, which means increasing px in
-      // portrait — each row's baseline sits further right on the portrait sheet.
-      const SECTION_L_LEFT = 24;   // landscape x of the section's left edge
-      let rowLY = 380;             // landscape y of the current row baseline
-
-      const drawL = (text, lx, ly, opts) =>
+      // ── BOTTOM HALF: packing slip, upright portrait ───────────
+      // Modeled on Shippo's letter+slip layout — store on the left, order
+      // metadata on the right, ship-to below, items table with qty/price/
+      // total, and a totals block at the bottom-right. Everything reads
+      // top-to-bottom, no rotation.
+      const money = n => '$' + ((Number(n) || 0).toFixed(2));
+      const L_MARGIN = 40, R_MARGIN = 572;
+      const draw = (text, x, y, opts) =>
         page.drawText(toWinAnsi(text).slice(0, opts?.maxChars || 200), {
-          x: 612 - ly, y: lx,
-          size: opts?.size || 10, font: opts?.font || helv,
-          color: opts?.color || rgb(0, 0, 0), rotate: degrees(90),
+          x, y, size: opts?.size || 10, font: opts?.font || helv,
+          color: opts?.color || rgb(0, 0, 0),
         });
-      const drawLLine = (lx1, ly, lx2, opts) =>
-        page.drawLine({
-          start: { x: 612 - ly, y: lx1 }, end: { x: 612 - ly, y: lx2 },
-          thickness: opts?.thickness || 0.5, color: opts?.color || rgb(0.85, 0.85, 0.85),
-        });
-      // Checkbox: 10x10 landscape square at landscape (lx, ly). In portrait
-      // that's a 10x10 axis-aligned rect at (612-ly-10, lx).
-      const drawLBox = (lx, ly, size = 10) =>
-        page.drawRectangle({
-          x: 612 - ly - size, y: lx, width: size, height: size,
-          borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.7,
-        });
+      const drawRight = (text, xRight, y, opts) => {
+        const s = toWinAnsi(text).slice(0, opts?.maxChars || 200);
+        const font = opts?.font || helv;
+        const size = opts?.size || 10;
+        const w = font.widthOfTextAtSize(s, size);
+        page.drawText(s, { x: xRight - w, y, size, font, color: opts?.color || rgb(0, 0, 0) });
+      };
 
-      drawL(seller?.storeName || 'ShopSell', SECTION_L_LEFT, rowLY, { size: 14, font: helvBold });
+      // Center title "Packing Slip for Order #X"
+      let y = 372;
+      if (order) {
+        drawRight('Packing Slip for Order #SS-' + order.id, R_MARGIN, y, { size: 11, font: helvBold });
+      }
+      // Store name (top-left)
+      draw(seller?.storeName || 'ShopSell', L_MARGIN, y, { size: 13, font: helvBold });
 
-      // No-order fallback: an ad-hoc label (typical Quick Ship) has no order
-      // to enumerate. Print a small note and stop — the label on top is still
-      // valid; there's just nothing to pick.
+      // No-order fallback — leave a note and stop
       if (!order) {
-        drawL('No order attached to this label - no pick list to print.',
-          SECTION_L_LEFT, rowLY - 20, { size: 10, color: rgb(0.5, 0.5, 0.5) });
+        draw('No order attached to this label - no packing slip to print.',
+          L_MARGIN, y - 20, { size: 10, color: rgb(0.5, 0.5, 0.5) });
         composed++;
         continue;
       }
 
-      rowLY -= 16;
-      const orderLabel = 'PICK LIST - Order #' + order.id + (order.externalOrderNumber ? ' (' + order.externalOrderNumber + ')' : '');
-      drawL(orderLabel, SECTION_L_LEFT, rowLY, { size: 9, color: rgb(0.4, 0.4, 0.4) });
+      // Store address (from the shipment's from-* fields)
+      y -= 14;
+      if (ship.fromAddr) draw(ship.fromAddr, L_MARGIN, y, { size: 9, color: rgb(0.35, 0.35, 0.35) });
+      y -= 11;
+      const fromCityLine = [ship.fromCity, ship.fromState].filter(Boolean).join(', ') + (ship.fromZip ? ' ' + ship.fromZip : '');
+      if (fromCityLine.trim()) draw(fromCityLine, L_MARGIN, y, { size: 9, color: rgb(0.35, 0.35, 0.35) });
 
-      // Column header row: ITEM at left, SKU mid-right, QTY far right.
-      rowLY -= 28;
-      const COL_ITEM = SECTION_L_LEFT + 24;   // leave room for checkbox
-      const COL_SKU  = 380;
-      const COL_QTY  = 540;
-      drawL('ITEM', COL_ITEM, rowLY, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
-      drawL('SKU',  COL_SKU,  rowLY, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
-      drawL('QTY',  COL_QTY,  rowLY, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
-      drawLLine(SECTION_L_LEFT, rowLY - 6, PAGE_H - 24);
+      // Order metadata on the right (Order ID / Date / Shipped Via / Tracking)
+      let metaY = 358;
+      const metaLabelX = 380, metaValX = 440;
+      const paid = order.paidAt ? new Date(order.paidAt) : (order.createdAt ? new Date(order.createdAt) : null);
+      const dateStr = paid && !isNaN(paid) ? paid.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
+      const shippedVia = ((ship.carrier || '').toUpperCase()) + (ship.serviceName ? ' - ' + ship.serviceName : '');
+      const metaRows = [
+        ['Order ID:',      'SS-' + order.id],
+        ['Order Date:',    dateStr],
+        ['Shipped Via:',   shippedVia.trim()],
+        ['Tracking #:',    ship.trackingNumber || ''],
+      ];
+      for (const [k, v] of metaRows) {
+        draw(k, metaLabelX, metaY, { size: 9, font: helvBold, color: rgb(0.35, 0.35, 0.35) });
+        draw(v, metaValX,   metaY, { size: 9, maxChars: 22 });
+        metaY -= 12;
+      }
+
+      // Ship To block
+      y -= 22;
+      draw('SHIP TO:', L_MARGIN, y, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      y -= 12;
+      const ci = order.customerInfo || {};
+      const shipToName = (`${ci.firstName||''} ${ci.lastName||''}`).trim() || ship.toName || order.customerEmail || '';
+      if (shipToName) { draw(shipToName, L_MARGIN, y, { size: 10, font: helvBold }); y -= 11; }
+      const toAddr = ci.address1 || ship.toAddr;
+      if (toAddr)    { draw(toAddr, L_MARGIN, y, { size: 9, color: rgb(0.35, 0.35, 0.35) }); y -= 11; }
+      const toCity  = ci.city  || ship.toCity;
+      const toState = ci.state || ship.toState;
+      const toZip   = ci.zip   || ship.toZip;
+      const toLine  = [toCity, toState].filter(Boolean).join(', ') + (toZip ? ' ' + toZip : '');
+      if (toLine.trim()) { draw(toLine, L_MARGIN, y, { size: 9, color: rgb(0.35, 0.35, 0.35) }); y -= 11; }
+
+      // Items table
+      y -= 14;
+      const COL_ITEM = L_MARGIN;
+      const COL_QTY   = 380;
+      const COL_PRICE = 460;
+      const COL_TOTAL = R_MARGIN;
+      draw('ITEMS',  COL_ITEM,  y, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      drawRight('QTY',   COL_QTY   + 20, y, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      drawRight('PRICE', COL_PRICE + 40, y, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      drawRight('TOTAL', COL_TOTAL,      y, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      page.drawLine({ start: { x: L_MARGIN, y: y - 4 }, end: { x: R_MARGIN, y: y - 4 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
 
       // Rows — resolve missing SKUs from the products table
       const items = Array.isArray(order.items) ? order.items : [];
@@ -5257,28 +5287,56 @@ async function buildLabelWithPickListPdf(pairs) {
           const p = await db.getProductById(it.productId).catch(() => null);
           if (p) sku = p.sku || '';
         }
-        return { name: it.name || 'Item', sku, qty: it.qty || it.quantity || 1, variantTitle: it.variantTitle || '' };
+        return {
+          name: it.name || 'Item',
+          variantTitle: it.variantTitle || '',
+          sku, qty: it.qty || it.quantity || 1,
+          price: Number(it.price) || 0,
+        };
       }));
 
-      rowLY -= 20;
-      const LINE_H = 20;
-      const MIN_LY = 24;           // stop before the section runs off the bottom of landscape
+      y -= 16;
+      const LINE_H = 22;
+      const MIN_Y = 42;   // leave room for totals block
+      let subtotal = 0;
       let rendered = 0;
       for (const row of rows) {
-        if (rowLY < MIN_LY + LINE_H) break;
-        drawLBox(SECTION_L_LEFT, rowLY - 2);
-        const line = row.name + (row.variantTitle ? ' - ' + row.variantTitle : '');
-        drawL(line,            COL_ITEM, rowLY, { size: 10, maxChars: 40, color: rgb(0, 0, 0) });
-        drawL(row.sku || '-',  COL_SKU,  rowLY, { size: 10, color: rgb(0.3, 0.3, 0.3) });
-        drawL(String(row.qty), COL_QTY,  rowLY, { size: 10, font: helvBold, color: rgb(0, 0, 0) });
-        rowLY -= LINE_H;
+        if (y < MIN_Y + LINE_H) break;
+        const line1 = row.name;
+        draw(line1, COL_ITEM, y, { size: 10, maxChars: 50 });
+        if (row.sku || row.variantTitle) {
+          const line2Parts = [row.variantTitle, row.sku].filter(Boolean).join(' - ');
+          draw(line2Parts, COL_ITEM, y - 10, { size: 8, color: rgb(0.5, 0.5, 0.5), maxChars: 55 });
+        }
+        drawRight(String(row.qty),     COL_QTY   + 20, y, { size: 10 });
+        drawRight(money(row.price),    COL_PRICE + 40, y, { size: 10 });
+        const lineTotal = row.price * (Number(row.qty) || 0);
+        subtotal += lineTotal;
+        drawRight(money(lineTotal),    COL_TOTAL,      y, { size: 10 });
+        y -= LINE_H;
         rendered++;
       }
       const dropped = rows.length - rendered;
       if (dropped > 0) {
-        drawL('+ ' + dropped + ' more item' + (dropped === 1 ? '' : 's') + ' - see packing slip',
-          COL_ITEM, Math.max(rowLY, MIN_LY), { size: 9, color: rgb(0.6, 0.6, 0.6) });
+        draw('+ ' + dropped + ' more item' + (dropped === 1 ? '' : 's') + ' - see full order',
+          COL_ITEM, Math.max(y, MIN_Y), { size: 8, color: rgb(0.6, 0.6, 0.6) });
+        y -= 12;
       }
+
+      // Totals block — right-aligned
+      const orderSubtotal = Number(order.subtotal) || subtotal;
+      const orderTax      = Number(order.tax) || 0;
+      const orderTotal    = Number(order.total) || (orderSubtotal + orderTax);
+      const totalsY = Math.max(y - 4, 42);
+      page.drawLine({ start: { x: COL_PRICE, y: totalsY + 12 }, end: { x: R_MARGIN, y: totalsY + 12 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+      draw('Subtotal:', COL_PRICE, totalsY, { size: 9, color: rgb(0.35, 0.35, 0.35) });
+      drawRight(money(orderSubtotal), COL_TOTAL, totalsY, { size: 9 });
+      if (orderTax > 0) {
+        draw('Tax:', COL_PRICE, totalsY - 12, { size: 9, color: rgb(0.35, 0.35, 0.35) });
+        drawRight(money(orderTax), COL_TOTAL, totalsY - 12, { size: 9 });
+      }
+      draw('Total:', COL_PRICE, totalsY - 26, { size: 10, font: helvBold });
+      drawRight(money(orderTotal), COL_TOTAL, totalsY - 26, { size: 10, font: helvBold });
 
       composed++;
     } catch (e) {
@@ -5311,7 +5369,8 @@ app.post('/api/shipping/label-with-picklist.pdf', requireAuth, async (req, res) 
         if (o && o.sellerId === req.seller.sellerId) order = o;
       }
       pairs.push({
-        label:  { labelImage: ship.labelImage, labelUrl: ship.labelUrl, trackingNumber: tn },
+        label:    { labelImage: ship.labelImage, labelUrl: ship.labelUrl, trackingNumber: tn },
+        shipment: ship,   // from/to addresses + carrier + service for the packing slip
         order,
         seller,
       });
