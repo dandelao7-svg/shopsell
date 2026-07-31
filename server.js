@@ -2059,6 +2059,15 @@ app.post('/api/checkout/create-payment-intent', async (req, res) => {
       if (!product || product.sellerId !== seller.id) {
         return res.status(400).json({ error: `Product not found: ${item.productId}` });
       }
+      // Seller flipped this item to "temporarily sold out" while the buyer
+      // sat in checkout with it in their cart. Refuse the charge — the alt
+      // (letting it through) forces the seller to refund.
+      if (product.soldOut === true) {
+        return res.status(400).json({
+          error: `"${product.name}" just sold out — please remove it from your cart.`,
+          soldOut: true, productId: item.productId,
+        });
+      }
 
       // Resolve the chosen variant (if this product has any) so price and stock
       // come from the variant, not the product-level aggregate.
