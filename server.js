@@ -5192,6 +5192,17 @@ async function buildLabelWithPickListPdf(pairs) {
       // ── BOTTOM HALF: pick list ─────────────────────────────────
       let y = 366;
       page.drawText(toWinAnsi(seller?.storeName || 'ShopSell'), { x: 24, y, size: 14, font: helvBold, color: rgb(0, 0, 0) });
+
+      // No-order fallback: an ad-hoc label (typical Quick Ship) has no order
+      // to enumerate. Print a small note and stop — the label on top is still
+      // valid; there's just nothing to pick.
+      if (!order) {
+        page.drawText('No order attached to this label - no pick list to print.',
+          { x: 24, y: y - 18, size: 10, font: helv, color: rgb(0.5, 0.5, 0.5) });
+        composed++;
+        continue;
+      }
+
       const orderLabel = 'PICK LIST - Order #' + order.id + (order.externalOrderNumber ? ' (' + order.externalOrderNumber + ')' : '');
       page.drawText(toWinAnsi(orderLabel), { x: 24, y: y - 14, size: 9, font: helv, color: rgb(0.4, 0.4, 0.4) });
 
@@ -5259,15 +5270,21 @@ app.post('/api/shipping/label-with-picklist.pdf', requireAuth, async (req, res) 
       const ship = await db.getShipmentByTracking(tn);
       if (!ship || ship.sellerId !== req.seller.sellerId) continue;
       if (!ship.labelImage && !ship.labelUrl) continue;
-      const order = ship.orderId != null ? await db.getOrderById(ship.orderId) : null;
-      if (!order || order.sellerId !== req.seller.sellerId) continue; // skip labels not tied to an owned order
+      // Order is OPTIONAL — ad-hoc labels bought via Quick Ship don't carry an
+      // orderId. Composer degrades to just the label + a "no order attached"
+      // note on the bottom half when order is null.
+      let order = null;
+      if (ship.orderId != null) {
+        const o = await db.getOrderById(ship.orderId);
+        if (o && o.sellerId === req.seller.sellerId) order = o;
+      }
       pairs.push({
         label:  { labelImage: ship.labelImage, labelUrl: ship.labelUrl, trackingNumber: tn },
         order,
         seller,
       });
     }
-    if (!pairs.length) return res.status(404).json({ error: 'No printable labels with orders found for those tracking numbers.' });
+    if (!pairs.length) return res.status(404).json({ error: 'No printable labels found for those tracking numbers.' });
 
     const { pdf, composed, errors } = await buildLabelWithPickListPdf(pairs);
     if (!composed) return res.status(502).json({ error: 'Could not build any pages.', details: errors });
