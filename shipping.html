@@ -3223,7 +3223,7 @@ function openRuleEditor(id){
           <div class="form-field"><label>Box (optional)</label><select id="rule-box" style="background:var(--bg3);color:var(--text);border-color:var(--border)"><option value="">Batch default</option>${userBoxes.map(b=>`<option value="${b.id}">${escapeAttr(b.name)} — ${b.l}×${b.w}×${b.h}</option>`).join('')}</select></div>
         </div>
       </div>
-      <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end">
+      <div style="position:sticky;bottom:0;background:var(--card);padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;border-radius:0 0 14px 14px">
         <button onclick="closeRuleModal()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:9px 16px;border-radius:9px;cursor:pointer;font-size:13px">Cancel</button>
         <button id="ruleSaveBtn" class="topbar-btn primary" onclick="saveRule(${r?r.id:'null'})" style="padding:9px 18px">${r?'Save changes':'Create rule'}</button>
       </div>
