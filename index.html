@@ -1857,6 +1857,23 @@ function changeQty(key,d){
 }
 function removeItem(key){delete cart[key];updateCartUI()}
 
+// Drop every cart line for a product id (all variants). Used when the
+// checkout gate reports a just-sold-out item — the seller flipped it while
+// the buyer sat in checkout.
+function removeCartLinesByProduct(productId){
+  let n = 0;
+  for(const key of Object.keys(cart)){
+    if(cart[key] && cart[key].id === productId){ delete cart[key]; n++; }
+  }
+  if(n) updateCartUI();
+  return n;
+}
+function dropSoldOutAndRetry(productId){
+  removeCartLinesByProduct(productId);
+  if(!Object.keys(cart).length){ toast('Cart is empty'); navTo('home'); return; }
+  setupStripeCheckout();
+}
+
 function cartTotal(){return Object.values(cart).reduce((s,i)=>s+unitPrice(i)*i.qty,0)}
 function cartCount(){return Object.values(cart).reduce((s,i)=>s+i.qty,0)}
 
@@ -2099,7 +2116,22 @@ async function setupStripeCheckout(){
       body: JSON.stringify({ cartItems, storeSlug: STORE_SLUG, customerEmail: email })
     });
     const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Failed to start checkout.');
+    if(!res.ok){
+      // Server says an item just went sold-out. Offer a one-click fix instead
+      // of a dead-end error — dropping the line and retrying is exactly what
+      // the buyer would do manually.
+      if(data.soldOut && data.productId != null){
+        const removedCount = removeCartLinesByProduct(data.productId);
+        const productName = (data.error && data.error.match(/^"([^"]+)"/)?.[1]) || 'That item';
+        mountEl.innerHTML = `<div style="color:var(--accent);font-size:13px;line-height:1.5">
+          <div style="margin-bottom:10px">${productName} just sold out.</div>
+          <button onclick="dropSoldOutAndRetry(${data.productId})" style="background:var(--accent);color:#fff;border:none;padding:9px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer">Remove from cart &amp; continue</button>
+        </div>`;
+        setPlaceBtn({label:'Sold out', total:fmt(cartTotal()), disabled:true});
+        return;
+      }
+      throw new Error(data.error || 'Failed to start checkout.');
+    }
 
     currentPaymentIntent = data;
 
