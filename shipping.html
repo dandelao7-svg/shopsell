@@ -1975,38 +1975,131 @@ async function getRate(){
 async function createAndPrintFromSidebar(){
   if(!selectedOrderId){ toast('Select an order first','error'); return; }
   const order = ordersData.find(o => o.id === selectedOrderId);
-  // The real label buy (live carrier rate + purchase + real tracking, recorded
-  // to History and pushed back to the sales channel) happens on Quick Ship —
-  // the old inline flow here only fabricated tracking. Instead of leaving the
-  // seller to re-enter everything, pre-fill Quick Ship's ship-to from this
-  // order and jump there. All they still need to pick is box + carrier.
-  if(order){
-    const ci = order._customerInfo || {};
-    const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = (val == null ? '' : val); };
-    set('qs-to-name',    (`${ci.firstName||''} ${ci.lastName||''}`).trim() || order.customer || '');
-    set('qs-to-company', ci.company || '');
-    set('qs-to-phone',   ci.phone   || '');
-    set('qs-to-addr',    ci.address1 || '');
-    set('qs-to-addr2',   ci.address2 || '');
-    set('qs-to-city',    ci.city || order.city || '');
-    set('qs-to-zip',     ci.zip  || order.zip  || '');
-    // Country → then state (which lives in either a select or a free-text
-    // input depending on country; qsOnToCountryChange toggles them).
-    const country = String(ci.country || 'US').toUpperCase();
-    set('qs-to-country', country);
-    if(typeof qsOnToCountryChange === 'function') qsOnToCountryChange();
-    const stateVal = ci.state || order.state || '';
-    set('qs-to-state', stateVal);
-    set('qs-to-state-free', stateVal);
-    // Remember which DB order this label is for, so the Quick Ship buy
-    // handler can pass it to /api/shipping/label as orderId. Without this,
-    // the shipment row saves with orderId=null and the label+picklist print
-    // has nothing to enumerate on the bottom half.
-    window.qsPrefilledOrderId = order._dbId || null;
-    toast(`Prefilled Quick Ship with ${order.id} — pick a box and buy the label`, 'success');
-  } else {
-    toast('Order not loaded — filling Quick Ship blank', 'info');
+  if(!order){ toast('Order not loaded','error'); return; }
+
+  // If the order already has a label, just reprint it — that's the fast path
+  // for "I selected this order and hit Print, give me the label."
+  if(order.tracking){ return sidebarReprint(); }
+
+  // Otherwise buy a real label inline using the seller's saved defaults
+  // (ship-from + box preset), rate-shopped across connected carriers on the
+  // server. On success, drive the same print path Quick Ship uses so the
+  // active print profile (incl. 8.5x11 label+pick list) is honored. If the
+  // defaults aren't in place, fall back to prefilling Quick Ship so the
+  // seller can fill in whatever's missing.
+  return sidebarBuyAndPrint(order);
+}
+
+async function sidebarBuyAndPrint(order){
+  const btn = document.querySelector('[onclick^="createAndPrintFromSidebar"]');
+  const origLabel = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Buying label…'; }
+  const restore = () => { if(btn){ btn.disabled = false; btn.innerHTML = origLabel; } };
+
+  // Ship-from: default profile if we have one, else the Quick Ship form's
+  // values via defaultShipper() (which itself falls back to a sensible stub).
+  const shipperFrom = (typeof shipperAccounts !== 'undefined' && Array.isArray(shipperAccounts))
+    ? shipperAccounts.find(a => a.isDefault) || shipperAccounts[0]
+    : null;
+  const shipper = shipperFrom ? {
+    name: shipperFrom.name || 'Store',
+    phone: shipperFrom.phone || '5550000000',
+    address1: shipperFrom.address1 || '',
+    city: shipperFrom.city || '',
+    state: shipperFrom.state || '',
+    zip: shipperFrom.zip || '',
+    country: 'US',
+  } : (typeof defaultShipper === 'function' ? defaultShipper() : null);
+  if(!shipper || !shipper.address1){
+    restore();
+    toast('Add a ship-from address in Settings first', 'error');
+    return prefillQuickShipFromOrder(order);
   }
+
+  // Package: seller's default box preset. Weight defaults to 1lb — the server
+  // recomputes from order line items when they carry weight, so a low default
+  // is fine.
+  const box = (typeof userBoxes !== 'undefined' && Array.isArray(userBoxes))
+    ? (userBoxes.find(b => b.isDefault) || userBoxes[0])
+    : null;
+  const pkg = box ? {
+    weight: parseFloat(box.weight) || 1,
+    length: parseFloat(box.l) || 12,
+    width:  parseFloat(box.w) || 9,
+    height: parseFloat(box.h) || 4,
+  } : { weight: 1, length: 12, width: 9, height: 4 };
+
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ orderIds: [order._dbId], strategy: 'cheapest', shipper, package: pkg }),
+    });
+    if(!res.ok){
+      const err = await res.json().catch(() => ({}));
+      restore();
+      if(err.carrierSetupRequired){
+        toast('Connect a carrier in Settings first — going to Quick Ship', 'error');
+        return prefillQuickShipFromOrder(order);
+      }
+      toast(err.error || 'Could not buy the label', 'error');
+      return;
+    }
+    const data = await res.json();
+    const r = Array.isArray(data.results) && data.results[0];
+    if(!r || !r.success){
+      restore();
+      toast((r && r.error) || 'Label buy failed', 'error');
+      return;
+    }
+    // Prime the Quick Ship state so printQSLabel() can render / route to the
+    // combined letter+pick-list endpoint when that profile is active.
+    qsLabelData = {
+      trackingNumber: r.trackingNumber,
+      carrier:        (r.carrier || 'ups').toUpperCase(),
+      service:        r.service || '',
+      serviceName:    r.service || '',
+      fromName: shipper.name, fromAddr: shipper.address1, fromCity: shipper.city,
+      fromState: shipper.state, fromZip: shipper.zip,
+      toName:  order.customer || 'Customer',
+      toCompany: '', toAddr: '', toAddr2: '',
+      toCity:  order.city || '', toState: order.state || '', toZip: order.zip || '',
+      residential: true,
+      weight:  String(r.weight || pkg.weight || ''),
+      ref:     String(order._dbId),
+      labelImage: r.labelImage || null,
+      labelUrl:   r.labelUrl   || null,
+    };
+    restore();
+    toast(`Bought ${r.carrier?.toUpperCase() || 'label'} ${r.trackingNumber} — printing…`, 'success');
+    // Refresh the orders table so the row flips to shipped.
+    if(typeof loadOrders === 'function') loadOrders();
+    printQSLabel();
+  } catch(err){
+    restore();
+    toast('Network error: ' + err.message, 'error');
+  }
+}
+
+// Fallback: same prefill flow as before if we can't buy inline.
+function prefillQuickShipFromOrder(order){
+  const ci = order._customerInfo || {};
+  const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = (val == null ? '' : val); };
+  set('qs-to-name',    (`${ci.firstName||''} ${ci.lastName||''}`).trim() || order.customer || '');
+  set('qs-to-company', ci.company || '');
+  set('qs-to-phone',   ci.phone   || '');
+  set('qs-to-addr',    ci.address1 || '');
+  set('qs-to-addr2',   ci.address2 || '');
+  set('qs-to-city',    ci.city || order.city || '');
+  set('qs-to-zip',     ci.zip  || order.zip  || '');
+  const country = String(ci.country || 'US').toUpperCase();
+  set('qs-to-country', country);
+  if(typeof qsOnToCountryChange === 'function') qsOnToCountryChange();
+  const stateVal = ci.state || order.state || '';
+  set('qs-to-state', stateVal);
+  set('qs-to-state-free', stateVal);
+  window.qsPrefilledOrderId = order._dbId || null;
   if(typeof showPage === 'function') showPage('quickship');
 }
 
