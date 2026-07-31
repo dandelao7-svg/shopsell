@@ -39,7 +39,8 @@ const db           = require('./database');
 const carriers     = require('./carriers');
 const emailService = require('./email');
 const cryptoLib    = require('./lib/crypto');
-const { mergeLabels } = require('./lib/labelmerge');
+const { mergeLabels, embedLabelSource } = require('./lib/labelmerge');
+const { PDFDocument: PDFLibDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
 const shopify      = require('./lib/shopify');
 const amazon       = require('./lib/amazon');
 const ebay         = require('./lib/ebay');
@@ -5119,6 +5120,150 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Batch labels error:', err);
     res.status(500).json({ error: 'Batch failed: ' + err.message });
+  }
+});
+
+/* LABEL + PICK LIST — one letter-size page per order:
+     • top half:    the shipping label rotated 90° so a 4×6 label reads
+                    vertically across the paper
+     • bottom half: a pick list of that order's line items (SKU, name, qty,
+                    check-off box)
+   Same tenant-scoped tracking-number input as /labels/merge; never trusts
+   caller-supplied URLs. Powers the "8½×11 Laser — label + pick list" print
+   profile (`paperType: 'letter-label-picklist'`). */
+async function buildLabelWithPickListPdf(pairs) {
+  const doc      = await PDFLibDocument.create();
+  const helv     = await doc.embedFont(StandardFonts.Helvetica);
+  const helvBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const errors = [];
+  let composed = 0;
+
+  // Letter page: 612 × 792 pt (8.5" × 11"). Divide at y=396.
+  const PAGE_W = 612, PAGE_H = 792, DIVIDER_Y = 396;
+  // Top half box, insets from edges + divider.
+  const TOP_BOX = { x: 24, y: 420, w: 564, h: 348 };
+
+  for (let i = 0; i < pairs.length; i++) {
+    const { label, order, seller } = pairs[i];
+    try {
+      const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
+      const page = doc.addPage([PAGE_W, PAGE_H]);
+
+      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
+      // Fit the ROTATED bounding box (natH × natW) into TOP_BOX.
+      const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
+      const scaledW = natW * scale, scaledH = natH * scale;
+      // pdf-lib rotates around (x, y) — with CCW 90° the image extends UP and
+      // LEFT of the anchor, so the rotated bbox spans
+      //   x = [anchorX - scaledH, anchorX], y = [anchorY, anchorY + scaledW].
+      // To centre the rotated bbox in TOP_BOX, anchor at (right-edge, bottom-edge):
+      const cx = TOP_BOX.x + TOP_BOX.w / 2;
+      const cy = TOP_BOX.y + TOP_BOX.h / 2;
+      const drawOpts = {
+        x: cx + scaledH / 2,
+        y: cy - scaledW / 2,
+        width: scaledW,
+        height: scaledH,
+        rotate: degrees(90),
+      };
+      if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
+      else                          page.drawImage(embedded, drawOpts);
+
+      // ── DIVIDER ────────────────────────────────────────────────
+      page.drawLine({
+        start: { x: 24, y: DIVIDER_Y }, end: { x: PAGE_W - 24, y: DIVIDER_Y },
+        thickness: 0.5, color: rgb(0.75, 0.75, 0.75),
+      });
+
+      // ── BOTTOM HALF: pick list ─────────────────────────────────
+      let y = 366;
+      page.drawText(seller?.storeName || 'ShopSell', { x: 24, y, size: 14, font: helvBold, color: rgb(0, 0, 0) });
+      const orderLabel = 'PICK LIST — Order #' + order.id + (order.externalOrderNumber ? ' (' + order.externalOrderNumber + ')' : '');
+      page.drawText(orderLabel, { x: 24, y: y - 14, size: 9, font: helv, color: rgb(0.4, 0.4, 0.4) });
+
+      // Column headers
+      y -= 40;
+      page.drawText('✓',    { x: 24,  y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      page.drawText('ITEM', { x: 60,  y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      page.drawText('SKU',  { x: 400, y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      page.drawText('QTY',  { x: 550, y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      page.drawLine({ start: { x: 24, y: y - 6 }, end: { x: PAGE_W - 24, y: y - 6 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+
+      // Rows — resolve missing SKUs from the products table
+      const items = Array.isArray(order.items) ? order.items : [];
+      const rows = await Promise.all(items.map(async it => {
+        let sku = it.sku || '';
+        if (!sku && it.productId != null) {
+          const p = await db.getProductById(it.productId).catch(() => null);
+          if (p) sku = p.sku || '';
+        }
+        return { name: it.name || 'Item', sku, qty: it.qty || it.quantity || 1, variantTitle: it.variantTitle || '' };
+      }));
+
+      y -= 20;
+      const LINE_H = 20;
+      const MIN_Y = 24;
+      let rendered = 0;
+      for (const row of rows) {
+        if (y < MIN_Y + LINE_H) break;
+        // Checkbox
+        page.drawRectangle({ x: 24, y: y - 2, width: 10, height: 10, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.7 });
+        // Item name (+ variant), truncated to fit
+        const line = row.name + (row.variantTitle ? ' — ' + row.variantTitle : '');
+        page.drawText(line.slice(0, 55), { x: 60, y, size: 10, font: helv, color: rgb(0, 0, 0) });
+        page.drawText(row.sku || '—',    { x: 400, y, size: 10, font: helv, color: rgb(0.3, 0.3, 0.3) });
+        page.drawText(String(row.qty),   { x: 552, y, size: 10, font: helvBold, color: rgb(0, 0, 0) });
+        y -= LINE_H;
+        rendered++;
+      }
+      const dropped = rows.length - rendered;
+      if (dropped > 0) {
+        page.drawText('+ ' + dropped + ' more item' + (dropped === 1 ? '' : 's') + ' — see packing slip',
+          { x: 60, y: Math.max(y, MIN_Y), size: 9, font: helv, color: rgb(0.6, 0.6, 0.6) });
+      }
+
+      composed++;
+    } catch (e) {
+      errors.push({ index: i, label: label?.trackingNumber || null, error: e.message });
+    }
+  }
+
+  const bytes = await doc.save();
+  return { pdf: Buffer.from(bytes), composed, errors };
+}
+
+app.post('/api/shipping/label-with-picklist.pdf', requireAuth, async (req, res) => {
+  try {
+    const { trackingNumbers } = req.body;
+    if (!Array.isArray(trackingNumbers) || !trackingNumbers.length) {
+      return res.status(400).json({ error: 'trackingNumbers (non-empty array) is required.' });
+    }
+    const seller = await db.getSellerById(req.seller.sellerId);
+    const pairs = [];
+    for (const tn of trackingNumbers) {
+      const ship = await db.getShipmentByTracking(tn);
+      if (!ship || ship.sellerId !== req.seller.sellerId) continue;
+      if (!ship.labelImage && !ship.labelUrl) continue;
+      const order = ship.orderId != null ? await db.getOrderById(ship.orderId) : null;
+      if (!order || order.sellerId !== req.seller.sellerId) continue; // skip labels not tied to an owned order
+      pairs.push({
+        label:  { labelImage: ship.labelImage, labelUrl: ship.labelUrl, trackingNumber: tn },
+        order,
+        seller,
+      });
+    }
+    if (!pairs.length) return res.status(404).json({ error: 'No printable labels with orders found for those tracking numbers.' });
+
+    const { pdf, composed, errors } = await buildLabelWithPickListPdf(pairs);
+    if (!composed) return res.status(502).json({ error: 'Could not build any pages.', details: errors });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="labels-with-picklists.pdf"');
+    if (errors.length) res.setHeader('X-Compose-Warnings', String(errors.length));
+    res.send(pdf);
+  } catch (err) {
+    console.error('label-with-picklist error:', err);
+    res.status(500).json({ error: 'Failed to build the label+pick-list PDF: ' + err.message });
   }
 });
 

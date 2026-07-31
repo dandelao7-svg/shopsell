@@ -3103,19 +3103,28 @@ function renderBatchResults(data){
   renderOrders();
 }
 
-// Fetch all purchased labels merged into ONE printable PDF (UPS GIFs + FedEx/
-// USPS PDFs combined server-side, 4×6 per page) and open it to print.
+// Fetch all purchased labels as ONE printable PDF and open it to print.
+// The active print profile picks the layout:
+//   • letter-label-picklist → one letter page per order, label rotated
+//     vertically on the top half and pick list on the bottom half
+//   • anything else         → merged 4×6-per-page sheet (UPS GIFs + FedEx/
+//     USPS PDFs composed server-side)
 async function printAllBatchLabels(){
   const tns = lastBatchResults.map(r=>r.trackingNumber).filter(Boolean);
   if(!tns.length){ toast('No labels to print','info'); return; }
 
+  const profile = getActivePrintProfile();
+  const useCombined = profile?.paperType === 'letter-label-picklist';
+  const endpoint = useCombined ? '/api/shipping/label-with-picklist.pdf'
+                                : '/api/shipping/labels/merge';
+
   const btn = document.getElementById('batchRunBtn');
   const label = btn ? btn.textContent : '';
-  if(btn){ btn.disabled = true; btn.textContent = 'Building label sheet…'; }
+  if(btn){ btn.disabled = true; btn.textContent = useCombined ? 'Building label + pick-list sheet…' : 'Building label sheet…'; }
 
   try {
     const token = localStorage.getItem('ss_token');
-    const res = await fetch('/api/shipping/labels/merge', {
+    const res = await fetch(endpoint, {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token||'demo_token'}` },
       body: JSON.stringify({ trackingNumbers: tns }),
@@ -3129,7 +3138,9 @@ async function printAllBatchLabels(){
     const url  = URL.createObjectURL(blob);
     const w = window.open(url,'_blank');
     if(!w){ toast('Allow popups to open the label sheet','info'); }
-    else  { toast(`Opened ${tns.length} labels as one PDF`,'success'); }
+    else  { toast(useCombined
+      ? `Opened ${tns.length} label${tns.length===1?'':'s'} with pick lists as one PDF`
+      : `Opened ${tns.length} labels as one PDF`, 'success'); }
     setTimeout(()=>URL.revokeObjectURL(url), 60000);
   } catch(err){
     toast('Network error building label sheet: '+err.message,'error');
