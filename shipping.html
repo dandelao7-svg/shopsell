@@ -325,6 +325,14 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .toast-icon.success{background:var(--green-bg)}
 .toast-icon.error{background:var(--red-bg)}
 .toast-icon.info{background:var(--blue-bg)}
+
+/* Escape hatch: on mobile the topbar (which holds the real Sign out) overflows
+   off the right edge, and the sidebar takes 65% of a 375px screen. Until a
+   full mobile nav lands, at least keep Sign out reachable — pinned top-right,
+   in viewport coordinates so it clears the sidebar. */
+.mobile-signout{position:fixed;top:10px;right:12px;z-index:200;width:36px;height:36px;border-radius:50%;background:var(--red-bg);border:1px solid rgba(230,57,70,0.28);color:var(--accent);display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.24)}
+.mobile-signout:hover{background:rgba(230,57,70,0.18)}
+@media(max-width:900px){.mobile-signout{display:flex}}
 </style>
 </head>
 <body>
@@ -442,6 +450,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
     </div>
   </div>
 </aside>
+
+<button class="mobile-signout" title="Sign out" onclick="logout()" aria-label="Sign out">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+</button>
 
 <!-- MAIN -->
 <main class="main">
