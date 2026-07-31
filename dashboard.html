@@ -1673,6 +1673,20 @@ tr:hover td{background:#fafaf7}
     </div>
 
     <div class="form-card">
+      <div class="form-section-hd">Availability</div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Temporarily sold out</div>
+          <div class="toggle-desc">Keeps the listing visible but disables Add to cart. Buyers can sign up to be emailed when it's back — we'll send them the notice automatically when you turn this off.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="epSoldOut">
+          <span class="tslider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-card">
       <div class="form-section-hd">Returns policy</div>
       <div class="toggle-row">
         <div>
@@ -3195,6 +3209,7 @@ function transformDashProduct(row){
     sku:    row.sku || '—',
     images: Array.isArray(row.imageUrls) ? row.imageUrls : [],
     featured: !!row.isFeatured,
+    soldOut: row.soldOut === true,
     _raw:   row,
   };
 }
@@ -3512,6 +3527,7 @@ function renderProducts(filter='all'){
              </div>`
           : ''}
         <div class="product-mgmt-status">
+          ${p.soldOut ? `<span class="status-pill failed" title="Sold out — Add to cart is disabled on the storefront and buyers can sign up for a back-in-stock alert">Sold out</span>` : ''}
           <span class="status-pill ${p.status==='active'?'active':'draft'}">${cap(p.status)}</span>
         </div>
       </div>
@@ -4332,6 +4348,7 @@ function openEditProduct(id){
   document.getElementById('epReturnable').checked = r.returnable !== false;
   document.getElementById('epReturnDays').value   = r.returnWindowDays != null ? r.returnWindowDays : 30;
   document.getElementById('epRestockFee').value   = r.restockingFeePct != null ? r.restockingFeePct : 0;
+  document.getElementById('epSoldOut').checked    = r.soldOut === true;
   document.getElementById('epHsCode').value        = r.hsCode || '';
   document.getElementById('epOriginCountry').value = r.countryOfOrigin || '';
   document.getElementById('epCustomsDesc').value   = r.customsDescription || '';
@@ -4391,6 +4408,7 @@ async function saveEditProduct(){
     countryOfOrigin:    (document.getElementById('epOriginCountry').value || '').trim(),
     customsDescription: (document.getElementById('epCustomsDesc').value || '').trim(),
     intlRestricted:     document.getElementById('epIntlRestricted').checked,
+    soldOut:            document.getElementById('epSoldOut').checked,
   };
 
   const btn = document.getElementById('epSaveBtn');

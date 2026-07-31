@@ -467,6 +467,33 @@ async function sendWelcomeDiscount({ toEmail, storeName, code, percent, storeUrl
   }, 'welcome-discount');
 }
 
+// ============================================================
+// BUYER EMAIL — "an item you asked about is back in stock"
+// ============================================================
+async function sendBackInStockEmail({ toEmail, storeName, productName, productUrl }) {
+  if (!client) return { skipped: true };
+  if (!toEmail) return { skipped: true, reason: 'no recipient' };
+
+  const shopBtn = productUrl
+    ? `<p style="margin:18px 0"><a href="${esc(productUrl)}" style="display:inline-block;background:#0f0f1a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Shop it now</a></p>`
+    : '';
+
+  const inner = `
+      <h1 style="font-size:22px;margin:0 0 8px;font-weight:700">${esc(productName)} is back in stock</h1>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:14px">Good news from ${esc(storeName)} — the item you asked about is available again.</p>
+      ${shopBtn}
+      <p style="margin:22px 0 0;font-size:12px;color:#9ca3af;line-height:1.6">
+        You're getting this because you signed up for a back-in-stock alert. We only send it once.
+      </p>`;
+
+  return _send({
+    from:    fromAddr,
+    to:      [toEmail],
+    subject: `Back in stock: ${productName}`,
+    html:    emailShell(inner, `Sent by ${storeName} via ShopSell`),
+  }, 'back-in-stock');
+}
+
 module.exports = {
   sendReturnLabelToBuyer,
   sendReturnNotificationToSeller,
@@ -475,4 +502,5 @@ module.exports = {
   sendShippingNotificationToBuyer,
   sendPasswordReset,
   sendWelcomeDiscount,
+  sendBackInStockEmail,
 };

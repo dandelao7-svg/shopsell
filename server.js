@@ -1870,6 +1870,7 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
       body.countryOfOrigin = body.countryOfOrigin ? (String(body.countryOfOrigin).trim().toUpperCase() || null) : null;
     }
     if ('intlRestricted' in body) body.intlRestricted = body.intlRestricted === true;
+    if ('soldOut'        in body) body.soldOut        = body.soldOut        === true;
     // When options/variants are being edited, normalize them and re-derive the
     // product-level price/quantity from the variants.
     if (body.options !== undefined || body.variants !== undefined) {
@@ -1882,9 +1883,59 @@ app.put('/api/seller/products/:id', requireAuth, async (req, res) => {
       }
     }
     const updated = await db.updateProduct(req.params.id, body);
+
+    // If this save flipped sold_out from true → false, notify any buyers who
+    // signed up while it was out. Best-effort — the product save is already
+    // committed, so a Resend outage must not fail the response. Fire it and
+    // don't wait: the seller doesn't care and shouldn't be blocked on SMTP.
+    if (product.soldOut === true && updated.soldOut === false) {
+      notifyBackInStock(updated, req.seller.sellerId).catch(err =>
+        console.error('Back-in-stock notify failed for product ' + updated.id + ':', err.message));
+    }
     res.json({ message: 'Product updated!', product: updated });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update product.' });
+  }
+});
+
+// Fetch pending signups, email each one, clear the list. Errors bubble up to
+// the caller which just logs — nothing here is user-facing.
+async function notifyBackInStock(product, sellerId) {
+  const subs = await db.getStockNotifications(product.id);
+  if (!subs.length) return;
+  const seller = await db.getSellerById(sellerId);
+  if (!seller) return;
+  const base = storeCanonicalBase(seller);
+  const productUrl = `${base}/product/${product.id}`;
+  const storeName = seller.storeName || 'ShopSell';
+  await Promise.allSettled(subs.map(s =>
+    emailService.sendBackInStockEmail({
+      toEmail: s.email, storeName, productName: product.name, productUrl,
+    })
+  ));
+  // Delete after the send round so we don't email the same person twice if
+  // the item goes sold-out → in-stock again later; they'd re-subscribe.
+  await db.clearStockNotifications(product.id);
+}
+
+/* Public back-in-stock signup — a buyer viewing a sold-out product enters
+   their email to be notified when it's restocked. Any email is accepted (no
+   login required); the sender is dropped after the notification goes out. */
+app.post('/api/products/:id/notify', async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(productId)) return res.status(400).json({ error: 'Invalid product.' });
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return res.status(400).json({ error: 'Please enter a valid email.' });
+    }
+    const product = await db.getProductById(productId);
+    if (!product) return res.status(404).json({ error: 'Product not found.' });
+    await db.createStockNotification(productId, email);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Stock notification signup error:', err);
+    res.status(500).json({ error: 'Could not save your request.' });
   }
 });
 

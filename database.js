@@ -185,6 +185,24 @@ async function initSchema() {
     // Compliance: flag a product that can't ship internationally (blocks
     // cross-border orders/labels that include it).
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS intl_restricted BOOLEAN NOT NULL DEFAULT FALSE;`);
+    // Merchandising: sellers can mark a product "sold out" temporarily
+    // without unpublishing it — the storefront disables Add to cart and
+    // offers buyers a back-in-stock notification. Flipping this false
+    // triggers those notifications (see the product PUT handler).
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS sold_out BOOLEAN NOT NULL DEFAULT FALSE;`);
+
+    // BACK-IN-STOCK NOTIFICATION SIGNUPS — buyers subscribe on a sold-out
+    // product's page; the row is deleted once the notification is sent, so
+    // (product_id, lower(email)) is unique across pending signups.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS stock_notifications (
+        id           SERIAL PRIMARY KEY,
+        product_id   INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        email        TEXT NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_notif_prod_email ON stock_notifications (product_id, lower(email));`);
 
     // BUYERS — accounts for the buyer storefront. Separate from sellers
     // (different login flow, different JWT claim type).
@@ -820,6 +838,7 @@ async function updateProduct(id, fields) {
     countryOfOrigin:    'country_of_origin',
     customsDescription: 'customs_description',
     intlRestricted:     'intl_restricted',
+    soldOut:            'sold_out',
   };
   const sets = [];
   const vals = [];
@@ -845,6 +864,28 @@ async function updateProduct(id, fields) {
 
 async function deleteProduct(id) {
   await pool.query(`DELETE FROM products WHERE id = $1`, [id]);
+}
+
+// ── BACK-IN-STOCK NOTIFICATIONS ───────────────────────────────
+// One row per pending signup. On conflict (same product + same email,
+// case-insensitively) we quietly do nothing so a buyer can hit the button
+// twice without seeing an error.
+async function createStockNotification(productId, email) {
+  await pool.query(
+    `INSERT INTO stock_notifications (product_id, email) VALUES ($1, $2)
+       ON CONFLICT (product_id, lower(email)) DO NOTHING`,
+    [productId, email]
+  );
+}
+
+async function getStockNotifications(productId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM stock_notifications WHERE product_id = $1`, [productId]);
+  return rows.map(camelize);
+}
+
+async function clearStockNotifications(productId) {
+  await pool.query(`DELETE FROM stock_notifications WHERE product_id = $1`, [productId]);
 }
 
 async function decrementStock(productId, qty) {
@@ -1753,6 +1794,9 @@ module.exports = {
   deleteProduct,
   decrementStock,
   decrementVariantStock,
+  createStockNotification,
+  getStockNotifications,
+  clearStockNotifications,
 
   // Orders
   createOrder,

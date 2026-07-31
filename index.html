@@ -880,6 +880,15 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
       Free shipping — no minimums, ever
     </div>
     <button class="modal-add-btn" onclick="addFromModal()">Add to cart</button>
+    <div id="modalNotify" style="display:none;margin-top:14px;padding:14px;background:var(--light);border:1px solid var(--border);border-radius:11px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px">Get an email when it's back</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">One email, only when this item is restocked. No newsletter.</div>
+      <form onsubmit="event.preventDefault();submitStockNotify()" style="display:flex;gap:8px">
+        <input type="email" id="notifyEmail" required placeholder="you@example.com" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;background:#fff;color:var(--text)">
+        <button type="submit" id="notifyBtn" style="background:var(--accent);color:#fff;border:none;padding:10px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Notify me</button>
+      </form>
+      <div id="notifyMsg" style="font-size:12px;margin-top:8px;display:none"></div>
+    </div>
     <div id="modalReviews" style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px"></div>
   </div>
 </div>
@@ -1008,6 +1017,7 @@ function normalizeProduct(p) {
     images:       Array.isArray(p.imageUrls) ? p.imageUrls : [],
     featured:     !!p.isFeatured,
     intlRestricted: !!p.intlRestricted,
+    soldOut:      p.soldOut === true,
   };
 }
 
@@ -1027,12 +1037,24 @@ function getFiltered(cat,sort,search=''){
 }
 
 function cardHTML(p){
+  // Sold out takes precedence over the sale/new/hot badge — it's the more
+  // load-bearing state for the buyer.
+  const badge = p.soldOut
+    ? `<span class="product-badge" style="background:#6b7280;color:#fff">Sold out</span>`
+    : (p.badge?`<span class="product-badge ${p.badge}">${p.badge==='hot'?'🔥 Hot':p.badge==='new'?'New':'Sale'}</span>`:'');
+  const addBtn = p.soldOut
+    ? `<button class="add-to-cart-btn" disabled title="Sold out — open the product to get notified when it's back" style="opacity:.5;cursor:not-allowed" onclick="event.preventDefault();event.stopPropagation();openModal(${p.id})">
+         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+       </button>`
+    : `<button class="add-to-cart-btn" id="ab-${p.id}" onclick="event.preventDefault();event.stopPropagation();quickAdd(${p.id})">
+         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+       </button>`;
   return`<a class="product-card" href="/product/${p.id}" onclick="return cardClick(event,${p.id})">
-    <div class="product-img-wrap">
+    <div class="product-img-wrap"${p.soldOut?' style="opacity:.7"':''}>
       ${p.images && p.images.length
         ? `<img src="${p.images[0]}" alt="${p.name}" style="width:100%;height:100%;object-fit:cover">`
         : p.emoji}
-      ${p.badge?`<span class="product-badge ${p.badge}">${p.badge==='hot'?'🔥 Hot':p.badge==='new'?'New':'Sale'}</span>`:''}
+      ${badge}
       <button class="wishlist-btn" onclick="event.preventDefault();event.stopPropagation();toast('💛 Added to wishlist!')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
       </button>
@@ -1045,9 +1067,7 @@ function cardHTML(p){
         : `<span class="review-ct" style="color:var(--muted)">No reviews yet</span>`}</div>
       <div class="product-footer">
         <div><span class="product-price">${fmt(p.price)}</span>${p.origPrice?`<span class="product-price-orig">${fmt(p.origPrice)}</span>`:''}</div>
-        <button class="add-to-cart-btn" id="ab-${p.id}" onclick="event.preventDefault();event.stopPropagation();quickAdd(${p.id})">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
+        ${addBtn}
       </div>
     </div>
   </a>`;
@@ -1531,6 +1551,19 @@ function openModal(id){
     document.getElementById('modalVarWrap').style.display='none';
     setModalAddState(true);
   }
+  // Sold-out override: seller flipped the switch. Beats any variant state.
+  const notifyBox = document.getElementById('modalNotify');
+  const notifyMsg = document.getElementById('notifyMsg');
+  if(p.soldOut){
+    setModalAddState(false, 'Sold out');
+    notifyBox.style.display = 'block';
+    document.getElementById('notifyEmail').value = '';
+    document.getElementById('notifyBtn').disabled = false;
+    document.getElementById('notifyBtn').textContent = 'Notify me';
+    notifyMsg.style.display = 'none';
+  } else {
+    notifyBox.style.display = 'none';
+  }
   loadModalReviews(p.id);
   document.getElementById('modalOverlay').classList.add('open');
   document.body.style.overflow='hidden';
@@ -1734,6 +1767,7 @@ function mqChange(d){mq=Math.max(1,Math.min(99,mq+d));document.getElementById('m
 function addFromModal(){
   if(!currentModal)return;
   const p=currentModal;
+  if(p.soldOut){ toast('This item is sold out'); return; }
   const opts = Array.isArray(p.options) ? p.options : [];
   if(opts.length){
     const v = resolveVariant(p, modalSel);
@@ -1744,6 +1778,41 @@ function addFromModal(){
     addToCart(p.id, mq);
   }
   closeModal();
+}
+
+async function submitStockNotify(){
+  if(!currentModal) return;
+  const emailEl = document.getElementById('notifyEmail');
+  const btn = document.getElementById('notifyBtn');
+  const msg = document.getElementById('notifyMsg');
+  const email = (emailEl.value || '').trim();
+  if(!email){ emailEl.focus(); return; }
+  btn.disabled = true; btn.textContent = 'Saving…';
+  msg.style.display = 'none';
+  try {
+    const res = await fetch('/api/products/'+currentModal.id+'/notify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){
+      msg.textContent = data.error || 'Could not save your request.';
+      msg.style.color = 'var(--accent)';
+      msg.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Notify me';
+      return;
+    }
+    msg.textContent = "Got it — we'll email you when it's back.";
+    msg.style.color = 'var(--green, #2d6a4f)';
+    msg.style.display = 'block';
+    btn.textContent = 'Subscribed ✓';
+    emailEl.disabled = true;
+  } catch(e){
+    msg.textContent = 'Network error. Please try again.';
+    msg.style.color = 'var(--accent)';
+    msg.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Notify me';
+  }
 }
 
 // ── CART ──────────────────────────────────────────────────────
