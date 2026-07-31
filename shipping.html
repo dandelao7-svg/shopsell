@@ -1998,6 +1998,11 @@ async function createAndPrintFromSidebar(){
     const stateVal = ci.state || order.state || '';
     set('qs-to-state', stateVal);
     set('qs-to-state-free', stateVal);
+    // Remember which DB order this label is for, so the Quick Ship buy
+    // handler can pass it to /api/shipping/label as orderId. Without this,
+    // the shipment row saves with orderId=null and the label+picklist print
+    // has nothing to enumerate on the bottom half.
+    window.qsPrefilledOrderId = order._dbId || null;
     toast(`Prefilled Quick Ship with ${order.id} — pick a box and buy the label`, 'success');
   } else {
     toast('Order not loaded — filling Quick Ship blank', 'info');
@@ -5287,9 +5292,15 @@ async function generateQuickShipLabel(){
     labelUrl:   null,
   };
 
+  // If Quick Ship was prefilled from an order (Orders → Create + Print Label),
+  // pass that DB order id so the shipment row links back to the order and the
+  // "label + pick list" print can enumerate its items on the bottom half.
+  // Otherwise fall back to the ref-string or a synthetic tag as before.
+  const prefilledOrderId = window.qsPrefilledOrderId;
   const payload = {
     carrier,
-    orderId:     qsLabelData.ref || `QS-${Date.now()}`,
+    orderId:     prefilledOrderId != null ? prefilledOrderId
+                                          : (qsLabelData.ref || `QS-${Date.now()}`),
     serviceCode: carrier==='ups'   ? service : undefined,
     serviceType: (carrier==='fedex'||carrier==='usps') ? service : undefined,
     shipper: {
@@ -5351,6 +5362,9 @@ async function generateQuickShipLabel(){
       qsLabelData.voided         = false;
       apiSuccess = true;
       reportChannelPush(data.channelPush);
+      // Clear the prefill hint — the label is bought; the next Quick Ship
+      // use should NOT accidentally link to this same order.
+      window.qsPrefilledOrderId = null;
     } else {
       apiError = data.error || 'Unknown error from carrier';
     }

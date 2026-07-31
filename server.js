@@ -5163,22 +5163,25 @@ async function buildLabelWithPickListPdf(pairs) {
       const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
       const page = doc.addPage([PAGE_W, PAGE_H]);
 
-      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
+      // ── TOP HALF: label rotated 90° CW, centered ──────────────
       // Fit the ROTATED bounding box (natH × natW) into TOP_BOX.
+      // First render was CCW which came out upside-down when read against the
+      // pick list below; CW puts the address block right-side-up for a seller
+      // holding the sheet in portrait.
       const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
       const scaledW = natW * scale, scaledH = natH * scale;
-      // pdf-lib rotates around (x, y) — with CCW 90° the image extends UP and
-      // LEFT of the anchor, so the rotated bbox spans
-      //   x = [anchorX - scaledH, anchorX], y = [anchorY, anchorY + scaledW].
-      // To centre the rotated bbox in TOP_BOX, anchor at (right-edge, bottom-edge):
+      // pdf-lib rotates around (x, y) — with CW 90° (degrees(-90)) the image
+      // extends DOWN and RIGHT of the anchor, so the rotated bbox spans
+      //   x = [anchorX, anchorX + scaledH], y = [anchorY - scaledW, anchorY].
+      // To centre the rotated bbox in TOP_BOX, anchor at (left-edge, top-edge):
       const cx = TOP_BOX.x + TOP_BOX.w / 2;
       const cy = TOP_BOX.y + TOP_BOX.h / 2;
       const drawOpts = {
-        x: cx + scaledH / 2,
-        y: cy - scaledW / 2,
+        x: cx - scaledH / 2,
+        y: cy + scaledW / 2,
         width: scaledW,
         height: scaledH,
-        rotate: degrees(90),
+        rotate: degrees(-90),
       };
       if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
       else                          page.drawImage(embedded, drawOpts);
