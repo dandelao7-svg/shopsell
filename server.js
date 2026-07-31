@@ -5131,6 +5131,20 @@ app.post('/api/shipping/batch', requireAuth, async (req, res) => {
    Same tenant-scoped tracking-number input as /labels/merge; never trusts
    caller-supplied URLs. Powers the "8½×11 Laser — label + pick list" print
    profile (`paperType: 'letter-label-picklist'`). */
+// StandardFonts.Helvetica encodes as WinAnsi (CP1252) — any codepoint outside
+// that (typographic dashes, curly quotes, checkmarks, or seller/product text
+// with any non-Latin character) throws inside page.drawText. Sanitize all
+// user-facing strings through this before drawing.
+function toWinAnsi(s) {
+  return String(s == null ? '' : s)
+    .replace(/[—–−]/g, '-')     // em/en dash, minus → hyphen
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/[…]/g, '...')
+    .replace(/[ ]/g, ' ')
+    .replace(/[^\x20-\x7E\xA1-\xFF]/g, '?');   // everything else outside CP1252 basic → ?
+}
+
 async function buildLabelWithPickListPdf(pairs) {
   const doc      = await PDFLibDocument.create();
   const helv     = await doc.embedFont(StandardFonts.Helvetica);
@@ -5177,13 +5191,13 @@ async function buildLabelWithPickListPdf(pairs) {
 
       // ── BOTTOM HALF: pick list ─────────────────────────────────
       let y = 366;
-      page.drawText(seller?.storeName || 'ShopSell', { x: 24, y, size: 14, font: helvBold, color: rgb(0, 0, 0) });
-      const orderLabel = 'PICK LIST — Order #' + order.id + (order.externalOrderNumber ? ' (' + order.externalOrderNumber + ')' : '');
-      page.drawText(orderLabel, { x: 24, y: y - 14, size: 9, font: helv, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText(toWinAnsi(seller?.storeName || 'ShopSell'), { x: 24, y, size: 14, font: helvBold, color: rgb(0, 0, 0) });
+      const orderLabel = 'PICK LIST - Order #' + order.id + (order.externalOrderNumber ? ' (' + order.externalOrderNumber + ')' : '');
+      page.drawText(toWinAnsi(orderLabel), { x: 24, y: y - 14, size: 9, font: helv, color: rgb(0.4, 0.4, 0.4) });
 
-      // Column headers
+      // Column headers (the check-off column is left blank in the header — every
+      // row draws a real rectangle checkbox, so no glyph is needed here).
       y -= 40;
-      page.drawText('✓',    { x: 24,  y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
       page.drawText('ITEM', { x: 60,  y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
       page.drawText('SKU',  { x: 400, y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
       page.drawText('QTY',  { x: 550, y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
@@ -5208,17 +5222,18 @@ async function buildLabelWithPickListPdf(pairs) {
         if (y < MIN_Y + LINE_H) break;
         // Checkbox
         page.drawRectangle({ x: 24, y: y - 2, width: 10, height: 10, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.7 });
-        // Item name (+ variant), truncated to fit
-        const line = row.name + (row.variantTitle ? ' — ' + row.variantTitle : '');
-        page.drawText(line.slice(0, 55), { x: 60, y, size: 10, font: helv, color: rgb(0, 0, 0) });
-        page.drawText(row.sku || '—',    { x: 400, y, size: 10, font: helv, color: rgb(0.3, 0.3, 0.3) });
-        page.drawText(String(row.qty),   { x: 552, y, size: 10, font: helvBold, color: rgb(0, 0, 0) });
+        // Item name (+ variant), truncated to fit — sanitize because seller
+        // product names can contain any unicode.
+        const line = row.name + (row.variantTitle ? ' - ' + row.variantTitle : '');
+        page.drawText(toWinAnsi(line).slice(0, 55), { x: 60,  y, size: 10, font: helv,     color: rgb(0, 0, 0) });
+        page.drawText(toWinAnsi(row.sku || '-'),    { x: 400, y, size: 10, font: helv,     color: rgb(0.3, 0.3, 0.3) });
+        page.drawText(String(row.qty),              { x: 552, y, size: 10, font: helvBold, color: rgb(0, 0, 0) });
         y -= LINE_H;
         rendered++;
       }
       const dropped = rows.length - rendered;
       if (dropped > 0) {
-        page.drawText('+ ' + dropped + ' more item' + (dropped === 1 ? '' : 's') + ' — see packing slip',
+        page.drawText('+ ' + dropped + ' more item' + (dropped === 1 ? '' : 's') + ' - see packing slip',
           { x: 60, y: Math.max(y, MIN_Y), size: 9, font: helv, color: rgb(0.6, 0.6, 0.6) });
       }
 
