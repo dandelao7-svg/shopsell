@@ -861,6 +861,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
     <div class="modal-price-row">
       <div class="modal-price" id="modalPrice"></div>
       <div class="modal-orig" id="modalOrig"></div>
+      <span id="modalSoldOutTag" style="display:none;background:#6b7280;color:#fff;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;text-transform:uppercase;letter-spacing:.3px;margin-left:8px">Sold out</span>
     </div>
     <div class="modal-desc" id="modalDesc"></div>
     <div id="modalVarWrap">
@@ -1556,16 +1557,35 @@ function openModal(id){
     setModalAddState(true);
   }
   // Sold-out override: seller flipped the switch. Beats any variant state.
-  const notifyBox = document.getElementById('modalNotify');
-  const notifyMsg = document.getElementById('notifyMsg');
+  // In sold-out mode, hide every "buy this" affordance (Add to cart button,
+  // qty stepper, free-shipping note, variant picker) and show the notify
+  // form as the only action. Without this, the mobile modal (max-height 92vh)
+  // clips the notify email input below the fold — the tightest height budget
+  // on the site can't hold both the buy stack AND the subscribe stack.
+  const notifyBox   = document.getElementById('modalNotify');
+  const notifyMsg   = document.getElementById('notifyMsg');
+  const soldOutTag  = document.getElementById('modalSoldOutTag');
+  const qtyRow      = document.querySelector('.modal-qty-row');
+  const shipNote    = document.querySelector('.free-ship-note');
+  const addBtnEl    = document.querySelector('.modal-add-btn');
+  const varWrapEl   = document.getElementById('modalVarWrap');
   if(p.soldOut){
-    setModalAddState(false, 'Sold out');
+    soldOutTag.style.display = 'inline-block';
+    if(qtyRow)    qtyRow.style.display    = 'none';
+    if(shipNote)  shipNote.style.display  = 'none';
+    if(addBtnEl)  addBtnEl.style.display  = 'none';
+    if(varWrapEl) varWrapEl.style.display = 'none';
     notifyBox.style.display = 'block';
     document.getElementById('notifyEmail').value = '';
+    document.getElementById('notifyEmail').disabled = false;
     document.getElementById('notifyBtn').disabled = false;
     document.getElementById('notifyBtn').textContent = 'Notify me';
     notifyMsg.style.display = 'none';
   } else {
+    soldOutTag.style.display = 'none';
+    if(qtyRow)    qtyRow.style.display    = '';
+    if(shipNote)  shipNote.style.display  = '';
+    if(addBtnEl)  addBtnEl.style.display  = '';
     notifyBox.style.display = 'none';
   }
   loadModalReviews(p.id);
