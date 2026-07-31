@@ -5437,9 +5437,12 @@ function printCustomsInvoice(){
 
 // ── PRINT QUICK SHIP LABEL ────────────────────────────────────
 // Branches based on the active print profile:
-//   - 'standard'    → real UPS GIF in iframe, rotated upright on 8.5×11
-//   - 'thermal-4x6' → ZPL sent to Zebra printer
-//   - 'thermal-4x8' → ZPL with top 2" doc label + bottom 6" shipping label
+//   - 'standard'              → real UPS GIF in iframe, rotated upright on 8.5×11
+//   - 'thermal-4x6'           → ZPL sent to Zebra printer
+//   - 'thermal-4x8'           → ZPL with top 2" doc label + bottom 6" shipping label
+//   - 'letter-label-picklist' → server-composed PDF: label rotated on top half,
+//                               pick list on bottom half. Same endpoint the
+//                               batch print flow uses; opens in a new tab.
 function printQSLabel(){
   if(!qsLabelData){ toast('No label to print','error'); return; }
 
@@ -5456,6 +5459,38 @@ function printQSLabel(){
       ? generateZPL4x8(qsLabelData, profile)
       : generateZPL(qsLabelData);
     sendToZebra(zpl);
+    return;
+  }
+
+  // ── LETTER LABEL + PICK LIST (8.5×11) ─────────────────────
+  // Server composes rotated label + this order's line items as one letter
+  // page. Needs both a tracking number AND that the shipment is persisted
+  // in the DB (buyCarrierLabel already does that before returning).
+  if(paperType === 'letter-label-picklist'){
+    if(!qsLabelData.trackingNumber){ toast('No tracking number to print','error'); return; }
+    (async () => {
+      const token = localStorage.getItem('ss_token');
+      try {
+        const res = await fetch('/api/shipping/label-with-picklist.pdf', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token||'demo_token'}` },
+          body: JSON.stringify({ trackingNumbers: [qsLabelData.trackingNumber] }),
+        });
+        if(!res.ok){
+          const e = await res.json().catch(()=>({}));
+          toast(e.error || 'Could not build the label + pick-list PDF','error');
+          return;
+        }
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const w = window.open(url,'_blank');
+        if(!w) toast('Allow popups to open the label sheet','info');
+        else   toast('Opened label + pick list as one PDF','success');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } catch(err){
+        toast('Network error: '+err.message,'error');
+      }
+    })();
     return;
   }
 
