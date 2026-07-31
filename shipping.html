@@ -4181,6 +4181,14 @@ const DEFAULT_PRINT_PROFILES = [
     isDefault: false,
     docFields: { tracking:true, order:true, po:false, sku:false, ref:false, weight:true, customer:true, notes:false },
   },
+  {
+    id:        'profile-letter-label-picklist',
+    name:      '8½×11 Laser — label + pick list',
+    paperType: 'letter-label-picklist',
+    description:'8.5×11 laser paper — shipping label rotated vertically on the top half, pick list on the bottom half',
+    isDefault: false,
+    docFields: { tracking:true, order:true, po:false, sku:true, ref:false, weight:false, customer:true, notes:false },
+  },
 ];
 
 let printProfiles = JSON.parse(localStorage.getItem('printProfiles') || 'null') || DEFAULT_PRINT_PROFILES;
@@ -4198,9 +4206,10 @@ function renderPrintProfilesList(){
     const isStandard = p.paperType === 'standard';
     const isThermal4x8 = p.paperType === 'thermal-4x8';
     const paperTypeLabel = {
-      'standard':    'Standard Paper 8.5×11',
-      'thermal-4x6': 'Thermal Label 4×6',
-      'thermal-4x8': 'Thermal Label 4×8 (label + doc)',
+      'standard':               'Standard Paper 8.5×11',
+      'thermal-4x6':            'Thermal Label 4×6',
+      'thermal-4x8':            'Thermal Label 4×8 (label + doc)',
+      'letter-label-picklist':  '8½×11 Laser — label + pick list',
     }[p.paperType] || p.paperType;
 
     return `
@@ -4228,9 +4237,10 @@ function renderPrintProfilesList(){
             <label>Paper / Label size</label>
             <select onchange="updatePrintProfile(${i},'paperType',this.value)"
               style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:'Outfit',sans-serif;font-size:12px;outline:none;width:100%">
-              <option value="standard"    ${p.paperType==='standard'?'selected':''}>Standard Paper 8.5×11</option>
-              <option value="thermal-4x6" ${p.paperType==='thermal-4x6'?'selected':''}>Thermal 4×6 (Zebra)</option>
-              <option value="thermal-4x8" ${p.paperType==='thermal-4x8'?'selected':''}>Thermal 4×8 (label + doc)</option>
+              <option value="standard"               ${p.paperType==='standard'?'selected':''}>Standard Paper 8.5×11</option>
+              <option value="thermal-4x6"            ${p.paperType==='thermal-4x6'?'selected':''}>Thermal 4×6 (Zebra)</option>
+              <option value="thermal-4x8"            ${p.paperType==='thermal-4x8'?'selected':''}>Thermal 4×8 (label + doc)</option>
+              <option value="letter-label-picklist"  ${p.paperType==='letter-label-picklist'?'selected':''}>8½×11 Laser — label + pick list</option>
             </select>
           </div>
         </div>
