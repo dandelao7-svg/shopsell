@@ -1042,8 +1042,12 @@ function cardHTML(p){
   const badge = p.soldOut
     ? `<span class="product-badge" style="background:#6b7280;color:#fff">Sold out</span>`
     : (p.badge?`<span class="product-badge ${p.badge}">${p.badge==='hot'?'🔥 Hot':p.badge==='new'?'New':'Sale'}</span>`:'');
+  // Bell = "notify me when back." Not disabled — HTML `disabled` blocks the
+  // onclick, and the click IS the whole point (opens the modal with the
+  // signup form). Amber-ish tint so it reads as a distinct action, not a
+  // greyed-out dead button.
   const addBtn = p.soldOut
-    ? `<button class="add-to-cart-btn" disabled title="Sold out — open the product to get notified when it's back" style="opacity:.5;cursor:not-allowed" onclick="event.preventDefault();event.stopPropagation();openModal(${p.id})">
+    ? `<button class="add-to-cart-btn" title="Sold out — tap to get an email when it's back" style="background:#b8860b" onclick="event.preventDefault();event.stopPropagation();openModal(${p.id})">
          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
        </button>`
     : `<button class="add-to-cart-btn" id="ab-${p.id}" onclick="event.preventDefault();event.stopPropagation();quickAdd(${p.id})">
