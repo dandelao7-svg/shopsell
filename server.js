@@ -5163,25 +5163,24 @@ async function buildLabelWithPickListPdf(pairs) {
       const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
       const page = doc.addPage([PAGE_W, PAGE_H]);
 
-      // ── TOP HALF: label rotated 90° CW, centered ──────────────
+      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
+      // Both the label AND the pick list rotate CCW so the whole sheet
+      // reads as landscape when the seller turns the paper 90° CW to view it.
       // Fit the ROTATED bounding box (natH × natW) into TOP_BOX.
-      // First render was CCW which came out upside-down when read against the
-      // pick list below; CW puts the address block right-side-up for a seller
-      // holding the sheet in portrait.
       const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
       const scaledW = natW * scale, scaledH = natH * scale;
-      // pdf-lib rotates around (x, y) — with CW 90° (degrees(-90)) the image
-      // extends DOWN and RIGHT of the anchor, so the rotated bbox spans
-      //   x = [anchorX, anchorX + scaledH], y = [anchorY - scaledW, anchorY].
-      // To centre the rotated bbox in TOP_BOX, anchor at (left-edge, top-edge):
+      // pdf-lib rotates around (x, y) — with CCW 90° the image extends UP
+      // and LEFT of the anchor, so the rotated bbox spans
+      //   x = [anchorX - scaledH, anchorX], y = [anchorY, anchorY + scaledW].
+      // To centre the rotated bbox in TOP_BOX, anchor at (right-edge, bottom-edge):
       const cx = TOP_BOX.x + TOP_BOX.w / 2;
       const cy = TOP_BOX.y + TOP_BOX.h / 2;
       const drawOpts = {
-        x: cx - scaledH / 2,
-        y: cy + scaledW / 2,
+        x: cx + scaledH / 2,
+        y: cy - scaledW / 2,
         width: scaledW,
         height: scaledH,
-        rotate: degrees(-90),
+        rotate: degrees(90),
       };
       if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
       else                          page.drawImage(embedded, drawOpts);
@@ -5192,30 +5191,60 @@ async function buildLabelWithPickListPdf(pairs) {
         thickness: 0.5, color: rgb(0.75, 0.75, 0.75),
       });
 
-      // ── BOTTOM HALF: pick list ─────────────────────────────────
-      let y = 366;
-      page.drawText(toWinAnsi(seller?.storeName || 'ShopSell'), { x: 24, y, size: 14, font: helvBold, color: rgb(0, 0, 0) });
+      // ── BOTTOM HALF: pick list, rotated 90° CCW ───────────────
+      // Design in LANDSCAPE reading coordinates (how the seller sees it after
+      // turning the paper 90° CW), then map to portrait using this transform:
+      // portrait (px, py) with rotate 90° CCW produces landscape (lx, ly)
+      //   where lx = py, ly = 612 - px.  Reverse: px = 612 - ly, py = lx.
+      // Rows stack downward in landscape, which means increasing px in
+      // portrait — each row's baseline sits further right on the portrait sheet.
+      const SECTION_L_LEFT = 24;   // landscape x of the section's left edge
+      let rowLY = 380;             // landscape y of the current row baseline
+
+      const drawL = (text, lx, ly, opts) =>
+        page.drawText(toWinAnsi(text).slice(0, opts?.maxChars || 200), {
+          x: 612 - ly, y: lx,
+          size: opts?.size || 10, font: opts?.font || helv,
+          color: opts?.color || rgb(0, 0, 0), rotate: degrees(90),
+        });
+      const drawLLine = (lx1, ly, lx2, opts) =>
+        page.drawLine({
+          start: { x: 612 - ly, y: lx1 }, end: { x: 612 - ly, y: lx2 },
+          thickness: opts?.thickness || 0.5, color: opts?.color || rgb(0.85, 0.85, 0.85),
+        });
+      // Checkbox: 10x10 landscape square at landscape (lx, ly). In portrait
+      // that's a 10x10 axis-aligned rect at (612-ly-10, lx).
+      const drawLBox = (lx, ly, size = 10) =>
+        page.drawRectangle({
+          x: 612 - ly - size, y: lx, width: size, height: size,
+          borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.7,
+        });
+
+      drawL(seller?.storeName || 'ShopSell', SECTION_L_LEFT, rowLY, { size: 14, font: helvBold });
 
       // No-order fallback: an ad-hoc label (typical Quick Ship) has no order
       // to enumerate. Print a small note and stop — the label on top is still
       // valid; there's just nothing to pick.
       if (!order) {
-        page.drawText('No order attached to this label - no pick list to print.',
-          { x: 24, y: y - 18, size: 10, font: helv, color: rgb(0.5, 0.5, 0.5) });
+        drawL('No order attached to this label - no pick list to print.',
+          SECTION_L_LEFT, rowLY - 20, { size: 10, color: rgb(0.5, 0.5, 0.5) });
         composed++;
         continue;
       }
 
+      rowLY -= 16;
       const orderLabel = 'PICK LIST - Order #' + order.id + (order.externalOrderNumber ? ' (' + order.externalOrderNumber + ')' : '');
-      page.drawText(toWinAnsi(orderLabel), { x: 24, y: y - 14, size: 9, font: helv, color: rgb(0.4, 0.4, 0.4) });
+      drawL(orderLabel, SECTION_L_LEFT, rowLY, { size: 9, color: rgb(0.4, 0.4, 0.4) });
 
-      // Column headers (the check-off column is left blank in the header — every
-      // row draws a real rectangle checkbox, so no glyph is needed here).
-      y -= 40;
-      page.drawText('ITEM', { x: 60,  y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
-      page.drawText('SKU',  { x: 400, y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
-      page.drawText('QTY',  { x: 550, y, size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
-      page.drawLine({ start: { x: 24, y: y - 6 }, end: { x: PAGE_W - 24, y: y - 6 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+      // Column header row: ITEM at left, SKU mid-right, QTY far right.
+      rowLY -= 28;
+      const COL_ITEM = SECTION_L_LEFT + 24;   // leave room for checkbox
+      const COL_SKU  = 380;
+      const COL_QTY  = 540;
+      drawL('ITEM', COL_ITEM, rowLY, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      drawL('SKU',  COL_SKU,  rowLY, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      drawL('QTY',  COL_QTY,  rowLY, { size: 8, font: helvBold, color: rgb(0.5, 0.5, 0.5) });
+      drawLLine(SECTION_L_LEFT, rowLY - 6, PAGE_H - 24);
 
       // Rows — resolve missing SKUs from the products table
       const items = Array.isArray(order.items) ? order.items : [];
@@ -5228,27 +5257,24 @@ async function buildLabelWithPickListPdf(pairs) {
         return { name: it.name || 'Item', sku, qty: it.qty || it.quantity || 1, variantTitle: it.variantTitle || '' };
       }));
 
-      y -= 20;
+      rowLY -= 20;
       const LINE_H = 20;
-      const MIN_Y = 24;
+      const MIN_LY = 24;           // stop before the section runs off the bottom of landscape
       let rendered = 0;
       for (const row of rows) {
-        if (y < MIN_Y + LINE_H) break;
-        // Checkbox
-        page.drawRectangle({ x: 24, y: y - 2, width: 10, height: 10, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.7 });
-        // Item name (+ variant), truncated to fit — sanitize because seller
-        // product names can contain any unicode.
+        if (rowLY < MIN_LY + LINE_H) break;
+        drawLBox(SECTION_L_LEFT, rowLY - 2);
         const line = row.name + (row.variantTitle ? ' - ' + row.variantTitle : '');
-        page.drawText(toWinAnsi(line).slice(0, 55), { x: 60,  y, size: 10, font: helv,     color: rgb(0, 0, 0) });
-        page.drawText(toWinAnsi(row.sku || '-'),    { x: 400, y, size: 10, font: helv,     color: rgb(0.3, 0.3, 0.3) });
-        page.drawText(String(row.qty),              { x: 552, y, size: 10, font: helvBold, color: rgb(0, 0, 0) });
-        y -= LINE_H;
+        drawL(line,            COL_ITEM, rowLY, { size: 10, maxChars: 40, color: rgb(0, 0, 0) });
+        drawL(row.sku || '-',  COL_SKU,  rowLY, { size: 10, color: rgb(0.3, 0.3, 0.3) });
+        drawL(String(row.qty), COL_QTY,  rowLY, { size: 10, font: helvBold, color: rgb(0, 0, 0) });
+        rowLY -= LINE_H;
         rendered++;
       }
       const dropped = rows.length - rendered;
       if (dropped > 0) {
-        page.drawText('+ ' + dropped + ' more item' + (dropped === 1 ? '' : 's') + ' - see packing slip',
-          { x: 60, y: Math.max(y, MIN_Y), size: 9, font: helv, color: rgb(0.6, 0.6, 0.6) });
+        drawL('+ ' + dropped + ' more item' + (dropped === 1 ? '' : 's') + ' - see packing slip',
+          COL_ITEM, Math.max(rowLY, MIN_LY), { size: 9, color: rgb(0.6, 0.6, 0.6) });
       }
 
       composed++;
