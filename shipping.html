@@ -4322,6 +4322,12 @@ function updateDocField(idx, field, checked){
 
 function setActivePrintProfile(idx){
   printProfiles.forEach((p,i) => p.isDefault = i===idx);
+  // Persist immediately — the pattern of "click Set active, then also click
+  // Save print profiles" surprises sellers: they think Set active took
+  // effect, close the page, and on next reload the default reverts and
+  // the print flow drops back to Standard Paper. There is no reason for
+  // this preference to require a second click.
+  try { localStorage.setItem('printProfiles', JSON.stringify(printProfiles)); } catch(e){ /* quota */ }
   renderPrintProfilesList();
   toast(`Active print profile: ${printProfiles[idx].name}`,'success');
 }
