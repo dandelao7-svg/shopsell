@@ -3493,7 +3493,8 @@ function renderOrders(filter='all',search=''){
       <td>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
           ${o.status==='processing'
-            ? `<button class="btn primary sm" onclick="openShipModal('${o.id}')">Mark shipped</button>` : ''}
+            ? `<button class="btn primary sm" onclick="shipLabelInSuite('${o.id}')" title="Open the shipping suite with this order preselected and the sidebar prefilled — pick a box and hit Print.">Ship label</button>
+               <button class="btn secondary sm" onclick="openShipModal('${o.id}')" title="Attach an existing carrier + tracking number without buying a label">Mark shipped</button>` : ''}
           ${o.status==='shipped'
             ? `<button class="btn secondary sm" onclick="openShipModal('${o.id}')">Edit tracking</button>
                <button class="btn primary sm" onclick="markDelivered('${o.id}')">Mark delivered</button>` : ''}
@@ -3523,6 +3524,16 @@ async function refundOrder(orderId, totalLabel){
 
 // ── ORDER FULFILLMENT (mark shipped / delivered) ─────────────
 let shippingOrderId = null;
+
+// Bridge to the shipping suite for the real "buy + print label" flow.
+// The Orders table here shows order display ids like "SS-42"; the shipping
+// page's deep-link takes the raw DB id, so strip the prefix and hand off.
+function shipLabelInSuite(displayId){
+  const m = String(displayId || '').match(/(\d+)$/);
+  const dbId = m ? m[1] : '';
+  if (!dbId) { toast('Could not parse order id'); return; }
+  window.location.href = '/shipping?ship=' + dbId;
+}
 
 function openShipModal(orderId){
   shippingOrderId = orderId;

@@ -1740,6 +1740,21 @@ function renderThemeIcon(){
 }
 document.addEventListener('DOMContentLoaded', renderThemeIcon);
 
+// Deep-link from the dashboard's Orders page: /shipping?ship=<dbId> lands
+// here on the Orders tab with that row selected and the sidebar prefilled,
+// so the seller can hit Create + Print Label without hunting for the row.
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(location.search);
+  const shipId = parseInt(params.get('ship'), 10);
+  if (!Number.isInteger(shipId)) return;
+  window.__pendingShipDbId = shipId;
+  // Strip the param so a back-nav doesn't fire this twice.
+  params.delete('ship');
+  const q = params.toString();
+  history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
+  if (typeof showPage === 'function') showPage('orders');
+});
+
 // ── SAMPLE ORDERS ─────────────────────────────────────────────
 // API CALL: Replace with fetch('/api/shipping/orders') from server
 // ── ORDERS DATA ───────────────────────────────────────────────
@@ -2358,6 +2373,19 @@ async function renderOrders(){
     </tr>
   `;
   }).join('');
+
+  // Deep-link handoff from the dashboard's Orders page (?ship=<dbId>): after
+  // orders render, auto-select the matching row so the sidebar is prefilled
+  // and the seller can click Create + Print Label without hunting.
+  if (window.__pendingShipDbId != null) {
+    const target = ordersData.find(o => o._dbId === window.__pendingShipDbId);
+    if (target) {
+      selectOrder(target.id);
+      const row = document.getElementById('row-' + target.id);
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    window.__pendingShipDbId = null;
+  }
 }
 
 function channelBadge(ch){
