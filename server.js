@@ -5540,6 +5540,54 @@ app.post('/api/shipping/label-with-picklist.pdf', requireAuth, async (req, res) 
   }
 });
 
+/* POST /api/shipping/label/email — forward a purchased outbound label
+   to some third party (supplier, warehouse hand, self-backup). Same
+   tenant-scoped lookup as /labels/merge — the tracking number must
+   belong to a shipment this seller owns. Body: { trackingNumber,
+   toEmail, note? }. */
+app.post('/api/shipping/label/email', requireAuth, async (req, res) => {
+  try {
+    const trackingNumber = String(req.body?.trackingNumber || '').trim();
+    const toEmail        = String(req.body?.toEmail || '').trim().toLowerCase();
+    const note           = String(req.body?.note || '').trim().slice(0, 500);
+    if (!trackingNumber) return res.status(400).json({ error: 'trackingNumber is required.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail) || toEmail.length > 254) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+    const ship = await db.getShipmentByTracking(trackingNumber);
+    if (!ship || ship.sellerId !== req.seller.sellerId) return res.status(404).json({ error: 'Shipment not found.' });
+    if (!ship.labelImage && !ship.labelUrl) return res.status(400).json({ error: 'This shipment has no label file to send.' });
+
+    const seller = await db.getSellerById(req.seller.sellerId).catch(() => null);
+    const result = await emailService.sendShippingLabelToRecipient({
+      toEmail,
+      fromStoreName: seller?.storeName || 'ShopSell',
+      trackingNumber: ship.trackingNumber,
+      carrier:        ship.carrier,
+      service:        ship.serviceName || ship.serviceCode || '',
+      note,
+      labelImage:     ship.labelImage,
+      labelUrl:       ship.labelUrl,
+      labelFormat:    ship.labelFormat || (ship.carrier === 'ups' ? 'GIF' : 'PDF'),
+      shipTo: {
+        name:     ship.toName,
+        address1: ship.toAddr,
+        address2: ship.toAddr2,
+        city:     ship.toCity,
+        state:    ship.toState,
+        zip:      ship.toZip,
+      },
+    });
+    if (result?.skipped)      return res.status(503).json({ error: 'Email is not configured on this server (RESEND_API_KEY missing).' });
+    if (result?.error)        return res.status(502).json({ error: 'Email service rejected the send: ' + (result.error.message || result.error) });
+    console.log(`[label-email] seller ${req.seller.sellerId} forwarded ${trackingNumber} to ${toEmail}`);
+    res.json({ ok: true, sent: true });
+  } catch (err) {
+    console.error('Label email error:', err);
+    res.status(500).json({ error: 'Failed to email the label: ' + err.message });
+  }
+});
+
 // MERGE LABELS — combine many purchased labels into one printable PDF.
 // Takes tracking numbers, looks each label up in THIS seller's shipments
 // (tenant-scoped; never trusts client-supplied URLs → no SSRF), and merges

@@ -658,16 +658,20 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             </div>
             <div style="font-family:'DM Mono',monospace;font-size:12px;letter-spacing:1.5px;color:var(--text);margin-bottom:8px;word-break:break-all" id="sb-tracking-number">—</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:10px" id="sb-shipment-service">—</div>
-            <div style="display:flex;gap:6px">
-              <button id="sb-track-btn" onclick="sidebarTrack()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button id="sb-track-btn" onclick="sidebarTrack()" style="flex:1;min-width:70px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 Track
               </button>
-              <button id="sb-reprint-btn" onclick="sidebarReprint()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+              <button id="sb-reprint-btn" onclick="sidebarReprint()" style="flex:1;min-width:70px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                 Reprint
               </button>
-              <button id="sb-void-btn" onclick="sidebarVoid()" style="flex:1;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+              <button id="sb-email-btn" onclick="openEmailLabelModal()" title="Email this label to someone (supplier, warehouse hand, yourself for backup)" style="flex:1;min-width:70px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Email
+              </button>
+              <button id="sb-void-btn" onclick="sidebarVoid()" style="flex:1;min-width:70px;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                 <span id="sb-void-btn-label">Void</span>
               </button>
@@ -1986,6 +1990,72 @@ function sidebarReprint(){
   const order = ordersData.find(o => o.id === selectedOrderId);
   if(!order || !order.tracking){ toast('No label on this order','info'); return; }
   historyReprint(order.tracking); // reuses the history reprint flow
+}
+
+function openEmailLabelModal(){
+  const order = ordersData.find(o => o.id === selectedOrderId);
+  if(!order || !order.tracking){ toast('No label on this order to email','info'); return; }
+
+  // Build a tiny inline modal — same pattern as the automation rule editor.
+  document.getElementById('emailLabelModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'emailLabelModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:440px;max-height:100%;overflow:auto">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">Email this label</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Tracking ${escapeAttr(order.tracking)} · ${(order.carrier||'').toUpperCase()}</div>
+        </div>
+        <button onclick="closeEmailLabelModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">&times;</button>
+      </div>
+      <div style="padding:18px 20px">
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px">Send to</label>
+          <input type="email" id="emailLabelTo" placeholder="warehouse@example.com" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:13px" autocomplete="off">
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px">Note (optional)</label>
+          <textarea id="emailLabelNote" rows="3" placeholder="Please print + drop off at UPS by 4pm." maxlength="500" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:13px;font-family:'Outfit',sans-serif;resize:vertical"></textarea>
+        </div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.5">The label file is attached; the recipient can print and stick it on the package. They'll also see the ship-to address and tracking number.</div>
+      </div>
+      <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closeEmailLabelModal()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px">Cancel</button>
+        <button id="emailLabelSendBtn" onclick="sendLabelEmail()" class="topbar-btn primary" style="padding:8px 18px">Send</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('emailLabelTo')?.focus(), 50);
+}
+function closeEmailLabelModal(){ document.getElementById('emailLabelModal')?.remove(); }
+
+async function sendLabelEmail(){
+  const order = ordersData.find(o => o.id === selectedOrderId);
+  if(!order || !order.tracking){ toast('No tracking number','error'); return; }
+  const toEl = document.getElementById('emailLabelTo');
+  const noteEl = document.getElementById('emailLabelNote');
+  const btn = document.getElementById('emailLabelSendBtn');
+  const to = (toEl.value || '').trim();
+  if(!to){ toEl.focus(); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){ toast('That doesn’t look like a valid email','error'); toEl.focus(); return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/label/email', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+token },
+      body: JSON.stringify({ trackingNumber: order.tracking, toEmail: to, note: noteEl.value || '' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ toast(data.error || 'Could not send the label','error'); btn.disabled = false; btn.textContent = 'Send'; return; }
+    closeEmailLabelModal();
+    toast(`Label sent to ${to}`,'success');
+  } catch(err){
+    toast('Network error: '+err.message,'error');
+    btn.disabled = false; btn.textContent = 'Send';
+  }
 }
 
 function sidebarVoid(){

@@ -494,6 +494,67 @@ async function sendBackInStockEmail({ toEmail, storeName, productName, productUr
   }, 'back-in-stock');
 }
 
+// ============================================================
+// SELLER-INITIATED — "here's the shipping label for tracking # X"
+// Used when a seller forwards a purchased outbound label to a supplier,
+// warehouse hand, or themselves for backup. The label file rides as an
+// attachment so the recipient can print it directly.
+// ============================================================
+async function sendShippingLabelToRecipient({
+  toEmail, fromStoreName, trackingNumber, carrier, service, note,
+  labelImage, labelUrl, labelFormat, shipTo,
+}) {
+  if (!client) return { skipped: true };
+  if (!toEmail) return { skipped: true, reason: 'no recipient' };
+
+  const attachment = await buildLabelAttachment({ labelImage, labelUrl, labelFormat, trackingNumber });
+  const carrierLabel = (carrier || '').toUpperCase();
+
+  const shipToBlock = shipTo && (shipTo.name || shipTo.address1) ? `
+    <div style="margin-top:18px;padding:12px 14px;background:#f7f7f2;border-radius:8px;font-size:13px;color:#374151">
+      <div style="font-weight:600;margin-bottom:4px">Ship to:</div>
+      ${esc(shipTo.name || '')}<br>
+      ${esc(shipTo.address1 || '')}${shipTo.address2 ? '<br>' + esc(shipTo.address2) : ''}<br>
+      ${esc(shipTo.city || '')}, ${esc(shipTo.state || '')} ${esc(shipTo.zip || '')}
+    </div>` : '';
+
+  const noteBlock = note && note.trim() ? `
+    <div style="margin-top:14px;padding:12px 14px;background:#eff6ff;border-left:3px solid #3b82f6;border-radius:6px;font-size:13px;color:#1e3a8a;white-space:pre-wrap">${esc(note.trim())}</div>` : '';
+
+  const labelLinkHtml = labelUrl
+    ? `<p style="margin:18px 0"><a href="${esc(labelUrl)}" style="display:inline-block;background:#0f0f1a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Open / print label</a></p>`
+    : `<p style="margin:18px 0;color:#6b7280;font-size:13px">The label is attached to this email.</p>`;
+
+  const inner = `
+      <h1 style="font-size:22px;margin:0 0 8px;font-weight:700">Shipping label ready</h1>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:14px">${esc(fromStoreName || 'A ShopSell seller')} sent you this label to print and stick on a package.</p>
+
+      <div style="background:#0f0f1a;color:#fff;padding:16px;border-radius:10px;text-align:center;margin:14px 0">
+        <div style="font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.6);text-transform:uppercase;margin-bottom:4px">Tracking number</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:1.5px;word-break:break-all">${esc(trackingNumber || '')}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px">${esc(carrierLabel)}${service ? ' · ' + esc(service) : ''}</div>
+      </div>
+
+      ${labelLinkHtml}
+      ${shipToBlock}
+      ${noteBlock}
+
+      <p style="margin:22px 0 0;font-size:13px;color:#6b7280;line-height:1.6">
+        Tape the label securely to the outside of the package with the barcode flat.
+        Drop it off at a ${esc(carrierLabel)} location or hand it to a driver.
+      </p>`;
+
+  const payload = {
+    from:    fromAddr,
+    to:      [toEmail],
+    subject: `Shipping label — ${carrierLabel}${trackingNumber ? ' ' + trackingNumber : ''}`,
+    html:    emailShell(inner, `Sent by ${fromStoreName || 'ShopSell'} via ShopSell`),
+  };
+  if (attachment) payload.attachments = [attachment];
+
+  return _send(payload, 'label-forward');
+}
+
 module.exports = {
   sendReturnLabelToBuyer,
   sendReturnNotificationToSeller,
@@ -503,4 +564,5 @@ module.exports = {
   sendPasswordReset,
   sendWelcomeDiscount,
   sendBackInStockEmail,
+  sendShippingLabelToRecipient,
 };
