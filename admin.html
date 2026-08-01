@@ -172,16 +172,27 @@ function render(data){
     : '<div style="color:var(--muted);font-size:13px">No sellers yet.</div>';
 
   const rows = data.recentSellers || [];
+  const planOpts = ['starter', 'growth', 'pro']
+    .map(p => `<option value="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</option>`).join('');
   $('sellersBody').innerHTML = rows.length
     ? rows.map(r => {
         const name = [r.firstName, r.lastName].filter(Boolean).join(' ') || '—';
         const billing = r.subscriptionStatus ? esc(r.subscriptionStatus) : '—';
+        const currentPlan = String(r.plan || 'starter').toLowerCase();
+        const planSelect = `<select data-seller="${r.id}" data-prev="${esc(currentPlan)}" onchange="changeSellerPlan(this)"
+          style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:4px 8px;font-size:12px;font-family:inherit;text-transform:capitalize;cursor:pointer">
+          ${['starter','growth','pro'].map(p => `<option value="${p}"${p===currentPlan?' selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}
+        </select>`;
+        const storeHref = r.storeSlug ? `https://${esc(r.storeSlug)}.nextlao.com` : '';
+        const storeCell = r.storeActive
+          ? `<span class="pill active">Active</span>${storeHref ? ` <a href="${storeHref}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:11px;margin-left:4px">↗</a>` : ''}`
+          : `<span class="pill inactive">Off</span>`;
         return `<tr>
           <td><strong>${esc(r.storeName||'—')}</strong><div class="email">${esc(r.storeSlug||'')}</div></td>
           <td>${esc(name)}<div class="email">${esc(r.email||'')}</div></td>
-          <td><span class="pill plan">${esc(r.plan||'—')}</span></td>
+          <td>${planSelect}</td>
           <td style="text-transform:capitalize">${billing}</td>
-          <td><span class="pill ${r.storeActive?'active':'inactive'}">${r.storeActive?'Active':'Off'}</span></td>
+          <td>${storeCell}</td>
           <td>${fmtDate(r.createdAt)}</td>
         </tr>`;
       }).join('')
@@ -231,6 +242,35 @@ async function createComp(){
     loadCompCodes();
   } catch(e){ alert('Network error'); }
   finally { btn.disabled = false; btn.textContent = 'Create code'; }
+}
+
+async function changeSellerPlan(sel){
+  const id   = sel.dataset.seller;
+  const prev = sel.dataset.prev;
+  const plan = sel.value;
+  if (plan === prev) return;
+  sel.disabled = true;
+  try {
+    const res = await fetch('/api/admin/sellers/' + id + '/plan', {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ plan }),
+    });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) {
+      alert(data.error || 'Could not change plan');
+      sel.value = prev;    // revert visual on failure
+    } else {
+      sel.dataset.prev = plan;    // adopt new value as baseline for next change
+      // Reload the overview so plan-breakdown cards reflect the new mix.
+      load();
+    }
+  } catch(e) {
+    alert('Network error');
+    sel.value = prev;
+  } finally {
+    sel.disabled = false;
+  }
 }
 
 async function toggleComp(id, active){
