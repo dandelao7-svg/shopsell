@@ -64,6 +64,17 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
    keep its divisor in sync with the zoom factor above. */
 :root{--vh:calc(100vh / 1.12)}
 
+/* LIGHT THEME — activated by <html data-theme="light">. The seller flips it
+   via the topbar sun/moon toggle; preference persisted in localStorage
+   (ss_theme). Only the neutral vars change — accent/carrier brand colors
+   keep their identity in both themes. Sidebar stays its own bg2/border. */
+:root[data-theme="light"]{
+  --bg:#f7f7f2; --bg2:#ffffff; --bg3:#f2f2ee;
+  --card:#ffffff; --card2:#faf9f5;
+  --border:#e5e5e0; --border2:#d5d5cc;
+  --text:#0f0f1a; --text2:#5a5a70; --text3:#8a8a9a; --muted:#6b7280;
+}
+
 /* ── LAYOUT ── */
 .app{display:flex;min-height:var(--vh)}
 
@@ -337,6 +348,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 </style>
 </head>
 <body>
+<!-- Theme preload — set data-theme BEFORE anything renders so there's no flash. -->
+<script>(function(){try{var t=localStorage.getItem('ss_theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 
 <div class="app">
 
@@ -502,6 +515,11 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
       <button class="topbar-btn primary" onclick="printSelected()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         Print labels
+      </button>
+
+      <!-- THEME TOGGLE -->
+      <button onclick="toggleTheme()" id="themeToggle" title="Toggle light/dark" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);width:32px;height:32px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-left:8px" aria-label="Toggle theme">
+        <svg id="themeIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg>
       </button>
 
       <!-- USER PILL & LOGOUT -->
@@ -1698,6 +1716,29 @@ function logout(){
   localStorage.removeItem('ss_seller');
   window.location.href = '/login';
 }
+
+// Theme toggle — flips <html data-theme> between 'dark' (page default) and
+// 'light' (defined via :root[data-theme="light"] overrides at the top of
+// this file's CSS). Preload script in <body> reads localStorage before
+// paint so there's no flash on refresh.
+function currentTheme(){ return document.documentElement.dataset.theme || 'dark'; }
+function toggleTheme(){
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('ss_theme', next); } catch(e){}
+  renderThemeIcon();
+}
+function renderThemeIcon(){
+  const el = document.getElementById('themeIcon');
+  if (!el) return;
+  // Show the icon of the theme you'll SWITCH TO — sun when currently dark,
+  // moon when currently light. Standard UX pattern.
+  const cur = currentTheme();
+  el.innerHTML = cur === 'dark'
+    ? '<circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/>'
+    : '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+}
+document.addEventListener('DOMContentLoaded', renderThemeIcon);
 
 // ── SAMPLE ORDERS ─────────────────────────────────────────────
 // API CALL: Replace with fetch('/api/shipping/orders') from server

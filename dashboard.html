@@ -55,6 +55,25 @@
    var(--vh), and keep its divisor in sync with the zoom factor above. */
 :root{--vh:calc(100vh / 1.12)}
 
+/* DARK THEME — activated by <html data-theme="dark">. Toggle in the topbar
+   (moon icon); preference persisted in localStorage (ss_theme). Only the
+   neutral vars swap; --brand keeps its very-dark navy in both themes
+   because the sidebar was always dark. */
+:root[data-theme="dark"]{
+  --light:#0a0a0f; --light2:#111118;
+  --card:#1c1c24;
+  --text:#f0f0f5;
+  --muted:#a0a0b8;
+  --border:#2a2a36;
+  --shadow:0 2px 12px rgba(0,0,0,0.3);
+  --shadow-lg:0 8px 32px rgba(0,0,0,0.5);
+  --green-bg:rgba(45,106,79,0.18);
+  --amber-bg:rgba(146,64,14,0.22);
+  --red-bg:rgba(153,27,27,0.20);
+  --blue-bg:rgba(30,64,175,0.20);
+  --stripe-light:rgba(99,91,255,0.16);
+}
+
 /* No height:100% here either — it resolved to the full window and was then
    painted 1.12x, leaving every page scrollable by ~12% of empty space. .app
    carries the full-height floor instead. */
@@ -375,6 +394,8 @@ tr:hover td{background:#fafaf7}
 <script src="/storefront-sections.js"></script>
 </head>
 <body>
+<!-- Theme preload — set data-theme BEFORE anything renders so there's no flash. -->
+<script>(function(){try{var t=localStorage.getItem('ss_theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 <!-- IMPERSONATION BANNER — shown when an operator views the dashboard AS a
      seller via the admin console. Restores the admin token on exit. -->
 <script>
@@ -520,6 +541,9 @@ tr:hover td{background:#fafaf7}
       </div>
     </div>
     <div class="topbar-right">
+      <button onclick="toggleTheme()" id="themeToggle" title="Toggle light/dark" style="background:var(--card);border:1.5px solid var(--border);color:var(--muted);width:34px;height:34px;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center" aria-label="Toggle theme">
+        <svg id="themeIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg>
+      </button>
       <div class="mode-toggle">
         <button class="mode-btn test active" id="modeTest" onclick="setMode('test')">Test</button>
         <button class="mode-btn live" id="modeLive" onclick="setMode('live')">Live</button>
@@ -1913,6 +1937,29 @@ function logout(){
   localStorage.removeItem('ss_seller');
   window.location.href = '/login';
 }
+
+// Theme toggle — flips <html data-theme> between 'light' (page default) and
+// 'dark' (defined via :root[data-theme="dark"] overrides at the top of
+// this file's CSS). Preload script in <body> reads localStorage before
+// paint so there's no flash on refresh.
+function currentTheme(){ return document.documentElement.dataset.theme || 'light'; }
+function toggleTheme(){
+  const next = currentTheme() === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('ss_theme', next); } catch(e){}
+  renderThemeIcon();
+}
+function renderThemeIcon(){
+  const el = document.getElementById('themeIcon');
+  if (!el) return;
+  // Show the icon of the theme you'll SWITCH TO — sun when currently dark,
+  // moon when currently light. Standard UX pattern.
+  const cur = currentTheme();
+  el.innerHTML = cur === 'dark'
+    ? '<circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/>'
+    : '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+}
+document.addEventListener('DOMContentLoaded', renderThemeIcon);
 
 // ── RETURNS ADDRESS ──────────────────────────────────────────
 async function loadReturnAddress(){
