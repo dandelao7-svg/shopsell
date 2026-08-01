@@ -375,6 +375,30 @@ tr:hover td{background:#fafaf7}
 <script src="/storefront-sections.js"></script>
 </head>
 <body>
+<!-- IMPERSONATION BANNER — shown when an operator views the dashboard AS a
+     seller via the admin console. Restores the admin token on exit. -->
+<script>
+(function(){
+  try {
+    const raw = localStorage.getItem('ss_impersonating');
+    if (!raw || !localStorage.getItem('ss_token_admin_backup')) return;
+    const s = JSON.parse(raw);
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#b58900;color:#fff;padding:8px 16px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between;gap:12px';
+    bar.innerHTML = '<span>Impersonating <strong>' + (s.storeName || s.email || 'seller') + '</strong> — actions you take here happen on their account.</span>'
+      + '<button id="ssImpExit" style="background:#fff;color:#b58900;border:none;padding:5px 12px;border-radius:6px;font:600 12px system-ui,sans-serif;cursor:pointer">Return to admin</button>';
+    document.body.insertBefore(bar, document.body.firstChild);
+    document.getElementById('ssImpExit').onclick = function(){
+      const backup = localStorage.getItem('ss_token_admin_backup');
+      if (backup) localStorage.setItem('ss_token', backup);
+      localStorage.removeItem('ss_token_admin_backup');
+      localStorage.removeItem('ss_impersonating');
+      location.href = '/admin';
+    };
+  } catch(e) { /* banner is decorative — never block the page */ }
+})();
+</script>
+
 
 <div class="app">
 

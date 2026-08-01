@@ -89,10 +89,12 @@
     </div>
 
     <div class="section">
-      <h2>Recent signups</h2>
+      <h2>Recent signups <span id="sellerCountLbl" style="text-transform:none;font-weight:400;color:var(--muted)"></span></h2>
+      <input id="sellerSearch" placeholder="Search by store, owner, email, slug…" oninput="filterSellers(this.value)"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;margin-bottom:12px">
       <div class="scroll">
         <table>
-          <thead><tr><th>Store</th><th>Owner</th><th>Plan</th><th>Billing</th><th>Store</th><th>Joined</th></tr></thead>
+          <thead><tr><th>Store</th><th>Owner</th><th>Plan</th><th>Products</th><th>Orders</th><th>Revenue</th><th>Billing</th><th>Storefront</th><th>Joined</th><th></th></tr></thead>
           <tbody id="sellersBody"></tbody>
         </table>
       </div>
@@ -171,32 +173,9 @@ function render(data){
     ? plans.map(p => `<div class="plan"><div class="p-n">${esc(p.plan)}</div><div class="p-v">${num(p.count)}</div></div>`).join('')
     : '<div style="color:var(--muted);font-size:13px">No sellers yet.</div>';
 
-  const rows = data.recentSellers || [];
-  const planOpts = ['starter', 'growth', 'pro']
-    .map(p => `<option value="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</option>`).join('');
-  $('sellersBody').innerHTML = rows.length
-    ? rows.map(r => {
-        const name = [r.firstName, r.lastName].filter(Boolean).join(' ') || '—';
-        const billing = r.subscriptionStatus ? esc(r.subscriptionStatus) : '—';
-        const currentPlan = String(r.plan || 'starter').toLowerCase();
-        const planSelect = `<select data-seller="${r.id}" data-prev="${esc(currentPlan)}" onchange="changeSellerPlan(this)"
-          style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:4px 8px;font-size:12px;font-family:inherit;text-transform:capitalize;cursor:pointer">
-          ${['starter','growth','pro'].map(p => `<option value="${p}"${p===currentPlan?' selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}
-        </select>`;
-        const storeHref = r.storeSlug ? `https://${esc(r.storeSlug)}.nextlao.com` : '';
-        const storeCell = r.storeActive
-          ? `<span class="pill active">Active</span>${storeHref ? ` <a href="${storeHref}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:11px;margin-left:4px">↗</a>` : ''}`
-          : `<span class="pill inactive">Off</span>`;
-        return `<tr>
-          <td><strong>${esc(r.storeName||'—')}</strong><div class="email">${esc(r.storeSlug||'')}</div></td>
-          <td>${esc(name)}<div class="email">${esc(r.email||'')}</div></td>
-          <td>${planSelect}</td>
-          <td style="text-transform:capitalize">${billing}</td>
-          <td>${storeCell}</td>
-          <td>${fmtDate(r.createdAt)}</td>
-        </tr>`;
-      }).join('')
-    : '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted)">No signups yet.</td></tr>';
+  // Keep the full list around for client-side search — no round-trip per keystroke.
+  ALL_SELLERS = data.recentSellers || [];
+  renderSellers(ALL_SELLERS);
 
   $('loading').style.display = 'none';
   $('content').style.display = 'block';
@@ -242,6 +221,78 @@ async function createComp(){
     loadCompCodes();
   } catch(e){ alert('Network error'); }
   finally { btn.disabled = false; btn.textContent = 'Create code'; }
+}
+
+let ALL_SELLERS = [];
+
+function renderSellers(rows){
+  $('sellerCountLbl').textContent = rows.length === ALL_SELLERS.length
+    ? `— ${rows.length}`
+    : `— ${rows.length} of ${ALL_SELLERS.length}`;
+  if (!rows.length){
+    $('sellersBody').innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--muted)">No sellers match.</td></tr>';
+    return;
+  }
+  $('sellersBody').innerHTML = rows.map(r => {
+    const name = [r.firstName, r.lastName].filter(Boolean).join(' ') || '—';
+    const billing = r.subscriptionStatus ? esc(r.subscriptionStatus) : '—';
+    const currentPlan = String(r.plan || 'starter').toLowerCase();
+    const planSelect = `<select data-seller="${r.id}" data-prev="${esc(currentPlan)}" onchange="changeSellerPlan(this)"
+      style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:4px 8px;font-size:12px;font-family:inherit;text-transform:capitalize;cursor:pointer">
+      ${['starter','growth','pro'].map(p => `<option value="${p}"${p===currentPlan?' selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}
+    </select>`;
+    const storeHref = r.storeSlug ? `https://${esc(r.storeSlug)}.nextlao.com` : '';
+    const storeCell = r.storeActive
+      ? `<span class="pill active">Active</span>${storeHref ? ` <a href="${storeHref}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:11px;margin-left:4px">↗</a>` : ''}`
+      : `<span class="pill inactive">Off</span>`;
+    const impBtn = `<button onclick="impersonateSeller(${r.id})"
+      style="background:var(--bg);color:var(--text2);border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:inherit" title="Open the dashboard as this seller">View as</button>`;
+    return `<tr>
+      <td><strong>${esc(r.storeName||'—')}</strong><div class="email">${esc(r.storeSlug||'')}</div></td>
+      <td>${esc(name)}<div class="email">${esc(r.email||'')}</div></td>
+      <td>${planSelect}</td>
+      <td>${num(r.productCount)}</td>
+      <td>${num(r.orderCount)}</td>
+      <td>${money(r.revenue)}</td>
+      <td style="text-transform:capitalize">${billing}</td>
+      <td>${storeCell}</td>
+      <td>${fmtDate(r.createdAt)}</td>
+      <td>${impBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterSellers(q){
+  const needle = String(q || '').trim().toLowerCase();
+  if (!needle) return renderSellers(ALL_SELLERS);
+  const hit = r => {
+    const hay = [r.storeName, r.storeSlug, r.email, r.firstName, r.lastName, r.plan].filter(Boolean).join(' ').toLowerCase();
+    return hay.indexOf(needle) >= 0;
+  };
+  renderSellers(ALL_SELLERS.filter(hit));
+}
+
+async function impersonateSeller(id){
+  try {
+    const res = await fetch('/api/admin/impersonate/' + id, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.token) {
+      alert(data.error || 'Could not start impersonation');
+      return;
+    }
+    // Back up the admin's own token, then swap in the seller token. Open the
+    // dashboard in a new tab so the admin can keep working here. A banner in
+    // the dashboard lets them return.
+    localStorage.setItem('ss_token_admin_backup', token);
+    localStorage.setItem('ss_token', data.token);
+    localStorage.setItem('ss_impersonating', JSON.stringify(data.seller));
+    window.open('/dashboard', '_blank');
+  } catch (e) {
+    alert('Network error');
+  }
 }
 
 async function changeSellerPlan(sel){

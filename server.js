@@ -2952,6 +2952,30 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Comp codes — operator-issued invite codes that waive the subscription.
+// POST /api/admin/impersonate/:id — mint a short-lived seller token so an
+// operator can view the dashboard AS that seller for debugging or support.
+// Token carries an `impersonatedBy` claim (admin email) so downstream logs
+// can distinguish an operator-driven action from the seller themselves.
+// 30-minute lifetime. Server-side log line for the audit trail.
+app.post('/api/admin/impersonate/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid seller id.' });
+    const seller = await db.getSellerById(id);
+    if (!seller) return res.status(404).json({ error: 'Seller not found.' });
+    const token = jwt.sign(
+      { sellerId: seller.id, email: seller.email, plan: seller.plan, impersonatedBy: req.adminSeller.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '30m' }
+    );
+    console.log(`[audit] admin ${req.adminSeller.email} impersonating seller ${seller.id} (${seller.email})`);
+    res.json({ token, seller: { id: seller.id, email: seller.email, storeName: seller.storeName } });
+  } catch (err) {
+    console.error('Admin impersonate error:', err);
+    res.status(500).json({ error: 'Failed to mint impersonation token.' });
+  }
+});
+
 // PATCH /api/admin/sellers/:id/plan — operator override to move a seller
 // between billing plans (e.g. bumping a beta tester to Growth). Persisted
 // directly on sellers.plan; Stripe subscription unchanged. Body: { plan:

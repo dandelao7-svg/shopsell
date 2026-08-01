@@ -1338,10 +1338,16 @@ async function setCompCodeActive(id, active) {
 
 // Most-recent sellers for the admin signups table (no secrets).
 async function getRecentSellers(limit = 50) {
+  // Subqueries per seller so a seller with no products/orders still shows up
+  // (a LEFT JOIN would work but scales worse with plan-breakdown across many
+  // sellers). Product + paid-order counts + lifetime revenue per row.
   const { rows } = await pool.query(`
-    SELECT id, first_name, last_name, email, store_name, store_slug, plan,
-           subscription_status, store_active, created_at
-      FROM sellers WHERE plan <> $2 ORDER BY created_at DESC LIMIT $1`,
+    SELECT s.id, s.first_name, s.last_name, s.email, s.store_name, s.store_slug,
+           s.plan, s.subscription_status, s.store_active, s.created_at,
+           (SELECT COUNT(*)::int  FROM products WHERE seller_id = s.id)                                     AS product_count,
+           (SELECT COUNT(*)::int  FROM orders   WHERE seller_id = s.id AND paid_at IS NOT NULL)             AS order_count,
+           (SELECT COALESCE(SUM(total), 0)::float FROM orders WHERE seller_id = s.id AND paid_at IS NOT NULL) AS revenue
+      FROM sellers s WHERE s.plan <> $2 ORDER BY s.created_at DESC LIMIT $1`,
     [Math.min(parseInt(limit) || 50, 200), DEMO_PLAN]);
   return camelizeAll(rows);
 }
