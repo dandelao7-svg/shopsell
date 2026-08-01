@@ -2456,6 +2456,20 @@ function toggleOrder(id, cb){
   if(cb.checked) selectedOrders.add(id);
   else selectedOrders.delete(id);
   updateBulkBar();
+  // Checking a box also opens the sidebar for that order, so the seller can
+  // see the shipping form / print controls without a second click. Matches
+  // the intuition that "the check mark IS the select-and-configure action."
+  // Unchecking a box that was showing in the sidebar → clear the sidebar.
+  if (cb.checked) {
+    selectOrder(id);
+  } else if (typeof selectedOrderId !== 'undefined' && selectedOrderId === id) {
+    selectedOrderId = null;
+    const so = document.getElementById('sidebarOrder');
+    const se = document.getElementById('sidebarEmpty');
+    if (so) so.style.display = 'none';
+    if (se) se.style.display = 'block';
+    document.querySelectorAll('#ordersTableBody tr').forEach(tr => tr.style.background = '');
+  }
 }
 
 function toggleSelectAll(cb){
