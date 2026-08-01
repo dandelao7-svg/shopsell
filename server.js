@@ -5599,6 +5599,8 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
       labelFormat,
       billing,
       customs,
+      signature,           // 'none' | 'delivery' | 'signature' | 'adult'
+      insuranceAmount,     // dollars; 0 or missing = no add-on insurance
     } = req.body;
 
     if(!shipper || !recipient || !pkg) {
@@ -5635,6 +5637,10 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
       customsForLabel = await assembleCustomsFromOrder(orderId, req.seller.sellerId).catch(() => null);
     }
 
+    // Common add-on options that every carrier now accepts and maps to its
+    // own field name (see carriers.js). Passed through as-is.
+    const addons = { signature, insuranceAmount };
+
     // Create label with appropriate carrier
     let label;
     if(carrier === 'ups') {
@@ -5646,6 +5652,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
         reference: orderId,
         billing: billingInfo,
         customs: customsForLabel,
+        ...addons,
       });
     } else if(carrier === 'fedex') {
       label = await client.createShipment({
@@ -5656,6 +5663,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
         reference: orderId,
         billing: billingInfo,
         customs: customsForLabel,
+        ...addons,
       });
     } else { // usps
       label = await client.createShipment({
@@ -5664,6 +5672,7 @@ app.post('/api/shipping/label', requireAuth, async (req, res) => {
         serviceToken: serviceType || 'usps_priority',
         reference: orderId,
         customs: customsForLabel,
+        ...addons,
       });
     }
 

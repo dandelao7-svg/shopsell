@@ -2160,12 +2160,26 @@ async function sidebarBuyAndPrint(order){
     return prefillQuickShipFromOrder(order);
   }
 
+  // Add-on options from the sidebar form.
+  //   sb-confirmation: 'none' | 'delivery' | 'signature' | 'adult'
+  //   sb-insurance:    'none' | 'carrier' | 'declared'
+  //   sb-insure-amt:   dollars, only used when insurance = 'declared'
+  const signature = document.getElementById('sb-confirmation')?.value || 'none';
+  const insSel    = document.getElementById('sb-insurance')?.value || 'none';
+  // 'carrier' = each carrier's built-in coverage ceiling (~$100 across the
+  // three we support); 'declared' = seller-specified amount. Zero = none.
+  const insuranceAmount = insSel === 'declared'
+    ? (parseFloat(document.getElementById('sb-insure-amt')?.value) || 0)
+    : (insSel === 'carrier' ? 100 : 0);
+
   const payload = {
     carrier,
     orderId:     order._dbId,           // links the shipment row → pick-list PDF can enumerate items
     serviceCode: carrier === 'ups' ? service : undefined,
     serviceType: (carrier === 'fedex' || carrier === 'usps') ? service : undefined,
     shipper, recipient, package: pkg,
+    signature: signature === 'none' ? undefined : signature,
+    insuranceAmount: insuranceAmount > 0 ? insuranceAmount : undefined,
   };
 
   try {

@@ -246,12 +246,27 @@ class UPS {
     return data.access_token;
   }
 
-  async createShipment({ shipper, recipient, package: pkg, serviceCode, labelFormat, reference, barcodeReference, billing, customs }) {
+  async createShipment({ shipper, recipient, package: pkg, serviceCode, labelFormat, reference, barcodeReference, billing, customs, signature, insuranceAmount }) {
     const token = await this.getAccessToken();
 
     const isResidential = recipient.residential === true;
     // Cross-border → attach the commercial-invoice InternationalForms.
     const intlForms = isCrossBorder(shipper, recipient) ? normalizeCustoms(customs, shipper) : null;
+
+    // Signature confirmation. UPS DCISType: 1=service default sig, 2=adult sig,
+    // 3=USPS delivery confirmation (only). We map:
+    //   'signature' → 1 (standard signature required)
+    //   'adult'     → 2 (adult signature)
+    //   'delivery'  → 3 (delivery confirmation only, no signature)
+    //   'none' or unset → nothing added; carrier default applies.
+    const sigMap = { signature: '1', adult: '2', delivery: '3' };
+    const sigCode = sigMap[signature] || null;
+    // Declared value (also drives UPS insurance above the auto-included $100).
+    const insAmt = Number(insuranceAmount) > 0 ? Number(insuranceAmount) : 0;
+    const packageServiceOptions = (sigCode || insAmt > 0) ? {
+      ...(sigCode ? { DeliveryConfirmation: { DCISType: sigCode } } : {}),
+      ...(insAmt > 0 ? { DeclaredValue: { CurrencyCode: 'USD', MonetaryValue: insAmt.toFixed(2) } } : {}),
+    } : null;
 
     const payload = {
       ShipmentRequest: {
@@ -313,6 +328,7 @@ class UPS {
           Package: {
             Description:   pkg.description || 'Package',
             Packaging:     { Code: '02', Description: 'Customer Supplied Package' },
+            ...(packageServiceOptions ? { PackageServiceOptions: packageServiceOptions } : {}),
             Dimensions: {
               UnitOfMeasurement: { Code: 'IN', Description: 'Inches' },
               Length: String(pkg.length || 12),
@@ -669,10 +685,26 @@ class FedEx {
     return data.access_token;
   }
 
-  async createShipment({ shipper, recipient, package: pkg, serviceType, labelFormat, reference, customs }) {
+  async createShipment({ shipper, recipient, package: pkg, serviceType, labelFormat, reference, customs, signature, insuranceAmount }) {
     const token = await this.getAccessToken();
 
     const intlCustoms = isCrossBorder(shipper, recipient) ? normalizeCustoms(customs, shipper) : null;
+
+    // Signature options. FedEx signatureOptionDetail.optionType:
+    //   DIRECT   → any recipient signature
+    //   ADULT    → 21+
+    //   INDIRECT → delivered without direct signature but confirmed (delivery)
+    //   NO_SIGNATURE_REQUIRED → explicit no-signature
+    //   SERVICE_DEFAULT → don't override the service default
+    const sigMap = { signature: 'DIRECT', adult: 'ADULT', delivery: 'INDIRECT' };
+    const sigOpt = sigMap[signature] || null;
+    const insAmt = Number(insuranceAmount) > 0 ? Number(insuranceAmount) : 0;
+    const specialServices = [];
+    if (sigOpt) specialServices.push('SIGNATURE_OPTION');
+    const packageSpecialServices = specialServices.length ? {
+      specialServiceTypes: specialServices,
+      ...(sigOpt ? { signatureOptionType: sigOpt } : {}),
+    } : null;
 
     const payload = {
       labelResponseOptions: 'URL_ONLY',
@@ -731,6 +763,8 @@ class FedEx {
             height: pkg.height || 4,
             units:  'IN',
           },
+          ...(insAmt > 0 ? { declaredValue: { amount: insAmt, currency: 'USD' } } : {}),
+          ...(packageSpecialServices ? { packageSpecialServices } : {}),
           ...(reference ? { customerReferences: [{ customerReferenceType: 'CUSTOMER_REFERENCE', value: String(reference).slice(0, 30) }] } : {}),
         }],
         ...(reference ? { customerReferences: [{ customerReferenceType: 'CUSTOMER_REFERENCE', value: String(reference).slice(0, 30) }] } : {}),
@@ -944,7 +978,7 @@ class USPS {
     return data.object_id;
   }
 
-  async createShipment({ shipper, recipient, package: pkg, serviceToken, reference, customs }) {
+  async createShipment({ shipper, recipient, package: pkg, serviceToken, reference, customs, signature, insuranceAmount }) {
     if (!this.apiKey) {
       throw new Error('Shippo token not configured. Connect your USPS/Shippo account in Settings.');
     }
@@ -956,6 +990,20 @@ class USPS {
     if (intlCustoms) {
       customsDeclarationId = await this._createCustomsDeclaration(intlCustoms);
     }
+
+    // Shippo `extra` bundle carries signature + insurance directives to USPS.
+    // signature_confirmation values: STANDARD | ADULT (basic delivery
+    // confirmation is a service level, not this flag). Insurance is a
+    // structured object with provider USPS to route through Priority's
+    // built-in coverage.
+    const insAmt = Number(insuranceAmount) > 0 ? Number(insuranceAmount) : 0;
+    const sigMap = { signature: 'STANDARD', adult: 'ADULT' };
+    const shippoExtra = {};
+    if (sigMap[signature]) shippoExtra.signature_confirmation = sigMap[signature];
+    if (insAmt > 0) {
+      shippoExtra.insurance = { amount: insAmt.toFixed(2), currency: 'USD', provider: 'USPS', content: 'Merchandise' };
+    }
+    const hasExtra = Object.keys(shippoExtra).length > 0;
 
     // Step 1: Create shipment to get rates
     const shipmentRes = await nodeFetch(`${this.baseUrl}/shipments/`, {
@@ -993,6 +1041,7 @@ class USPS {
           mass_unit:     'lb',
         }],
         ...(customsDeclarationId ? { customs_declaration: customsDeclarationId } : {}),
+        ...(hasExtra ? { extra: shippoExtra } : {}),
         async: false,
       }),
     });
