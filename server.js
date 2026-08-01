@@ -5279,23 +5279,22 @@ async function buildLabelWithPickListPdf(pairs) {
       const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
       const page = doc.addPage([PAGE_W, PAGE_H]);
 
-      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
-      // Matches the Shippo layout: portrait letter sheet, label rotated so a
-      // wide 4×6 carrier label fills the top half. Packing slip below reads
-      // upright in normal portrait orientation. Reader looks at the whole
-      // sheet without turning it.
+      // ── TOP HALF: label rotated 90° CW, centered ──────────────
+      // Portrait letter sheet with the label rotated to fill the top half.
+      // CW puts the address block reading top-to-bottom when the sheet is
+      // held portrait — user's preferred orientation.
       const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
       const scaledW = natW * scale, scaledH = natH * scale;
       const cx = TOP_BOX.x + TOP_BOX.w / 2;
       const cy = TOP_BOX.y + TOP_BOX.h / 2;
-      // CCW 90° extends image UP and LEFT of the anchor; centre the rotated
-      // bbox by placing the anchor at (right-edge, bottom-edge).
+      // CW 90° (degrees(-90)) extends image DOWN and RIGHT of the anchor;
+      // centre the rotated bbox by placing the anchor at (left-edge, top-edge).
       const drawOpts = {
-        x: cx + scaledH / 2,
-        y: cy - scaledW / 2,
+        x: cx - scaledH / 2,
+        y: cy + scaledW / 2,
         width: scaledW,
         height: scaledH,
-        rotate: degrees(90),
+        rotate: degrees(-90),
       };
       if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
       else                          page.drawImage(embedded, drawOpts);
