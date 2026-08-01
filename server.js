@@ -5279,22 +5279,24 @@ async function buildLabelWithPickListPdf(pairs) {
       const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
       const page = doc.addPage([PAGE_W, PAGE_H]);
 
-      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
-      // CCW lets the label print sideways at full size — important for UPS
-      // automated scanning, which had trouble with the shrunken upright
-      // version. Packing slip below still reads upright in portrait.
-      const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
+      // ── TOP HALF: label at its native orientation ─────────────
+      // Carrier labels are natively landscape (~6"×4" for UPS). The top-half
+      // box is also landscape-shaped, so drawing the label without rotation
+      // fills it nearly edge-to-edge (~7.25"×4.83") at full scannable size.
+      // Rotating 90° in either direction turns the label portrait-shaped
+      // (4"×6"), which forces a shrink to fit the landscape box (~3.2"×4.8")
+      // and makes it too small for UPS automated scanners. So: no rotation.
+      // Reader tilts head or turns the sheet to read the label; the packing
+      // slip below is unaffected and still reads upright in portrait.
+      const scale = Math.min(TOP_BOX.w / natW, TOP_BOX.h / natH);
       const scaledW = natW * scale, scaledH = natH * scale;
       const cx = TOP_BOX.x + TOP_BOX.w / 2;
       const cy = TOP_BOX.y + TOP_BOX.h / 2;
-      // CCW 90° extends image UP and LEFT of the anchor; centre the rotated
-      // bbox by placing the anchor at (right-edge, bottom-edge).
       const drawOpts = {
-        x: cx + scaledH / 2,
-        y: cy - scaledW / 2,
+        x: cx - scaledW / 2,
+        y: cy - scaledH / 2,
         width: scaledW,
         height: scaledH,
-        rotate: degrees(90),
       };
       if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
       else                          page.drawImage(embedded, drawOpts);
