@@ -5790,8 +5790,10 @@ function printQSLabel(){
 
   // ── LETTER LABEL + PICK LIST (8.5×11) ─────────────────────
   // Server composes rotated label + this order's line items as one letter
-  // page. Needs both a tracking number AND that the shipment is persisted
-  // in the DB (buyCarrierLabel already does that before returning).
+  // page. Fetch the PDF, mount it in a hidden iframe on the current page,
+  // and trigger print() directly — no new tab, no "jumps to another
+  // screen." Falls back to a new tab only if the iframe/print pathway
+  // fails (Safari can be flaky about print() on iframe PDFs).
   if(paperType === 'letter-label-picklist'){
     if(!qsLabelData.trackingNumber){ toast('No tracking number to print','error'); return; }
     (async () => {
@@ -5809,10 +5811,29 @@ function printQSLabel(){
         }
         const blob = await res.blob();
         const url  = URL.createObjectURL(blob);
-        const w = window.open(url,'_blank');
-        if(!w) toast('Allow popups to open the label sheet','info');
-        else   toast('Opened label + pick list as one PDF','success');
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        // Hidden iframe on the same page. Chrome/Edge/Firefox all fire the
+        // built-in PDF viewer's print dialog when we call print() on the
+        // iframe's contentWindow. Cleaned up 60s later.
+        let iframe = document.getElementById('printLabelPicklistFrame');
+        if (iframe) iframe.remove();
+        iframe = document.createElement('iframe');
+        iframe.id = 'printLabelPicklistFrame';
+        iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+        iframe.src = url;
+        iframe.onload = () => {
+          try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            toast('Print dialog opened','success');
+          } catch (e) {
+            // Fallback: open in a new tab so the seller can print from there.
+            const w = window.open(url, '_blank');
+            if (w) toast('Opened label + pick list as one PDF','info');
+            else   toast('Allow popups to open the label sheet','info');
+          }
+        };
+        document.body.appendChild(iframe);
+        setTimeout(() => { try { iframe.remove(); } catch(e){} URL.revokeObjectURL(url); }, 60000);
       } catch(err){
         toast('Network error: '+err.message,'error');
       }
