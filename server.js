@@ -3135,6 +3135,40 @@ app.get('/api/seller/payouts', requireAuth, async (req, res) => {
    Secrets are encrypted at rest and never returned to the client.
    ============================================================ */
 
+/* GET /api/seller/onboarding-status — first-run setup checklist.
+
+   Rolls up the four things a seller must configure before they can take
+   a payment, buy a label, and actually ship an order. Rendered as a card
+   at the top of the dashboard's Overview page; disappears once all four
+   are done. Server-computed so a fresh browser sees the true state, not
+   whatever the last session cached. */
+app.get('/api/seller/onboarding-status', requireAuth, async (req, res) => {
+  try {
+    const sellerId = req.seller.sellerId;
+    const [stripeKeys, productCount, carriers, shipFrom] = await Promise.all([
+      db.getStripeKeys(sellerId).catch(() => null),
+      db.getProductCountBySeller(sellerId).catch(() => 0),
+      db.getCarrierAccounts(sellerId).catch(() => []),
+      db.getShipFromProfiles(sellerId).catch(() => []),
+    ]);
+    const stripeDone   = !!(stripeKeys && stripeKeys.secretKey);
+    const productDone  = productCount > 0;
+    const carrierDone  = (carriers || []).length > 0;
+    const shipFromDone = (shipFrom || []).length > 0;
+    const steps = [
+      { key: 'stripe',   label: 'Connect Stripe to accept payments',                 done: stripeDone,   goto: 'stripe' },
+      { key: 'product',  label: 'Add your first product',                            done: productDone,  goto: 'add-product' },
+      { key: 'carrier',  label: 'Connect a shipping carrier (UPS / FedEx / USPS)',   done: carrierDone,  gotoUrl: '/shipping' },
+      { key: 'shipfrom', label: 'Set a ship-from address',                           done: shipFromDone, gotoUrl: '/shipping' },
+    ];
+    const completedCount = steps.filter(s => s.done).length;
+    res.json({ steps, completedCount, total: steps.length, allDone: completedCount === steps.length });
+  } catch (err) {
+    console.error('Onboarding status error:', err);
+    res.status(500).json({ error: 'Failed to compute onboarding status.' });
+  }
+});
+
 app.get('/api/seller/carriers', requireAuth, async (req, res) => {
   try {
     const rows = await db.getCarrierAccounts(req.seller.sellerId);

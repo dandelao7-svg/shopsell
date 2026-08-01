@@ -561,6 +561,19 @@ tr:hover td{background:#fafaf7}
   ═══════════════════════════════════════ -->
   <div class="page-content active" id="dash-overview">
 
+    <!-- Onboarding checklist — first-run setup. Hidden by default; loadOnboarding()
+         fills it in and shows it whenever any step is incomplete. -->
+    <div id="onboardingCard" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">Get your store ready</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px" id="onboardingSub">— of — complete</div>
+        </div>
+        <button onclick="dismissOnboarding()" title="Hide this card" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer">Dismiss</button>
+      </div>
+      <div id="onboardingSteps" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
     <div class="stats-grid">
       <div class="stat-card green">
         <div class="stat-icon green">
@@ -3340,7 +3353,7 @@ function showDash(name){
   if(name === 'stripe') loadStripeConfig();
   if(name === 'discounts') loadDiscounts();
   if(name === 'add-product') initVariantEditor(ADD_VAR_CTX);
-  if(name === 'overview') loadAnalytics();
+  if(name === 'overview'){ loadAnalytics(); loadOnboarding(); }
   if(name === 'customers') loadCustomers();
   if(name === 'domain') loadDomain();
   if(name === 'settings') loadSettings();
@@ -3360,6 +3373,58 @@ function setMode(mode){
 let analyticsPeriod = '30d';
 const money2 = n => '$' + (Number(n)||0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
 const CAT_COLORS = ['#0f0f1a','#e63946','#c9a84c','#635bff','#2d6a4f','#92400e'];
+
+// ── ONBOARDING CHECKLIST ────────────────────────────────────
+// Shows on Overview when the seller hasn't finished setup. Steps come
+// from GET /api/seller/onboarding-status — server computes done-state
+// so a fresh browser session sees the true state. Seller can dismiss it
+// via localStorage.ss_onboarding_dismissed (survives page reload).
+async function loadOnboarding(){
+  const card = document.getElementById('onboardingCard');
+  if (!card) return;
+  if (localStorage.getItem('ss_onboarding_dismissed') === '1') { card.style.display = 'none'; return; }
+  const token = localStorage.getItem('ss_token');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/seller/onboarding-status', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) return;
+    const data = await res.json();
+    // Auto-hide when everything's done. Seller doesn't need a "you're
+    // finished!" card cluttering the overview forever.
+    if (data.allDone) { card.style.display = 'none'; return; }
+    renderOnboarding(data);
+    card.style.display = 'block';
+  } catch (e) { /* silent — checklist is optional */ }
+}
+
+function renderOnboarding(data){
+  document.getElementById('onboardingSub').textContent =
+    `${data.completedCount} of ${data.total} complete — finish setup so you can accept orders`;
+  const list = document.getElementById('onboardingSteps');
+  list.innerHTML = data.steps.map(s => {
+    const dot = s.done
+      ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:var(--green);color:#fff;border-radius:50%;font-size:12px;font-weight:700;flex-shrink:0">✓</span>`
+      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:var(--light2);color:var(--muted);border:1.5px solid var(--border);border-radius:50%;flex-shrink:0"></span>`;
+    const labelStyle = s.done
+      ? 'flex:1;font-size:13px;color:var(--muted);text-decoration:line-through'
+      : 'flex:1;font-size:13px;color:var(--text);font-weight:500';
+    const action = s.done
+      ? '<span style="font-size:11px;color:var(--green);font-weight:600">Done</span>'
+      : (s.gotoUrl
+          ? `<a href="${s.gotoUrl}" style="font-size:12px;color:var(--accent);font-weight:600;text-decoration:none;padding:5px 10px;border:1px solid var(--accent);border-radius:6px">Do it →</a>`
+          : `<button onclick="showDash('${s.goto}')" style="background:none;border:1px solid var(--accent);color:var(--accent);font-size:12px;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer">Do it →</button>`);
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--light);border-radius:8px">
+      ${dot}
+      <div style="${labelStyle}">${s.label}</div>
+      ${action}
+    </div>`;
+  }).join('');
+}
+
+function dismissOnboarding(){
+  try { localStorage.setItem('ss_onboarding_dismissed', '1'); } catch(e){}
+  document.getElementById('onboardingCard').style.display = 'none';
+}
 
 async function loadAnalytics(period){
   if(period) analyticsPeriod = period;
@@ -4710,6 +4775,7 @@ document.addEventListener('keydown', e => {
 
 // ── INIT ──
 loadAnalytics();         // real Overview stats + chart + donut + top products
+loadOnboarding();        // first-run setup checklist (auto-hides when done or dismissed)
 renderRecentOrders();    // renders empty table immediately
 renderOrders();          // ditto — then loadOrders re-renders with real data
 loadOrders();
