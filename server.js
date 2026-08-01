@@ -2931,6 +2931,27 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Comp codes — operator-issued invite codes that waive the subscription.
+// PATCH /api/admin/sellers/:id/plan — operator override to move a seller
+// between billing plans (e.g. bumping a beta tester to Growth). Persisted
+// directly on sellers.plan; Stripe subscription unchanged. Body: { plan:
+// 'starter'|'growth'|'pro' }.
+app.patch('/api/admin/sellers/:id/plan', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id   = parseInt(req.params.id, 10);
+    const plan = String(req.body?.plan || '').trim().toLowerCase();
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid seller id.' });
+    if (!['starter', 'growth', 'pro'].includes(plan)) {
+      return res.status(400).json({ error: 'plan must be one of starter, growth, pro' });
+    }
+    const updated = await db.updateSeller(id, { plan });
+    if (!updated) return res.status(404).json({ error: 'Seller not found.' });
+    res.json({ id: updated.id, email: updated.email, plan: updated.plan });
+  } catch (err) {
+    console.error('Admin plan update error:', err);
+    res.status(500).json({ error: 'Failed to update plan.' });
+  }
+});
+
 app.get('/api/admin/comp-codes', requireAuth, requireAdmin, async (req, res) => {
   try {
     res.json({ codes: await db.getCompCodes() });
