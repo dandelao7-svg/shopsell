@@ -1807,8 +1807,8 @@ tr:hover td{background:#fafaf7}
 
     <div class="field" style="margin-top:14px">
       <label>Step 2 — Upload your file</label>
-      <input type="file" id="importFile" accept=".csv,text/csv" onchange="handleImportFile(event)">
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">Any CSV works — you'll match its columns to ShopSell's fields in the next step, so you don't need to rename anything.</div>
+      <input type="file" id="importFile" accept=".csv,.tsv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onchange="handleImportFile(event)">
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">CSV or Excel (.xlsx / .xls) — you'll match its columns to ShopSell's fields in the next step, so you don't need to rename anything. For .xlsx files with multiple sheets, the first sheet is used.</div>
     </div>
 
     <div id="importMapping" style="display:none;margin-top:16px">
@@ -4033,9 +4033,48 @@ function parseCSV(text){
   return rows;
 }
 
+// Load SheetJS on demand — it's ~300KB and only needed when a seller
+// uploads a .xlsx/.xls. Served from /xlsx.min.js (via server route from
+// node_modules) so CSP doesn't need a CDN allowlist.
+let _sheetJsPromise = null;
+function loadSheetJS(){
+  if (window.XLSX) return Promise.resolve();
+  if (_sheetJsPromise) return _sheetJsPromise;
+  _sheetJsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '/xlsx.min.js'; s.async = true;
+    s.onload  = () => resolve();
+    s.onerror = () => reject(new Error('Could not load spreadsheet library'));
+    document.head.appendChild(s);
+  });
+  return _sheetJsPromise;
+}
+
 function handleImportFile(ev){
   const file = ev.target.files && ev.target.files[0];
   if (!file) return;
+  const name = (file.name || '').toLowerCase();
+  const isExcel = /\.(xlsx|xls)$/.test(name)
+    || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || file.type === 'application/vnd.ms-excel';
+  if (isExcel){
+    loadSheetJS().then(() => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+          const firstSheet = wb.SheetNames[0];
+          if (!firstSheet){ toast('That workbook has no sheets'); return; }
+          // Get a 2D array of the first sheet, keeping empty cells as ''.
+          const grid = XLSX.utils.sheet_to_json(wb.Sheets[firstSheet], { header: 1, defval: '', blankrows: false });
+          loadImportGrid(grid);
+        } catch(e){ console.error(e); toast('Could not read that Excel file'); }
+      };
+      reader.onerror = () => toast('Could not read that file');
+      reader.readAsArrayBuffer(file);
+    }).catch(e => { console.error(e); toast(e.message); });
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     try { loadImportCsv(String(reader.result || '')); }
@@ -4045,15 +4084,21 @@ function handleImportFile(ev){
   reader.readAsText(file);
 }
 
-// Parse the file into raw headers + rows, then show the column-mapping step.
-function loadImportCsv(text){
-  const grid = parseCSV(text).filter(r => r.some(c => String(c).trim() !== ''));
-  if (grid.length < 2){ toast('That file has no data rows'); return; }
-  IMPORT_RAW_HEADERS = grid[0].map(h => String(h == null ? '' : h).trim());
-  IMPORT_RAW_ROWS = grid.slice(1);
+// Shared entry point once the file is parsed into a 2D array of cells.
+function loadImportGrid(grid){
+  const filtered = (grid || []).map(r => (r || []).map(c => c == null ? '' : String(c)))
+    .filter(r => r.some(c => c.trim() !== ''));
+  if (filtered.length < 2){ toast('That file has no data rows'); return; }
+  IMPORT_RAW_HEADERS = filtered[0].map(h => String(h).trim());
+  IMPORT_RAW_ROWS = filtered.slice(1);
   renderMappingUI();
   document.getElementById('importMapping').style.display = 'block';
   applyMapping();
+}
+
+// Parse a CSV/TSV text into 2D grid and hand off to the shared entry.
+function loadImportCsv(text){
+  loadImportGrid(parseCSV(text));
 }
 
 // Build the field → column dropdowns, auto-selecting the best-guess column for

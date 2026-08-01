@@ -529,6 +529,15 @@ app.use('/api',      apiLimiter);
 // ── SERVE STATIC FILES ────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
+/* SheetJS browser bundle — served from node_modules so the dashboard's
+   import modal can parse .xlsx / .xls files client-side without adding a
+   CDN to CSP. Cached aggressively; the file changes only on dependency
+   upgrade, which changes the URL only if we ever version-cache-bust it. */
+app.get('/xlsx.min.js', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+  res.sendFile(path.join(__dirname, 'node_modules', 'xlsx', 'dist', 'xlsx.mini.min.js'));
+});
+
 /* Uploaded images (product photos, store logos, hero images), stored as bytes
    in Postgres. Public and unauthenticated by design — these URLs go into
    storefronts, OG tags and JSON-LD, so crawlers and social scrapers must be
