@@ -1792,12 +1792,12 @@ tr:hover td{background:#fafaf7}
 
     <div class="alert info" style="font-size:12px">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <div>Bulk-add products from a spreadsheet. Each row becomes one product. Existing SKUs are skipped, so re-importing is safe. Variants aren't supported yet — one row = one simple product.</div>
+      <div>Bulk-add products from a spreadsheet. Each row becomes one product. Existing SKUs are skipped, so re-importing is safe. <b>No SKUs? No problem</b> — blank SKU cells (or a whole file with no SKU column) get a SKU auto-generated in the pattern <code>CAT-NAME-####</code>, which you can edit later. Variants aren't supported yet — one row = one simple product.</div>
     </div>
 
     <div class="field" style="margin-top:14px">
       <label>Step 1 — Get the template <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Optional — any CSV works, since you'll match columns in Step 3. Template columns: <code>name, description, category, price, sku, quantity, compareAtPrice, brand, weight, imageUrls, status</code>. Only <b>name, category, price, sku</b> are required.</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Optional — any CSV works, since you'll match columns in Step 3. Template columns: <code>name, description, category, price, sku, quantity, compareAtPrice, brand, weight, imageUrls, status</code>. Only <b>name, category, price</b> are required — SKU is auto-generated when blank.</div>
       <div class="alert info" style="font-size:12px;margin-bottom:8px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
         <div><b>Photos are added as web links, not files.</b> In the <code>imageUrls</code> column paste a public image address (e.g. <code>https://…/photo.jpg</code>) — handy if your products are already on Shopify, eBay, Etsy or a website (right-click a photo → “Copy image address”). Put several in one cell separated by a space or <code>|</code>. Leave it blank to add photos later. To upload photo <i>files</i> from your computer, use the normal <b>Add product</b> screen instead.</div>
@@ -3961,7 +3961,7 @@ const IMPORT_FIELDS = [
   { key:'name',           label:'Name',             required:true,  aliases:['title','productname','producttitle','item','itemname'] },
   { key:'category',       label:'Category',         required:true,  aliases:['type','producttype','department','collection'] },
   { key:'price',          label:'Price',            required:true,  aliases:['amount','sellingprice','unitprice','saleprice','retailprice'] },
-  { key:'sku',            label:'SKU',              required:true,  aliases:['skuid','itemid','variantsku','code','itemnumber','mpn'] },
+  { key:'sku',            label:'SKU',              required:false, aliases:['skuid','itemid','variantsku','code','itemnumber','mpn'] },
   { key:'description',    label:'Description',      required:false, aliases:['desc','details','body','bodyhtml','longdescription'] },
   { key:'quantity',       label:'Quantity',         required:false, aliases:['qty','stock','inventory','inventoryquantity','onhand','available'] },
   { key:'compareAtPrice', label:'Compare-at price', required:false, aliases:['compareat','compareatprice','msrp','rrp','wasprice','listprice','originalprice'] },

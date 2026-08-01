@@ -1783,13 +1783,27 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
 
       const name     = String(raw.name || '').trim();
       const category = String(raw.category || '').trim();
-      const sku      = String(raw.sku || '').trim();
+      let   sku      = String(raw.sku || '').trim();
       const price    = parseFloat(raw.price);
 
       if (!name)     { record('error', 'Missing name'); continue; }
       if (!category) { record('error', 'Missing category'); continue; }
-      if (!sku)      { record('error', 'Missing SKU'); continue; }
       if (!(price > 0)) { record('error', 'Missing or invalid price'); continue; }
+
+      // Sellers migrating from stores that never tracked SKUs (Etsy, small
+      // Shopify catalogs, hand-typed spreadsheets) usually don't have them.
+      // Rather than error the row out, mint a SKU using the same
+      // CAT3-NAME4-####  pattern the manual Add-product form's Auto-generate
+      // button uses. Retry a few times on the off chance the random collides.
+      if (!sku) {
+        const catPart  = (category || 'PRD').replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'PRD';
+        const namePart = (name     || 'ITEM').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'ITEM';
+        for (let tries = 0; tries < 8; tries++) {
+          const candidate = `${catPart}-${namePart}-${Math.floor(1000 + Math.random() * 9000)}`;
+          if (!existing.has(candidate.toLowerCase())) { sku = candidate; break; }
+        }
+        if (!sku) { record('error', 'Could not generate a unique SKU'); continue; }
+      }
 
       const skuKey = sku.toLowerCase();
       if (existing.has(skuKey)) { record('skipped', 'SKU already exists', sku); continue; }
