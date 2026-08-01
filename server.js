@@ -1781,10 +1781,18 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
         if (status === 'created') created++; else if (status === 'skipped') skipped++; else errored++;
       };
 
+      // Strip currency symbols, thousands commas, and stray whitespace before
+      // parsing — spreadsheet exports commonly hand us "$40", "$1,299.00",
+      // "€ 12,50", etc. parseFloat by itself returns NaN on any of these.
+      const parseMoney = v => {
+        if (v == null) return NaN;
+        const s = String(v).replace(/[^\d.\-]/g, '');   // digits, dot, minus
+        return parseFloat(s);
+      };
       const name     = String(raw.name || '').trim();
       const category = String(raw.category || '').trim();
       let   sku      = String(raw.sku || '').trim();
-      const price    = parseFloat(raw.price);
+      const price    = parseMoney(raw.price);
 
       if (!name)     { record('error', 'Missing name'); continue; }
       if (!category) { record('error', 'Missing category'); continue; }
@@ -1814,7 +1822,8 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
       }
 
       // Optional numeric fields — blank/invalid become null (or 0 for quantity).
-      const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+      // Same currency-tolerant parse as price above.
+      const num = (v) => { const n = parseMoney(v); return Number.isFinite(n) ? n : null; };
       const imageUrls = String(raw.imageUrls || raw.images || '')
         .split(/[\s|,]+/).map(s => s.trim())
         .filter(u => /^https?:\/\//i.test(u))
