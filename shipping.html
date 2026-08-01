@@ -830,6 +830,10 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
             Reprint label
           </button>
+          <button onclick="openQSEmailLabelModal()" title="Email this label to someone (yourself, a supplier, a customer for a return-shipment)" style="flex:1;justify-content:center;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Email label
+          </button>
           <button id="qsCustomsBtn" onclick="printCustomsInvoice()" style="display:none;flex:1;justify-content:center;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             Print customs invoice
@@ -1992,28 +1996,47 @@ function sidebarReprint(){
   historyReprint(order.tracking); // reuses the history reprint flow
 }
 
+// Quick Ship variant — reads qsLabelData instead of the Orders sidebar
+// selection. Same modal, same POST endpoint; just a different source for
+// which tracking number to email.
+function openQSEmailLabelModal(){
+  if(!qsLabelData || !qsLabelData.trackingNumber){ toast('No label to email — buy one first','info'); return; }
+  _openEmailLabelModal({
+    tracking: qsLabelData.trackingNumber,
+    carrier:  (qsLabelData.carrier || 'ups').toUpperCase(),
+  });
+}
+
 function openEmailLabelModal(){
   const order = ordersData.find(o => o.id === selectedOrderId);
   if(!order || !order.tracking){ toast('No label on this order to email','info'); return; }
-
-  // Build a tiny inline modal — same pattern as the automation rule editor.
+  _openEmailLabelModal({
+    tracking: order.tracking,
+    carrier:  (order.carrier || 'ups').toUpperCase(),
+  });
+}
+// Shared modal used by both entry points (Orders sidebar and Quick Ship).
+// ctx = { tracking, carrier } — stashed on the modal element so the Send
+// handler doesn't have to guess which source triggered it.
+function _openEmailLabelModal(ctx){
   document.getElementById('emailLabelModal')?.remove();
   const modal = document.createElement('div');
   modal.id = 'emailLabelModal';
+  modal.dataset.tracking = ctx.tracking;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:440px;max-height:100%;overflow:auto">
       <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">Email this label</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">Tracking ${escapeAttr(order.tracking)} · ${(order.carrier||'').toUpperCase()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Tracking ${escapeAttr(ctx.tracking)} · ${escapeAttr(ctx.carrier)}</div>
         </div>
         <button onclick="closeEmailLabelModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">&times;</button>
       </div>
       <div style="padding:18px 20px">
         <div style="margin-bottom:12px">
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px">Send to</label>
-          <input type="email" id="emailLabelTo" placeholder="warehouse@example.com" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:13px" autocomplete="off">
+          <input type="email" id="emailLabelTo" placeholder="you@example.com" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:13px" autocomplete="off">
         </div>
         <div style="margin-bottom:12px">
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px">Note (optional)</label>
@@ -2032,8 +2055,9 @@ function openEmailLabelModal(){
 function closeEmailLabelModal(){ document.getElementById('emailLabelModal')?.remove(); }
 
 async function sendLabelEmail(){
-  const order = ordersData.find(o => o.id === selectedOrderId);
-  if(!order || !order.tracking){ toast('No tracking number','error'); return; }
+  const modal = document.getElementById('emailLabelModal');
+  const tracking = modal?.dataset?.tracking;
+  if(!tracking){ toast('No tracking number','error'); return; }
   const toEl = document.getElementById('emailLabelTo');
   const noteEl = document.getElementById('emailLabelNote');
   const btn = document.getElementById('emailLabelSendBtn');
@@ -2046,7 +2070,7 @@ async function sendLabelEmail(){
     const res = await fetch('/api/shipping/label/email', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+token },
-      body: JSON.stringify({ trackingNumber: order.tracking, toEmail: to, note: noteEl.value || '' }),
+      body: JSON.stringify({ trackingNumber: tracking, toEmail: to, note: noteEl.value || '' }),
     });
     const data = await res.json().catch(() => ({}));
     if(!res.ok){ toast(data.error || 'Could not send the label','error'); btn.disabled = false; btn.textContent = 'Send'; return; }
