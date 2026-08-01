@@ -1965,11 +1965,80 @@ function toggleInsureAmt(val){
 }
 
 async function getRate(){
-  // Live rate-shopping across your connected carriers happens on Quick Ship
-  // (Compare rates). The old inline "rate" here was a placeholder, so route
-  // the seller to the real flow rather than show a made-up price.
-  toast('Compare live carrier rates on the Quick Ship page.','info');
-  if(typeof showPage === 'function') showPage('quickship');
+  if(!selectedOrderId){ toast('Select an order first','error'); return; }
+  const order = ordersData.find(o => o.id === selectedOrderId);
+  if(!order){ toast('Order not loaded','error'); return; }
+
+  // Same shipper/recipient/package payload the buy handler uses.
+  const fromIdx = parseInt(document.getElementById('sb-from').value, 10);
+  const from = Number.isInteger(fromIdx) ? shipperAccounts[fromIdx] : null;
+  if(!from || !from.address1){ toast('Pick a ship-from address first','error'); return; }
+  const shipper = {
+    name: from.name || 'Store', phone: from.phone || '5550000000',
+    address1: from.address1, city: from.city, state: from.state, zip: from.zip, country: 'US',
+  };
+  const ci = order._customerInfo || {};
+  const recipient = {
+    name: (`${ci.firstName||''} ${ci.lastName||''}`).trim() || order.customer || 'Customer',
+    phone: ci.phone || '5550000000',
+    address1: ci.address1 || '', address2: ci.address2 || '',
+    city: ci.city || order.city || '', state: ci.state || order.state || '',
+    zip: ci.zip || order.zip || '', country: (ci.country || 'US').toUpperCase(),
+    residential: true,
+  };
+  if(!recipient.address1 || !recipient.city || !recipient.zip){
+    toast('This order is missing a shipping address','error');
+    return;
+  }
+  const lbs = parseFloat(document.getElementById('sb-weight-lbs').value) || 0;
+  const oz  = parseFloat(document.getElementById('sb-weight-oz').value)  || 0;
+  const pkg = {
+    weight: (lbs + oz/16) > 0 ? (lbs + oz/16) : 1,
+    length: parseFloat(document.getElementById('sb-length').value) || 12,
+    width:  parseFloat(document.getElementById('sb-width').value)  || 9,
+    height: parseFloat(document.getElementById('sb-height').value) || 4,
+  };
+
+  const rateEl = document.getElementById('sb-rate');
+  const btn = event && event.currentTarget ? event.currentTarget : null;
+  const origBtn = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Rating…'; }
+  rateEl.textContent = '…';
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/shipping/rates', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+token},
+      body: JSON.stringify({ shipper, recipient, package: pkg }),
+    });
+    const data = await res.json();
+    if(!res.ok){
+      rateEl.textContent = '—';
+      toast(data.error || 'Could not get a rate', 'error');
+      return;
+    }
+    const rates = (data.rates || []).filter(r => r && Number.isFinite(Number(r.totalCharge)));
+    if(!rates.length){
+      rateEl.textContent = '—';
+      toast('No rates returned from any connected carrier', 'info');
+      return;
+    }
+    rates.sort((a, b) => Number(a.totalCharge) - Number(b.totalCharge));
+    const cheapest = rates[0];
+    rateEl.innerHTML = '$' + Number(cheapest.totalCharge).toFixed(2)
+      + `<div style="font-size:10px;color:var(--muted);font-family:'Outfit',sans-serif;font-weight:400;margin-top:2px">${cheapest.carrier.toUpperCase()} ${cheapest.serviceName || cheapest.serviceCode || ''}</div>`;
+    // Nice-to-have: switch sb-carrier + sb-service to the cheapest so the
+    // subsequent Buy uses those defaults (seller can still override).
+    const c = document.getElementById('sb-carrier');
+    if(c && c.value !== cheapest.carrier){ c.value = cheapest.carrier; if(typeof updateSbServices==='function') updateSbServices(); }
+    const s = document.getElementById('sb-service');
+    if(s && cheapest.serviceCode){ s.value = cheapest.serviceCode; }
+  } catch(err){
+    rateEl.textContent = '—';
+    toast('Network error: '+err.message, 'error');
+  } finally {
+    if(btn){ btn.disabled = false; btn.innerHTML = origBtn; }
+  }
 }
 
 async function createAndPrintFromSidebar(){

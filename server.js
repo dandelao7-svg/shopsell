@@ -2952,6 +2952,19 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Comp codes — operator-issued invite codes that waive the subscription.
+// GET /api/admin/actions — recent operator actions (plan changes,
+// impersonation start). Read-only; the log itself is append-only from
+// the routes that make the change.
+app.get('/api/admin/actions', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const actions = await db.getRecentAdminActions(parseInt(req.query.limit, 10) || 100);
+    res.json({ actions });
+  } catch (err) {
+    console.error('Admin actions read error:', err);
+    res.status(500).json({ error: 'Failed to load audit log.' });
+  }
+});
+
 // POST /api/admin/impersonate/:id — mint a short-lived seller token so an
 // operator can view the dashboard AS that seller for debugging or support.
 // Token carries an `impersonatedBy` claim (admin email) so downstream logs
@@ -2969,6 +2982,12 @@ app.post('/api/admin/impersonate/:id', requireAuth, requireAdmin, async (req, re
       { expiresIn: '30m' }
     );
     console.log(`[audit] admin ${req.adminSeller.email} impersonating seller ${seller.id} (${seller.email})`);
+    db.logAdminAction({
+      adminEmail: req.adminSeller.email,
+      action: 'impersonate',
+      sellerId: seller.id,
+      details: { sellerEmail: seller.email, storeName: seller.storeName, expiresIn: '30m' },
+    }).catch(e => console.error('audit log write failed:', e.message));
     res.json({ token, seller: { id: seller.id, email: seller.email, storeName: seller.storeName } });
   } catch (err) {
     console.error('Admin impersonate error:', err);
@@ -2988,8 +3007,15 @@ app.patch('/api/admin/sellers/:id/plan', requireAuth, requireAdmin, async (req, 
     if (!['starter', 'growth', 'pro'].includes(plan)) {
       return res.status(400).json({ error: 'plan must be one of starter, growth, pro' });
     }
+    const existing = await db.getSellerById(id).catch(() => null);
     const updated = await db.updateSeller(id, { plan });
     if (!updated) return res.status(404).json({ error: 'Seller not found.' });
+    db.logAdminAction({
+      adminEmail: req.adminSeller.email,
+      action: 'plan_change',
+      sellerId: id,
+      details: { from: existing?.plan || null, to: plan, sellerEmail: updated.email, storeName: updated.storeName },
+    }).catch(e => console.error('audit log write failed:', e.message));
     res.json({ id: updated.id, email: updated.email, plan: updated.plan });
   } catch (err) {
     console.error('Admin plan update error:', err);

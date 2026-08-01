@@ -89,6 +89,16 @@
     </div>
 
     <div class="section">
+      <h2>Admin audit log <span style="text-transform:none;font-weight:400;color:var(--muted)">— plan changes and impersonation, most recent first</span></h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>When</th><th>Operator</th><th>Action</th><th>Seller</th><th>Details</th></tr></thead>
+          <tbody id="auditBody"><tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Recent signups <span id="sellerCountLbl" style="text-transform:none;font-weight:400;color:var(--muted)"></span></h2>
       <input id="sellerSearch" placeholder="Search by store, owner, email, slug…" oninput="filterSellers(this.value)"
         style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;margin-bottom:12px">
@@ -180,6 +190,37 @@ function render(data){
   $('loading').style.display = 'none';
   $('content').style.display = 'block';
   loadCompCodes();
+  loadAuditLog();
+}
+
+async function loadAuditLog(){
+  const body = $('auditBody');
+  try {
+    const res = await fetch('/api/admin/actions?limit=50', { headers: { 'Authorization': 'Bearer ' + token } });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">${esc(data.error||'Could not load log.')}</td></tr>`; return; }
+    const actions = data.actions || [];
+    if(!actions.length){ body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">No admin actions logged yet.</td></tr>`; return; }
+    body.innerHTML = actions.map(a => {
+      const when = a.createdAt ? new Date(a.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '—';
+      const seller = a.sellerId
+        ? `<strong>${esc(a.sellerStoreName || '—')}</strong><div class="email">${esc(a.sellerEmail || '')}</div>`
+        : '<span style="color:var(--muted)">—</span>';
+      const d = a.details || {};
+      let detailText = '';
+      if (a.action === 'plan_change') detailText = `${esc(d.from || '?')} → ${esc(d.to || '?')}`;
+      else if (a.action === 'impersonate') detailText = `Token expires in ${esc(d.expiresIn || '?')}`;
+      else detailText = esc(JSON.stringify(d).slice(0, 60));
+      const actionColor = a.action === 'impersonate' ? '#f59e0b' : '#3b82f6';
+      return `<tr>
+        <td style="font-size:12px;color:var(--text2);white-space:nowrap">${esc(when)}</td>
+        <td class="email">${esc(a.adminEmail || '—')}</td>
+        <td><span class="pill" style="background:rgba(0,0,0,0.2);color:${actionColor}">${esc(a.action)}</span></td>
+        <td>${seller}</td>
+        <td style="font-size:12px;color:var(--text2)">${detailText}</td>
+      </tr>`;
+    }).join('');
+  } catch(e){ body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--muted)">Network error.</td></tr>`; }
 }
 
 async function loadCompCodes(){

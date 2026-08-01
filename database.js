@@ -420,6 +420,22 @@ async function initSchema() {
     `);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_comp_code ON comp_codes (UPPER(code));`);
 
+    // ADMIN AUDIT LOG — operator actions taken from /admin (plan changes,
+    // impersonation start). Not billed to a seller; the admin_email is the
+    // operator who did the thing. Kept forever (small volume).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_actions (
+        id           SERIAL PRIMARY KEY,
+        admin_email  TEXT NOT NULL,
+        action       TEXT NOT NULL,             -- 'impersonate' | 'plan_change' | ...
+        seller_id    INTEGER,                    -- target seller if applicable
+        details      JSONB DEFAULT '{}'::jsonb,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions (created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_actions_seller ON admin_actions (seller_id);`);
+
     // Orders carry the applied code + dollars discounted (for receipts/reporting).
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_code TEXT;`);
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;`);
@@ -1337,6 +1353,26 @@ async function setCompCodeActive(id, active) {
 }
 
 // Most-recent sellers for the admin signups table (no secrets).
+// ── ADMIN AUDIT LOG ───────────────────────────────────────────
+async function logAdminAction({ adminEmail, action, sellerId, details }) {
+  await pool.query(
+    `INSERT INTO admin_actions (admin_email, action, seller_id, details)
+     VALUES ($1, $2, $3, $4)`,
+    [adminEmail, action, sellerId || null, JSON.stringify(details || {})]
+  );
+}
+
+async function getRecentAdminActions(limit = 100) {
+  const { rows } = await pool.query(
+    `SELECT a.*, s.email AS seller_email, s.store_name AS seller_store_name
+       FROM admin_actions a
+       LEFT JOIN sellers s ON s.id = a.seller_id
+      ORDER BY a.created_at DESC LIMIT $1`,
+    [Math.min(parseInt(limit) || 100, 500)]
+  );
+  return camelizeAll(rows);
+}
+
 async function getRecentSellers(limit = 50) {
   // Subqueries per seller so a seller with no products/orders still shows up
   // (a LEFT JOIN would work but scales worse with plan-breakdown across many
@@ -1887,6 +1923,8 @@ module.exports = {
   updateReturnStatus,
   getAdminStats,
   getRecentSellers,
+  logAdminAction,
+  getRecentAdminActions,
   createCompCode,
   getCompCodes,
   getCompCodeByCode,
