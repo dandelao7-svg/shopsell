@@ -6450,10 +6450,19 @@ function closeRowMenu(){
 }
 
 // ── ROW ACTIONS ──────────────────────────────────────────────
-function historyReprint(trackingNumber){
+async function historyReprint(trackingNumber){
   closeRowMenu();
-  const arr = historyCache;
-  const s = arr.find(x => x.trackingNumber === trackingNumber);
+  // The Orders page loads its own shipments cache (ordersShipments) in
+  // parallel with orders — check there first so a seller on Orders can
+  // reprint without History being visited. History cache is the next
+  // fallback; if still nothing, fetch history from the server.
+  let s = (Array.isArray(ordersShipments) ? ordersShipments : [])
+            .find(x => x.trackingNumber === trackingNumber);
+  if (!s) s = historyCache.find(x => x.trackingNumber === trackingNumber);
+  if (!s && !historyCacheLoaded) {
+    try { await loadHistory(); } catch (e) { /* fall through — s stays null */ }
+    s = historyCache.find(x => x.trackingNumber === trackingNumber);
+  }
   if(!s){ toast('Shipment not found','error'); return; }
   if(!s.labelImage && !s.labelUrl){
     toast('Label image not available for this shipment — reprint unavailable','error');
