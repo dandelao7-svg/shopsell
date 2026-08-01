@@ -5279,22 +5279,22 @@ async function buildLabelWithPickListPdf(pairs) {
       const { drawWith, embedded, natW, natH } = await embedLabelSource(doc, label);
       const page = doc.addPage([PAGE_W, PAGE_H]);
 
-      // ── TOP HALF: label rotated 90° CW, centered ──────────────
-      // Portrait letter sheet with the label rotated to fill the top half.
-      // CW puts the address block reading top-to-bottom when the sheet is
-      // held portrait — user's preferred orientation.
+      // ── TOP HALF: label rotated 90° CCW, centered ─────────────
+      // CCW lets the label print sideways at full size — important for UPS
+      // automated scanning, which had trouble with the shrunken upright
+      // version. Packing slip below still reads upright in portrait.
       const scale = Math.min(TOP_BOX.w / natH, TOP_BOX.h / natW);
       const scaledW = natW * scale, scaledH = natH * scale;
       const cx = TOP_BOX.x + TOP_BOX.w / 2;
       const cy = TOP_BOX.y + TOP_BOX.h / 2;
-      // CW 90° (degrees(-90)) extends image DOWN and RIGHT of the anchor;
-      // centre the rotated bbox by placing the anchor at (left-edge, top-edge).
+      // CCW 90° extends image UP and LEFT of the anchor; centre the rotated
+      // bbox by placing the anchor at (right-edge, bottom-edge).
       const drawOpts = {
-        x: cx - scaledH / 2,
-        y: cy + scaledW / 2,
+        x: cx + scaledH / 2,
+        y: cy - scaledW / 2,
         width: scaledW,
         height: scaledH,
-        rotate: degrees(-90),
+        rotate: degrees(90),
       };
       if (drawWith === 'drawPage') page.drawPage(embedded, drawOpts);
       else                          page.drawImage(embedded, drawOpts);
