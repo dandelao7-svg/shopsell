@@ -4217,19 +4217,37 @@ async function runImport(){
 function showImportResult(data){
   const s = data.summary || {};
   const problems = (data.results || []).filter(r => r.status !== 'created');
-  const rowsHtml = problems.slice(0, 100).map(r =>
-    `<tr><td style="padding:4px 8px">${r.row}</td><td style="padding:4px 8px;font-family:monospace">${escImport(r.sku||'')}</td>`
-    + `<td style="padding:4px 8px;color:${r.status==='error'?'#c0392b':'var(--muted)'}">${r.status}</td>`
-    + `<td style="padding:4px 8px;color:var(--muted)">${escImport(r.reason||'')}</td></tr>`).join('');
+  // Row number here is the DATA row index the server saw (1-based, excluding
+  // the header). The spreadsheet row is +1 if there's a header row (which
+  // there always is here). Surface the spreadsheet row so the seller can
+  // jump straight to it.
+  const rowsHtml = problems.slice(0, 200).map(r => {
+    const isError = r.status === 'error';
+    const dot     = isError ? '#c0392b' : '#b58900';
+    const badge   = isError
+      ? `<span style="background:#fbeaea;color:#c0392b;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase">Error</span>`
+      : `<span style="background:#fbf6e3;color:#8a6d1c;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase">Skipped</span>`;
+    const productLine = [r.name, r.sku && ('SKU ' + r.sku)].filter(Boolean).join(' · ');
+    return `<div style="display:flex;gap:10px;padding:10px 12px;border-top:1px solid var(--border)">
+      <div style="flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:${dot};margin-top:6px"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:2px">
+          ${badge}
+          <div style="font-size:11px;color:var(--muted)">Row ${r.row + 1} in your spreadsheet${productLine ? ' · ' + escImport(productLine) : ''}</div>
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.45">${escImport(r.reason || 'No reason provided')}</div>
+      </div>
+    </div>`;
+  }).join('');
   const detail = problems.length
-    ? `<div style="margin-top:10px;max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px">
-         <table style="width:100%;border-collapse:collapse;font-size:12px">
-           <tr><th style="text-align:left;padding:4px 8px">Row</th><th style="text-align:left;padding:4px 8px">SKU</th><th style="text-align:left;padding:4px 8px">Result</th><th style="text-align:left;padding:4px 8px">Reason</th></tr>
-           ${rowsHtml}
-         </table></div>`
+    ? `<div style="margin-top:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+         <div style="padding:8px 12px;background:var(--bg2,#fafafa);font-size:12px;font-weight:600;color:var(--text)">Rows that didn't import (${problems.length})</div>
+         <div style="max-height:280px;overflow:auto">${rowsHtml}</div>
+       </div>`
     : '';
   const el = document.getElementById('importResult');
-  el.innerHTML = `<div class="alert ${s.errored ? 'info' : 'success'}" style="font-size:13px">
+  const summaryClass = (s.created && !s.errored && !s.skipped) ? 'success' : 'info';
+  el.innerHTML = `<div class="alert ${summaryClass}" style="font-size:13px">
       <div><strong>${s.created||0} created</strong> · ${s.skipped||0} skipped · ${s.errored||0} errored (of ${s.total||0} rows)</div>
     </div>${detail}`;
   el.style.display = 'block';

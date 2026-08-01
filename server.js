@@ -1786,7 +1786,13 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
       const raw = rows[i] || {};
       const rowNum = i + 1;
       const record = (status, reason, sku) => {
-        results.push({ row: rowNum, sku: sku || (raw.sku || '').toString().trim(), status, reason });
+        results.push({
+          row:    rowNum,
+          name:   String(raw.name || '').trim(),      // so the client can name the offending row
+          sku:    sku || (raw.sku || '').toString().trim(),
+          status,
+          reason,
+        });
         if (status === 'created') created++; else if (status === 'skipped') skipped++; else errored++;
       };
 
@@ -1803,9 +1809,12 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
       let   sku      = String(raw.sku || '').trim();
       const price    = parseMoney(raw.price);
 
-      if (!name)     { record('error', 'Missing name'); continue; }
-      if (!category) { record('error', 'Missing category'); continue; }
-      if (!(price > 0)) { record('error', 'Missing or invalid price'); continue; }
+      if (!name)     { record('error', 'The name column is blank — every product needs a name.'); continue; }
+      if (!category) { record('error', 'The category column is blank. Pick a Default category above so blanks auto-fill, or set one in the spreadsheet.'); continue; }
+      if (!(price > 0)) {
+        record('error', `Price didn't look like a number (got "${String(raw.price || '').slice(0, 20)}"). Try just the number, like 40 or 40.00.`);
+        continue;
+      }
 
       // Sellers migrating from stores that never tracked SKUs (Etsy, small
       // Shopify catalogs, hand-typed spreadsheets) usually don't have them.
@@ -1819,14 +1828,17 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
           const candidate = `${catPart}-${namePart}-${Math.floor(1000 + Math.random() * 9000)}`;
           if (!existing.has(candidate.toLowerCase())) { sku = candidate; break; }
         }
-        if (!sku) { record('error', 'Could not generate a unique SKU'); continue; }
+        if (!sku) { record('error', 'Could not generate a unique SKU after several tries — please add a SKU column and re-run.'); continue; }
       }
 
       const skuKey = sku.toLowerCase();
-      if (existing.has(skuKey)) { record('skipped', 'SKU already exists', sku); continue; }
+      if (existing.has(skuKey)) {
+        record('skipped', `SKU "${sku}" is already used on another product — this row was skipped so nothing was overwritten. Rename the SKU (or delete it to auto-generate) to import as a separate product.`, sku);
+        continue;
+      }
 
       if (count >= limit) {
-        record('skipped', `Plan limit reached (${limit} products)`, sku);
+        record('skipped', `Your ${req.seller.plan || 'starter'} plan holds up to ${limit} products; this one was skipped after the cap was hit. Upgrade to import more.`, sku);
         continue;
       }
 
@@ -1864,7 +1876,7 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
         record('created', null, sku);
       } catch (err) {
         console.error(`Import row ${rowNum} failed:`, err);
-        record('error', 'Could not save — server error', sku);
+        record('error', 'Server rejected this row (' + (err.message || 'unknown error').slice(0, 120) + '). If this keeps happening, contact support.', sku);
       }
     }
 
