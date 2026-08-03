@@ -5558,6 +5558,25 @@ app.post('/api/shipping/label/email', requireAuth, async (req, res) => {
     if (!ship || ship.sellerId !== req.seller.sellerId) return res.status(404).json({ error: 'Shipment not found.' });
     if (!ship.labelImage && !ship.labelUrl) return res.status(400).json({ error: 'This shipment has no label file to send.' });
 
+    // Normalize the attachment to a 4x6 PDF regardless of source format.
+    // Raw carrier bytes vary — UPS returns a base64 GIF at nominal 4x6 but
+    // most viewers render it at odd sizes; FedEx/USPS return PDFs whose page
+    // dimensions depend on account settings and can land at letter size.
+    // Route everything through mergeLabels (one tracking number → one 4x6
+    // PDF page), so the recipient prints "actual size" and gets a 4x6 label
+    // on 8.5x11 paper — no scaling gymnastics.
+    let mergedPdf = null;
+    try {
+      const merged = await mergeLabels([{
+        labelImage: ship.labelImage,
+        labelUrl:   ship.labelUrl,
+        label:      ship.trackingNumber,
+      }]);
+      if (merged.merged > 0) mergedPdf = merged.pdf;
+    } catch (e) {
+      console.warn('mergeLabels failed for email attachment, falling back to raw bytes:', e.message);
+    }
+
     const seller = await db.getSellerById(req.seller.sellerId).catch(() => null);
     const result = await emailService.sendShippingLabelToRecipient({
       toEmail,
@@ -5566,9 +5585,12 @@ app.post('/api/shipping/label/email', requireAuth, async (req, res) => {
       carrier:        ship.carrier,
       service:        ship.serviceName || ship.serviceCode || '',
       note,
-      labelImage:     ship.labelImage,
-      labelUrl:       ship.labelUrl,
-      labelFormat:    ship.labelFormat || (ship.carrier === 'ups' ? 'GIF' : 'PDF'),
+      // Prefer the normalized 4x6 PDF; fall back to raw bytes only if merge
+      // failed for this specific label.
+      labelPdf:       mergedPdf,
+      labelImage:     mergedPdf ? null : ship.labelImage,
+      labelUrl:       mergedPdf ? null : ship.labelUrl,
+      labelFormat:    mergedPdf ? 'PDF' : (ship.labelFormat || (ship.carrier === 'ups' ? 'GIF' : 'PDF')),
       shipTo: {
         name:     ship.toName,
         address1: ship.toAddr,

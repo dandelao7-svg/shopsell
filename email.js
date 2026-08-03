@@ -502,12 +502,17 @@ async function sendBackInStockEmail({ toEmail, storeName, productName, productUr
 // ============================================================
 async function sendShippingLabelToRecipient({
   toEmail, fromStoreName, trackingNumber, carrier, service, note,
-  labelImage, labelUrl, labelFormat, shipTo,
+  labelImage, labelUrl, labelFormat, labelPdf, shipTo,
 }) {
   if (!client) return { skipped: true };
   if (!toEmail) return { skipped: true, reason: 'no recipient' };
 
-  const attachment = await buildLabelAttachment({ labelImage, labelUrl, labelFormat, trackingNumber });
+  // Prefer a pre-built 4x6 PDF (mergeLabels output) — it normalizes
+  // wildly different carrier formats into one predictable file so
+  // "print actual size" always yields a 4x6 label on 8.5x11 paper.
+  const attachment = labelPdf
+    ? { filename: `shipping-label-${trackingNumber || 'shopsell'}.pdf`, content: labelPdf }
+    : await buildLabelAttachment({ labelImage, labelUrl, labelFormat, trackingNumber });
   const carrierLabel = (carrier || '').toUpperCase();
 
   const shipToBlock = shipTo && (shipTo.name || shipTo.address1) ? `
