@@ -3169,6 +3169,47 @@ app.get('/api/seller/onboarding-status', requireAuth, async (req, res) => {
   }
 });
 
+/* GET /api/seller/recent-recipients — dedup'd list of ship-to addresses
+   from past orders, most recent first. Powers the Quick Ship "Recent
+   recipients" dropdown so a seller re-shipping to an existing customer
+   doesn't retype an address. Dedup key: name + address1 + city + zip. */
+app.get('/api/seller/recent-recipients', requireAuth, async (req, res) => {
+  try {
+    const orders = await db.getOrdersBySeller(req.seller.sellerId);
+    const seen = new Set();
+    const out = [];
+    for (const o of orders || []) {
+      const c = o.customerInfo || {};
+      if (!c.address1 || !c.city || !c.zip) continue;
+      const key = [(c.firstName||'') + ' ' + (c.lastName||''), c.address1, c.city, c.zip]
+        .join('|').toLowerCase().trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        label: `${(c.firstName||'').trim()} ${(c.lastName||'').trim()}`.trim()
+               + (c.address1 ? ' — ' + c.address1 : '')
+               + (c.city ? ', ' + c.city : ''),
+        firstName: c.firstName || '',
+        lastName:  c.lastName  || '',
+        company:   c.company   || '',
+        phone:     c.phone     || '',
+        email:     c.email     || o.customerEmail || '',
+        address1:  c.address1  || '',
+        address2:  c.address2  || '',
+        city:      c.city      || '',
+        state:     c.state     || '',
+        zip:       c.zip       || '',
+        country:   c.country   || 'US',
+      });
+      if (out.length >= 50) break;
+    }
+    res.json({ recipients: out });
+  } catch (err) {
+    console.error('Recent recipients error:', err);
+    res.status(500).json({ error: 'Failed to load recent recipients.' });
+  }
+});
+
 app.get('/api/seller/carriers', requireAuth, async (req, res) => {
   try {
     const rows = await db.getCarrierAccounts(req.seller.sellerId);

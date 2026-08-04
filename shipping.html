@@ -846,167 +846,251 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
         </div>
       </div>
       <div id="qsForm">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
-          <!-- FROM -->
-          <div id="fromCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
-            <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
-              From (Sender)
+        <!-- WORLDSHIP-STYLE TABBED LAYOUT
+             LEFT: Ship To / Ship From tabs
+             RIGHT: Service / Options / Detail / Reference tabs
+             All existing field IDs preserved — no JS wiring changed, just DOM. -->
+        <style>
+          .qs-tab-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+          .qs-tab-nav{display:flex;background:var(--bg2);border-bottom:1px solid var(--border)}
+          .qs-tab{flex:1;background:none;border:none;padding:12px 10px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s,background .15s}
+          .qs-tab:hover{color:var(--text2);background:var(--card)}
+          .qs-tab.active{color:var(--text);border-bottom-color:var(--accent);background:var(--card)}
+          .qs-tab-body{padding:1.1rem 1.25rem 1.25rem;flex:1}
+        </style>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;align-items:start">
+
+          <!-- ── LEFT PANEL: Ship To / Ship From ── -->
+          <div class="qs-tab-card">
+            <div class="qs-tab-nav">
+              <button type="button" class="qs-tab active" data-qsleft="shipto"   onclick="qsSwitchLeftTab('shipto')">Ship To</button>
+              <button type="button" class="qs-tab"        data-qsleft="shipfrom" onclick="qsSwitchLeftTab('shipfrom')">Ship From</button>
             </div>
-            <div class="form-field"><label>Full name / Company</label><input type="text" id="qs-from-name" placeholder="NextLao Store" value="NextLao Store"></div>
-            <div class="form-field"><label>Phone</label><input type="tel" id="qs-from-phone" placeholder="555-000-0000" value="5550000000"></div>
-            <div class="form-field"><label>Street address</label><input type="text" id="qs-from-addr" placeholder="123 Main Street" value="123 Main Street"></div>
-            <div class="two-col">
-              <div class="form-field"><label>City</label><input type="text" id="qs-from-city" placeholder="Los Angeles" value="Los Angeles"></div>
-              <div class="form-field"><label>State</label>
-                <select id="qs-from-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option><option>GA</option><option>AZ</option><option>CO</option>
+
+            <div class="qs-tab-body" id="qs-tab-shipto">
+              <!-- Recent recipients — WorldShip's biggest speed win, from past orders -->
+              <div class="form-field">
+                <label>Recent recipients <span style="font-weight:400;color:var(--muted);font-size:10px">— auto-fill from a past order</span></label>
+                <select id="qs-recent-recipient" onchange="qsFillFromRecent(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option value="">— pick to auto-fill —</option>
                 </select>
               </div>
+              <div class="form-field">
+                <label>Saved customers</label>
+                <div style="display:flex;gap:8px">
+                  <select id="qs-saved-customer" onchange="loadSavedCustomer(this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer"><option value="">— Select saved customer —</option></select>
+                  <button type="button" onclick="deleteSavedCustomer()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px" title="Delete selected">✕</button>
+                </div>
+              </div>
+              <div class="form-field"><label>Company name</label><input type="text" id="qs-to-company" placeholder="Acme Corporation" autocomplete="off"></div>
+              <div class="form-field"><label>Full name</label><input type="text" id="qs-to-name" placeholder="Jane Smith" autocomplete="off"></div>
+              <div class="form-field"><label>Phone (optional)</label><input type="tel" id="qs-to-phone" placeholder="555-000-0000" autocomplete="off"></div>
+              <div class="form-field"><label>Street address</label><input type="text" id="qs-to-addr" placeholder="456 Oak Avenue" autocomplete="off"></div>
+              <div class="form-field"><label>Apt / Suite / Unit (optional)</label><input type="text" id="qs-to-addr2" placeholder="Apt 4B, Suite 200, Unit 3" autocomplete="off"></div>
+              <div class="two-col">
+                <div class="form-field"><label>City</label><input type="text" id="qs-to-city" placeholder="Austin" autocomplete="off"></div>
+                <div class="form-field"><label>State</label>
+                  <select id="qs-to-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                    <option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>DC</option>
+                  </select>
+                  <input type="text" id="qs-to-state-free" placeholder="State / Province / Region" maxlength="60" autocomplete="off" style="display:none;background:var(--bg3);color:var(--text);border-color:var(--border)">
+                </div>
+              </div>
+              <div class="two-col">
+                <div class="form-field" style="margin-bottom:0">
+                  <label>ZIP / Postal</label>
+                  <input type="text" id="qs-to-zip" placeholder="78701" maxlength="12" oninput="onZipInput(this)" autocomplete="off">
+                  <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none"></div>
+                </div>
+                <div class="form-field" style="margin-bottom:0"><label>Country</label>
+                  <select id="qs-to-country" onchange="qsOnToCountryChange()" style="background:var(--bg3);color:var(--text);border-color:var(--border)"></select>
+                </div>
+              </div>
+              <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
+                <input type="checkbox" id="qs-residential" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0">
+                <div>
+                  <label for="qs-residential" style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer">Residential address</label>
+                  <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Check for homes, apartments, and condos. Leave unchecked for businesses and warehouses.</div>
+                </div>
+              </div>
             </div>
-            <div class="form-field" style="margin-bottom:0"><label>ZIP code</label><input type="text" id="qs-from-zip" placeholder="90001" maxlength="5" value="90001"></div>
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-              <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Ship from account</label>
-              <select id="qs-shipper-select" onchange="switchShipperFromDropdown(this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer"></select>
-              <div style="font-size:10px;color:var(--muted);margin-top:5px">Reverts to default after each shipment · <span style="color:var(--accent);cursor:pointer" onclick="showPage('settings')">Manage accounts →</span></div>
+
+            <div class="qs-tab-body" id="qs-tab-shipfrom" style="display:none">
+              <div class="form-field">
+                <label>Ship from account <span style="font-weight:400;color:var(--muted);font-size:10px">— rarely changes; default auto-selected</span></label>
+                <select id="qs-shipper-select" onchange="switchShipperFromDropdown(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)"></select>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">
+                  Reverts to default after each shipment ·
+                  <span style="color:var(--accent);cursor:pointer" onclick="showPage('settings')">Manage accounts →</span>
+                </div>
+              </div>
+              <!-- Sender address fields kept here (still populated by switchShipperFromDropdown).
+                   Editable in case a seller needs a one-off override before shipping. -->
+              <div class="form-field"><label>Name / Company</label><input type="text" id="qs-from-name" placeholder="NextLao Store" value="NextLao Store"></div>
+              <div class="form-field"><label>Phone</label><input type="tel" id="qs-from-phone" placeholder="555-000-0000" value="5550000000"></div>
+              <div class="form-field"><label>Street address</label><input type="text" id="qs-from-addr" placeholder="123 Main Street" value="123 Main Street"></div>
+              <div class="two-col">
+                <div class="form-field"><label>City</label><input type="text" id="qs-from-city" placeholder="Los Angeles" value="Los Angeles"></div>
+                <div class="form-field"><label>State</label>
+                  <select id="qs-from-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                    <option>CA</option><option>NY</option><option>TX</option><option>FL</option><option>WA</option><option>OR</option><option>IL</option><option>GA</option><option>AZ</option><option>CO</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-field" style="margin-bottom:0"><label>ZIP code</label><input type="text" id="qs-from-zip" placeholder="90001" maxlength="5" value="90001"></div>
             </div>
           </div>
-          <!-- TO -->
-          <div id="toCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;transition:border-color 0.3s,background 0.3s">
-            <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              To (Recipient)
-              <span style="margin-left:auto;font-size:10px;color:var(--muted);font-weight:400">Paste from email</span>
+
+          <!-- ── RIGHT PANEL: Service / Options / Detail / Reference ── -->
+          <div class="qs-tab-card">
+            <div class="qs-tab-nav">
+              <button type="button" class="qs-tab active" data-qsright="service"   onclick="qsSwitchRightTab('service')">Service</button>
+              <button type="button" class="qs-tab"        data-qsright="options"   onclick="qsSwitchRightTab('options')">Options</button>
+              <button type="button" class="qs-tab"        data-qsright="detail"    onclick="qsSwitchRightTab('detail')">Detail</button>
+              <button type="button" class="qs-tab"        data-qsright="reference" onclick="qsSwitchRightTab('reference')">Reference</button>
             </div>
-            <div class="form-field">
-              <label>Saved customers</label>
-              <div style="display:flex;gap:8px">
-                <select id="qs-saved-customer" onchange="loadSavedCustomer(this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);outline:none;cursor:pointer"><option value="">— Select saved customer —</option></select>
-                <button onclick="deleteSavedCustomer()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px" title="Delete selected">✕</button>
+
+            <div class="qs-tab-body" id="qs-tab-service">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+                <div class="form-field" style="margin-bottom:0"><label>Carrier</label>
+                  <select id="qs-carrier" onchange="updateServiceOptions()" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                    <option value="ups">UPS</option><option value="fedex">FedEx</option><option value="usps">USPS</option>
+                  </select>
+                </div>
+                <div class="form-field" style="margin-bottom:0"><label>Service</label>
+                  <select id="qs-service" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                    <option value="03">UPS Ground</option><option value="12">UPS 3 Day Select</option><option value="02">UPS 2nd Day Air</option><option value="01">UPS Next Day Air</option><option value="13">UPS Next Day Air Saver</option>
+                  </select>
+                </div>
               </div>
-            </div>
-            <div class="form-field"><label>Company name</label><input type="text" id="qs-to-company" placeholder="Acme Corporation" autocomplete="off"></div>
-            <div class="form-field"><label>Full name</label><input type="text" id="qs-to-name" placeholder="Jane Smith" autocomplete="off"></div>
-            <div class="form-field"><label>Phone (optional)</label><input type="tel" id="qs-to-phone" placeholder="555-000-0000" autocomplete="off"></div>
-            <div class="form-field"><label>Street address</label><input type="text" id="qs-to-addr" placeholder="456 Oak Avenue" autocomplete="off"></div>
-            <div class="form-field"><label>Apt / Suite / Unit (optional)</label><input type="text" id="qs-to-addr2" placeholder="Apt 4B, Suite 200, Unit 3" autocomplete="off"></div>
-            <div class="two-col">
-              <div class="form-field"><label>City</label><input type="text" id="qs-to-city" placeholder="Austin" autocomplete="off"></div>
-              <div class="form-field"><label>State</label>
-                <select id="qs-to-state" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>DC</option>
+              <div class="form-field" style="margin-bottom:14px">
+                <label>Box size</label>
+                <select id="qs-box" onchange="selectBox(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option value="custom">Custom dimensions</option>
+                  <option value="small">Small — 8×6×4 in</option>
+                  <option value="medium" selected>Medium — 12×9×6 in</option>
+                  <option value="large">Large — 18×14×10 in</option>
+                  <option value="xlarge">X-Large — 24×18×12 in</option>
+                  <option value="envelope">Flat envelope — 13×10×1 in</option>
+                  <option value="tube">Tube — 36×6×6 in</option>
                 </select>
-                <input type="text" id="qs-to-state-free" placeholder="State / Province / Region" maxlength="60" autocomplete="off" style="display:none;background:var(--bg3);color:var(--text);border-color:var(--border)">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+                <div class="form-field" style="margin-bottom:0"><label>Weight (lbs)</label><input type="number" id="qs-weight" placeholder="2.0" min="0.1" step="0.1" value="2"></div>
+                <div class="form-field" style="margin-bottom:0"><label>Length (in)</label><input type="number" id="qs-length" placeholder="12" value="12"></div>
+                <div class="form-field" style="margin-bottom:0"><label>Width (in)</label><input type="number" id="qs-width" placeholder="9" value="9"></div>
+                <div class="form-field" style="margin-bottom:0"><label>Height (in)</label><input type="number" id="qs-height" placeholder="4" value="4"></div>
+              </div>
+              <div class="form-field" style="margin-bottom:14px">
+                <label>Package description (optional)</label>
+                <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
+              </div>
+              <button type="button" id="qsRatesBtn" onclick="compareRates()" style="width:100%;justify-content:center;padding:11px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 7l10-5 10 5M4 7v6a8 8 0 0016 0V7"/><path d="M2 13h4M18 13h4"/></svg>
+                Compare live rates across your carriers
+              </button>
+              <div id="rateResults" style="display:none;margin-top:12px"></div>
+            </div>
+
+            <div class="qs-tab-body" id="qs-tab-options" style="display:none">
+              <div class="form-field">
+                <label>Signature confirmation</label>
+                <select id="qs-confirmation" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option value="none">None (carrier default)</option>
+                  <option value="delivery">Delivery confirmation</option>
+                  <option value="signature">Signature required</option>
+                  <option value="adult">Adult signature (21+)</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Insurance</label>
+                <select id="qs-insurance" onchange="qsToggleInsureAmt(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                  <option value="none">No insurance</option>
+                  <option value="carrier">Carrier default ($100)</option>
+                  <option value="declared">Declared value…</option>
+                </select>
+              </div>
+              <div id="qs-insure-amt-wrap" class="form-field" style="display:none">
+                <label>Declared value ($)</label>
+                <input type="number" id="qs-insure-amt" placeholder="0.00" min="0" step="0.01">
+              </div>
+
+              <!-- Customs section — only shown for international destinations.
+                   Moved from the Service tab so most (domestic) shipments never see it. -->
+              <div id="qs-customs-section" style="display:none;margin-top:1rem;padding:12px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:2px">🌍 Customs declaration</div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Required for international labels — list what's in the package (commercial invoice).</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                  <div class="form-field" style="margin-bottom:0"><label>Contents</label>
+                    <select id="qs-customs-contents" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                      <option value="merchandise">Merchandise</option><option value="gift">Gift</option><option value="sample">Sample</option><option value="documents">Documents</option><option value="returned_goods">Returned goods</option>
+                    </select>
+                  </div>
+                  <div class="form-field" style="margin-bottom:0"><label>Duties &amp; taxes paid by</label>
+                    <select id="qs-customs-incoterm" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                      <option value="DDU">Recipient on delivery (DDU)</option><option value="DDP">Me / sender (DDP)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-field" style="margin-bottom:10px">
+                  <label style="font-size:11px">AES ITN <span style="color:var(--muted);font-weight:400">— only for shipments $2,500+ (auto-exempt below that)</span></label>
+                  <input type="text" id="qs-customs-itn" placeholder="e.g. AES X20180101987654" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Items — description, qty, value ($), HS code, origin (ISO-2)</div>
+                <div id="qs-customs-items"></div>
+                <button type="button" onclick="qsAddCustomsItem()" style="background:var(--bg3);border:1px dashed var(--border2);color:var(--text2);padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-top:4px">+ Add item</button>
               </div>
             </div>
-            <div class="two-col">
+
+            <div class="qs-tab-body" id="qs-tab-detail" style="display:none">
+              <div id="qs-cost-breakdown" style="font-size:13px;color:var(--muted);line-height:1.6">
+                Click <strong style="color:var(--text)">Compare live rates</strong> on the Service tab to see a per-carrier cost breakdown here.
+              </div>
+            </div>
+
+            <div class="qs-tab-body" id="qs-tab-reference" style="display:none">
+              <div class="form-field">
+                <label>Reference # 1 <span style="font-weight:400;color:var(--muted);font-size:10px">— printed on the label</span></label>
+                <input type="text" id="qs-ref" placeholder="e.g. Order # or PO #">
+              </div>
+              <div class="form-field">
+                <label>Reference # 2 (optional)</label>
+                <input type="text" id="qs-ref2" placeholder="e.g. Cost center, SKU, batch">
+              </div>
               <div class="form-field" style="margin-bottom:0">
-                <label>ZIP / Postal</label>
-                <input type="text" id="qs-to-zip" placeholder="78701" maxlength="12" oninput="onZipInput(this)" autocomplete="off">
-                <div id="zipValidMsg" style="font-size:11px;margin-top:5px;display:none"></div>
-              </div>
-              <div class="form-field" style="margin-bottom:0"><label>Country</label>
-                <select id="qs-to-country" onchange="qsOnToCountryChange()" style="background:var(--bg3);color:var(--text);border-color:var(--border)"></select>
-              </div>
-            </div>
-            <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
-              <input type="checkbox" id="qs-residential" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin-top:2px;flex-shrink:0">
-              <div>
-                <label for="qs-residential" style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer">Residential address</label>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Check for homes, apartments, and condos. Leave unchecked for businesses and warehouses.</div>
+                <label>Notes (internal, not printed)</label>
+                <textarea id="qs-notes" rows="3" placeholder="Any notes for your own records" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-family:'Outfit',sans-serif;font-size:13px;resize:vertical"></textarea>
               </div>
             </div>
           </div>
         </div>
-        <!-- PACKAGE & SERVICE -->
-        <div id="carrierCard" style="background:var(--card);border-radius:var(--radius);border:2px solid rgba(255,181,0,0.4);padding:1.25rem;margin-top:1.25rem;transition:border-color 0.3s">
-          <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:1rem;color:var(--text);display:flex;align-items:center;justify-content:space-between">
-            Package details & carrier
-            <span style="font-size:11px;font-weight:400;color:var(--muted)">Select a box or enter custom dimensions</span>
-          </div>
-          <div class="form-field" style="margin-bottom:14px">
-            <label>Box size</label>
-            <select id="qs-box" onchange="selectBox(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-              <option value="custom">Custom dimensions</option>
-              <option value="small">Small — 8×6×4 in</option>
-              <option value="medium" selected>Medium — 12×9×6 in</option>
-              <option value="large">Large — 18×14×10 in</option>
-              <option value="xlarge">X-Large — 24×18×12 in</option>
-              <option value="envelope">Flat envelope — 13×10×1 in</option>
-              <option value="tube">Tube — 36×6×6 in</option>
-            </select>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px">
-            <div class="form-field" style="margin-bottom:0"><label>Weight (lbs)</label><input type="number" id="qs-weight" placeholder="2.0" min="0.1" step="0.1" value="2"></div>
-            <div class="form-field" style="margin-bottom:0"><label>Length (in)</label><input type="number" id="qs-length" placeholder="12" value="12"></div>
-            <div class="form-field" style="margin-bottom:0"><label>Width (in)</label><input type="number" id="qs-width" placeholder="9" value="9"></div>
-            <div class="form-field" style="margin-bottom:0"><label>Height (in)</label><input type="number" id="qs-height" placeholder="4" value="4"></div>
-            <div class="form-field" style="margin-bottom:0"><label>Reference #</label><input type="text" id="qs-ref" placeholder="Optional"></div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.25rem">
-            <div class="form-field" style="margin-bottom:0"><label>Carrier</label>
-              <select id="qs-carrier" onchange="updateServiceOptions()" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                <option value="ups">UPS</option><option value="fedex">FedEx</option><option value="usps">USPS</option>
-              </select>
-            </div>
-            <div class="form-field" style="margin-bottom:0"><label>Service</label>
-              <select id="qs-service" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                <option value="03">UPS Ground</option><option value="12">UPS 3 Day Select</option><option value="02">UPS 2nd Day Air</option><option value="01">UPS Next Day Air</option><option value="13">UPS Next Day Air Saver</option>
-              </select>
-            </div>
-          </div>
-          <!-- RATE SHOPPING -->
-          <div style="margin-bottom:1.25rem">
-            <button type="button" id="qsRatesBtn" onclick="compareRates()" style="width:100%;justify-content:center;padding:11px;font-size:13px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 7l10-5 10 5M4 7v6a8 8 0 0016 0V7"/><path d="M2 13h4M18 13h4"/></svg>
-              Compare live rates across your carriers
-            </button>
-            <div id="rateResults" style="display:none;margin-top:12px"></div>
-          </div>
-          <div class="form-field" style="margin-bottom:1.25rem">
-            <label>Package description (optional)</label>
-            <input type="text" id="qs-desc" placeholder="e.g. Clothing, Electronics, Documents">
-          </div>
-          <!-- CUSTOMS (shown only for international destinations) -->
-          <div id="qs-customs-section" style="display:none;margin-bottom:1.25rem;padding:12px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px">
-            <div style="font-weight:600;font-size:13px;margin-bottom:2px">🌍 Customs declaration</div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Required for international labels — list what's in the package (commercial invoice).</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-              <div class="form-field" style="margin-bottom:0"><label>Contents</label>
-                <select id="qs-customs-contents" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option value="merchandise">Merchandise</option><option value="gift">Gift</option><option value="sample">Sample</option><option value="documents">Documents</option><option value="returned_goods">Returned goods</option>
-                </select>
-              </div>
-              <div class="form-field" style="margin-bottom:0"><label>Duties &amp; taxes paid by</label>
-                <select id="qs-customs-incoterm" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option value="DDU">Recipient on delivery (DDU)</option><option value="DDP">Me / sender (DDP)</option>
-                </select>
+
+        <!-- Address-validation result banner — placed here so it can appear regardless of active tab. -->
+        <div id="addrValidResult" style="display:none;border-radius:9px;padding:12px 14px;margin-top:1rem;font-size:12px;background:var(--card);border:1px solid var(--border)">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+            <div style="display:flex;align-items:flex-start;gap:8px">
+              <div id="addrValidIcon" style="flex-shrink:0;margin-top:1px"></div>
+              <div>
+                <div id="addrValidMsg" style="font-weight:600;margin-bottom:3px"></div>
+                <div id="addrValidDetail" style="color:var(--muted);line-height:1.5"></div>
+                <div id="addrSuggestion" style="margin-top:6px;display:none"><span style="color:var(--ups-gold);cursor:pointer;font-weight:600" onclick="useSuggestedAddress()">✓ Use suggested address →</span></div>
               </div>
             </div>
-            <div class="form-field" style="margin-bottom:10px">
-              <label style="font-size:11px">AES ITN <span style="color:var(--muted);font-weight:400">— only for shipments $2,500+ (auto-exempt below that)</span></label>
-              <input type="text" id="qs-customs-itn" placeholder="e.g. AES X20180101987654" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-            </div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Items — description, qty, value ($), HS code, origin (ISO-2)</div>
-            <div id="qs-customs-items"></div>
-            <button type="button" onclick="qsAddCustomsItem()" style="background:var(--bg3);border:1px dashed var(--border2);color:var(--text2);padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-top:4px">+ Add item</button>
+            <button id="addrOverrideBtn" onclick="overrideAndShip()" style="display:none;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 12px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;white-space:nowrap">Ship anyway</button>
           </div>
-          <div id="addrValidResult" style="display:none;border-radius:9px;padding:12px 14px;margin-bottom:1rem;font-size:12px">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
-              <div style="display:flex;align-items:flex-start;gap:8px">
-                <div id="addrValidIcon" style="flex-shrink:0;margin-top:1px"></div>
-                <div>
-                  <div id="addrValidMsg" style="font-weight:600;margin-bottom:3px"></div>
-                  <div id="addrValidDetail" style="color:var(--muted);line-height:1.5"></div>
-                  <div id="addrSuggestion" style="margin-top:6px;display:none"><span style="color:var(--ups-gold);cursor:pointer;font-weight:600" onclick="useSuggestedAddress()">✓ Use suggested address →</span></div>
-                </div>
-              </div>
-              <button id="addrOverrideBtn" onclick="overrideAndShip()" style="display:none;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:5px 12px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;white-space:nowrap">Ship anyway</button>
-            </div>
+        </div>
+
+        <!-- Sticky bottom action bar — WorldShip's "Process Shipment F10" pattern.
+             Est. cost on the left, big Buy Label button on the right. -->
+        <div id="qsActionBar" style="position:sticky;bottom:0;background:var(--card);border:1px solid var(--border);border-top:2px solid var(--accent);border-radius:var(--radius);padding:12px 18px;margin-top:1rem;display:flex;align-items:center;justify-content:space-between;box-shadow:0 -6px 20px rgba(0,0,0,0.25);z-index:40">
+          <div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Estimated cost</div>
+            <div id="qs-est-cost" style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--text)">—</div>
           </div>
-          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="validateAndShip()" style="width:100%;justify-content:center;padding:13px;font-size:14px">
+          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="validateAndShip()" style="justify-content:center;padding:12px 24px;font-size:14px;font-weight:700">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Generate shipping label
+            Buy label
           </button>
         </div>
       </div>
@@ -4174,6 +4258,7 @@ function showPage(name){
   if(name === 'quickship'){
     loadPackagePresets();
     loadShipFromProfiles();
+    loadQsRecentRecipients();
   }
   if(name === 'automation'){
     loadAutomationRules();
@@ -5200,6 +5285,66 @@ function selectBox(val){
 
 function setDefaultBox(name){ toast('Use the Set default button next to each box','info'); }
 
+// ── QUICK SHIP TABS (WorldShip-style) ─────────────────────────
+function qsSwitchLeftTab(name){
+  document.querySelectorAll('.qs-tab[data-qsleft]').forEach(b => b.classList.toggle('active', b.dataset.qsleft === name));
+  document.getElementById('qs-tab-shipto').style.display   = name === 'shipto'   ? '' : 'none';
+  document.getElementById('qs-tab-shipfrom').style.display = name === 'shipfrom' ? '' : 'none';
+}
+function qsSwitchRightTab(name){
+  document.querySelectorAll('.qs-tab[data-qsright]').forEach(b => b.classList.toggle('active', b.dataset.qsright === name));
+  ['service','options','detail','reference'].forEach(t => {
+    const el = document.getElementById('qs-tab-' + t);
+    if (el) el.style.display = t === name ? '' : 'none';
+  });
+}
+
+// Insurance amount: show the declared-value input only when the seller
+// picks "Declared value…" from the dropdown.
+function qsToggleInsureAmt(val){
+  const wrap = document.getElementById('qs-insure-amt-wrap');
+  if (wrap) wrap.style.display = val === 'declared' ? '' : 'none';
+}
+
+// ── QUICK SHIP: Recent recipients dropdown ────────────────────
+// Populates the picker at the top of the Ship To tab from past orders.
+// Loaded once per Quick Ship page entry (see showPage('quickship')).
+let _qsRecentCache = null;
+async function loadQsRecentRecipients(){
+  const sel = document.getElementById('qs-recent-recipient');
+  if (!sel) return;
+  try {
+    const token = localStorage.getItem('ss_token');
+    const res = await fetch('/api/seller/recent-recipients', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) return;
+    const data = await res.json();
+    _qsRecentCache = data.recipients || [];
+    sel.innerHTML = '<option value="">— pick to auto-fill —</option>' + _qsRecentCache.map((r,i) =>
+      `<option value="${i}">${escapeAttr(r.label)}</option>`
+    ).join('');
+  } catch (e) { /* silent — dropdown just stays empty */ }
+}
+
+function qsFillFromRecent(idx){
+  if (!_qsRecentCache || idx === '') return;
+  const r = _qsRecentCache[parseInt(idx, 10)];
+  if (!r) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  set('qs-to-company', r.company);
+  set('qs-to-name',    (`${r.firstName||''} ${r.lastName||''}`).trim());
+  set('qs-to-phone',   r.phone);
+  set('qs-to-addr',    r.address1);
+  set('qs-to-addr2',   r.address2);
+  set('qs-to-city',    r.city);
+  set('qs-to-zip',     r.zip);
+  const country = String(r.country || 'US').toUpperCase();
+  set('qs-to-country', country);
+  if (typeof qsOnToCountryChange === 'function') qsOnToCountryChange();
+  set('qs-to-state',      r.state);
+  set('qs-to-state-free', r.state);
+  toast(`Filled from a past order to ${r.firstName || r.company || 'recipient'}`, 'success');
+}
+
 function saveDefaultDimensions(){
   const l = document.getElementById('defaultLength').value;
   const w = document.getElementById('defaultWidth').value;
@@ -5575,6 +5720,18 @@ function renderRates({ rates = [], errors = [] }){
   const cheapest = rates[0].totalCharge;
   const fastest  = rates.filter(r=>r.estimatedDays!=null).sort((a,b)=>a.estimatedDays-b.estimatedDays)[0];
 
+  // Populate the sticky action bar's est. cost + the Detail tab's cost
+  // breakdown, so the seller sees the numbers no matter which tab they're on.
+  const est = document.getElementById('qs-est-cost');
+  if (est) est.innerHTML = '$' + cheapest.toFixed(2)
+    + '<div style="font-size:10px;color:var(--muted);font-family:\'Outfit\',sans-serif;font-weight:400;margin-top:2px">cheapest of ' + rates.length + '</div>';
+  const detail = document.getElementById('qs-cost-breakdown');
+  if (detail) detail.innerHTML = '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Rates from ' + rates.length + ' service' + (rates.length===1?'':'s') + '</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<thead><tr><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px">Carrier</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px">Service</th><th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px">Cost</th></tr></thead><tbody>'
+    + rates.map(r => `<tr><td style="padding:6px 8px;font-weight:600">${(r.carrier||'').toUpperCase()}</td><td style="padding:6px 8px;color:var(--text2)">${r.serviceName}</td><td style="padding:6px 8px;text-align:right;font-family:'DM Mono',monospace">$${r.totalCharge.toFixed(2)}</td></tr>`).join('')
+    + '</tbody></table>';
+
   const cards = rates.map((r,i) => {
     const brand = CARRIER_BRAND[r.carrier] || { name:r.carrier.toUpperCase(), color:'var(--muted)' };
     const isCheapest = r.totalCharge === cheapest;
@@ -5717,6 +5874,19 @@ async function generateQuickShipLabel(){
       height:      parseFloat(document.getElementById('qs-height').value)||4,
       description: document.getElementById('qs-desc').value||'Shipment',
     },
+    // Options tab — signature confirmation + insurance. Only send when
+    // set, so the server sees them as truly opt-in per carrier.
+    ...(function(){
+      const sig = document.getElementById('qs-confirmation')?.value || 'none';
+      const insSel = document.getElementById('qs-insurance')?.value || 'none';
+      const insAmt = insSel === 'declared'
+        ? (parseFloat(document.getElementById('qs-insure-amt')?.value) || 0)
+        : (insSel === 'carrier' ? 100 : 0);
+      const opts = {};
+      if (sig && sig !== 'none') opts.signature = sig;
+      if (insAmt > 0)            opts.insuranceAmount = insAmt;
+      return opts;
+    })(),
     ...(qsIsIntl() ? { customs: qsBuildCustoms() } : {}),
   };
 
