@@ -3934,7 +3934,7 @@ function initVariantEditor(ctx, product){
       for(const v of product.variants){
         if(v && v.options){
           const vals = productOptions.map(o=>v.options[o.name]);
-          if(vals.every(x=>x!=null)) variantData[comboKey(vals)] = { price:v.price, sku:v.sku, quantity:v.quantity };
+          if(vals.every(x=>x!=null)) variantData[comboKey(vals)] = { price:v.price, sku:v.sku, quantity:v.quantity, image:v.image||'' };
         }
       }
     }
@@ -3986,17 +3986,45 @@ function renderVariantsTable(){
   const th='padding:8px;border-bottom:1px solid var(--border)';
   const head = `<thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">
     ${opts.map(o=>`<th style="${th}">${vEsc(o.name)}</th>`).join('')}
+    <th style="${th}">Photo</th>
     <th style="${th}">Price $</th><th style="${th}">SKU</th><th style="${th}">Qty</th></tr></thead>`;
   const body = currentCombos.map((c,i)=>{
     const d = variantData[c.key] || {};
+    const thumb = d.image
+      ? `<img src="${vEsc(d.image)}" alt="" style="width:36px;height:36px;object-fit:cover;border-radius:6px;display:block;cursor:pointer" title="Click to remove" onclick="clearVariantImage(${i})">`
+      : `<button type="button" onclick="pickVariantImage(${i})" style="width:36px;height:36px;border:1px dashed var(--border2);background:var(--bg2);color:var(--muted);border-radius:6px;font-size:16px;cursor:pointer;padding:0" title="Add a photo for this variant">+</button>`;
     return `<tr>
       ${c.vals.map(v=>`<td style="padding:6px 8px;font-weight:600">${vEsc(v)}</td>`).join('')}
+      <td style="padding:6px 8px">${thumb}</td>
       <td style="padding:6px 8px"><input type="number" min="0" step="0.01" style="width:88px" value="${d.price==null?'':d.price}" oninput="setVariantField(${i},'price',this.value)"></td>
       <td style="padding:6px 8px"><input type="text" style="width:120px" value="${vEsc(d.sku||'')}" oninput="setVariantField(${i},'sku',this.value)"></td>
       <td style="padding:6px 8px"><input type="number" min="0" step="1" style="width:64px" value="${d.quantity==null?'':d.quantity}" oninput="setVariantField(${i},'quantity',this.value)"></td>
     </tr>`;
   }).join('');
   table.innerHTML = head + '<tbody>'+body+'</tbody>';
+}
+
+// Upload a photo for one variant. Uses the same /api/seller/images endpoint as
+// product photos — we store only the returned /img/<id> path in variantData.
+async function pickVariantImage(i){
+  const c = currentCombos[i]; if(!c) return;
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = async e => {
+    const file = e.target.files && e.target.files[0]; if(!file) return;
+    try{
+      const url = await uploadImage(await compressImage(file, 1600, 0.85));
+      (variantData[c.key] = variantData[c.key] || {}).image = url;
+      renderVariantsTable();
+    }catch(err){ toast(err.message || 'Upload failed'); }
+  };
+  input.click();
+}
+function clearVariantImage(i){
+  const c = currentCombos[i]; if(!c) return;
+  if(!variantData[c.key]) return;
+  variantData[c.key].image = '';
+  renderVariantsTable();
 }
 function setVariantField(i, field, val){
   const c = currentCombos[i]; if(!c) return;
@@ -4011,7 +4039,7 @@ function collectOptionsAndVariants(){
     const d = variantData[comboKey(vals)] || {};
     const optionsMap = {};
     opts.forEach((o,idx)=>optionsMap[o.name]=vals[idx]);
-    return { options: optionsMap, price: parseFloat(d.price)||0, sku:(d.sku||'').toString().trim(), quantity: parseInt(d.quantity)||0 };
+    return { options: optionsMap, price: parseFloat(d.price)||0, sku:(d.sku||'').toString().trim(), quantity: parseInt(d.quantity)||0, image: (d.image||'').toString().trim() };
   });
   return { options: opts, variants };
 }
@@ -4119,6 +4147,12 @@ const IMPORT_FIELDS = [
   { key:'weight',         label:'Weight',           required:false, aliases:['wt','shippingweight','itemweight'] },
   { key:'imageUrls',      label:'Image URLs',       required:false, aliases:['image','images','imageurl','imageurls','photo','photos','imagesrc','imagelink','picture'] },
   { key:'status',         label:'Status',           required:false, aliases:['state','published','visibility'] },
+  // Up to 3 option columns for variant products (Size, Color, Style, etc.).
+  // If you map any of these, rows that share the same Name are grouped into one
+  // product with N variants — the column header becomes the option name.
+  { key:'option1',        label:'Option 1 column',  required:false, aliases:['size','sizes','option1','option1value'] },
+  { key:'option2',        label:'Option 2 column',  required:false, aliases:['color','colour','option2','option2value'] },
+  { key:'option3',        label:'Option 3 column',  required:false, aliases:['style','material','option3','option3value'] },
 ];
 const IMPORT_CATEGORIES = ['clothing','accessories','home','beauty','art','digital','other'];
 let importRows = [];             // final row objects, built from the current mapping
@@ -4301,7 +4335,20 @@ function applyMapping(){
     const obj = {};
     IMPORT_FIELDS.forEach(f => {
       const idx = mapping[f.key];
-      if (idx != null && idx >= 0) obj[f.key] = cells[idx] != null ? String(cells[idx]).trim() : '';
+      if (idx != null && idx >= 0) {
+        const val = cells[idx] != null ? String(cells[idx]).trim() : '';
+        // Option columns split into Name (the header text) + Value (the cell) —
+        // that's what the server-side variant grouper expects.
+        if (f.key === 'option1' || f.key === 'option2' || f.key === 'option3') {
+          const header = String(IMPORT_RAW_HEADERS[idx] || '').trim();
+          if (header && val) {
+            obj[f.key + 'Name']  = header;
+            obj[f.key + 'Value'] = val;
+          }
+        } else {
+          obj[f.key] = val;
+        }
+      }
     });
     if (!obj.category && defCat) obj.category = defCat;   // fill blank/unmapped category
     return obj;
@@ -4326,12 +4373,42 @@ function applyMapping(){
 
 function renderImportPreview(){
   const cols = ['name','category','price','sku','quantity'];
-  const head = '<tr>' + cols.map(c => `<th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card,#fff)">${c}</th>`).join('') + '</tr>';
-  const body = importRows.slice(0, 50).map(r => '<tr>' + cols.map(c =>
-    `<td style="padding:6px 10px;border-bottom:1px solid var(--border)">${escImport(r[c] || '')}</td>`).join('') + '</tr>').join('');
+  // Show any option columns that were actually mapped, so the seller can eyeball
+  // that Size + Color came through before they hit Import.
+  const optNames = [];
+  for (const r of importRows) {
+    for (const k of ['option1Name','option2Name','option3Name']) {
+      if (r[k] && !optNames.includes(r[k])) optNames.push(r[k]);
+    }
+  }
+  const allCols = cols.concat(optNames);
+  const head = '<tr>' + allCols.map(c => `<th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card,#fff)">${c}</th>`).join('') + '</tr>';
+  const cellFor = (r, c) => {
+    if (cols.includes(c)) return r[c] || '';
+    // Column header IS the option name — pull the value from whichever option slot holds it.
+    for (const slot of ['option1','option2','option3']) {
+      if (r[slot + 'Name'] === c) return r[slot + 'Value'] || '';
+    }
+    return '';
+  };
+  const body = importRows.slice(0, 50).map(r => '<tr>' + allCols.map(c =>
+    `<td style="padding:6px 10px;border-bottom:1px solid var(--border)">${escImport(cellFor(r, c))}</td>`).join('') + '</tr>').join('');
   document.getElementById('importPreviewTable').innerHTML = head + body;
   const extra = importRows.length > 50 ? ` (showing first 50)` : '';
-  document.getElementById('importPreviewLabel').textContent = `${importRows.length} product${importRows.length===1?'':'s'} ready to import${extra}`;
+
+  // Count how many finished products this will become — rows-with-options
+  // sharing a name collapse into one product.
+  let variantGroups = new Set(), flatCount = 0;
+  for (const r of importRows) {
+    const hasOpt = ['option1Name','option2Name','option3Name'].some(k => r[k]);
+    if (hasOpt && r.name) variantGroups.add(String(r.name).trim().toLowerCase());
+    else flatCount++;
+  }
+  const products = variantGroups.size + flatCount;
+  const varNote = variantGroups.size
+    ? ` (${variantGroups.size} of them variant product${variantGroups.size===1?'':'s'} built from ${importRows.length - flatCount} rows)`
+    : '';
+  document.getElementById('importPreviewLabel').textContent = `${products} product${products===1?'':'s'} ready to import${varNote}${extra}`;
   document.getElementById('importPreview').style.display = 'block';
 }
 

@@ -1718,6 +1718,15 @@ function updateModalVariant(p){
     priceEl.textContent = fmt(p.price);
     setModalAddState(false, 'Unavailable');
   }
+  // Swap the main image if this variant has its own photo. Falls back to the
+  // product's default image (index 0) when the variant has none, so cycling
+  // Black -> White -> back-to-null-color reverts cleanly.
+  const main = document.getElementById('modalMainImg');
+  if (main) {
+    const fallback = (p.images && p.images[0]) || '';
+    const src = (v && v.image) ? v.image : fallback;
+    if (src && main.src !== src) main.src = src;
+  }
 }
 
 function setModalAddState(enabled, label){

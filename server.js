@@ -1596,6 +1596,11 @@ function normalizeVariants(rawOptions, rawVariants) {
       let id = slugifyOpt(options.map(o => optMap[o.name]).join('-')) || ('v' + variants.length);
       while (seen.has(id)) id += '-x';
       seen.add(id);
+      // image: hosted /img/<id> path only. data: URIs are rejected — same rule
+      // as product image_urls (see inlineImageError). A missing / bad path just
+      // falls back to the product photo on the storefront.
+      const rawImg = String(v.image || '').trim();
+      const image  = (rawImg && !/^data:/i.test(rawImg)) ? rawImg : '';
       variants.push({
         id,
         options:  optMap,
@@ -1603,6 +1608,7 @@ function normalizeVariants(rawOptions, rawVariants) {
         price:    Math.max(0, Number(v.price) || 0),
         sku:      String(v.sku || '').trim(),
         quantity: Math.max(0, parseInt(v.quantity, 10) || 0),
+        image,
       });
     }
   }
@@ -1755,12 +1761,30 @@ app.post('/api/seller/products', requireAuth, async (req, res) => {
   }
 });
 
-// Bulk product import (CSV v1 — flat products, no variants). Takes an array of
-// rows already parsed client-side into objects, validates each one, and creates
-// the valid ones. Returns a per-row result so the seller sees exactly what
-// happened. Honors the same rules as single-create: required name/category/sku
-// (+price), SKU uniqueness per seller, and the plan product limit.
+// Bulk product import. Takes an array of rows already parsed client-side into
+// objects, validates each one, and creates the valid ones. Returns a per-row
+// result so the seller sees exactly what happened. Honors the same rules as
+// single-create: required name/category/sku (+price), SKU uniqueness per seller,
+// and the plan product limit.
+//
+// Variants (added later): if a row carries option1Name/Value (or 2/3), rows
+// with the same product name are grouped into one product with that many
+// variants. Product-level fields come from the first row in the group.
 const IMPORT_MAX_ROWS = 2000;
+
+function rowHasOptions(raw) {
+  return ['option1', 'option2', 'option3'].some(n =>
+    String(raw[n + 'Name'] || '').trim() && String(raw[n + 'Value'] || '').trim());
+}
+function rowOptionPairs(raw) {
+  const out = [];
+  for (const n of ['option1', 'option2', 'option3']) {
+    const name = String(raw[n + 'Name'] || '').trim();
+    const val  = String(raw[n + 'Value'] || '').trim();
+    if (name && val) out.push({ name, val });
+  }
+  return out;
+}
 
 app.post('/api/seller/products/import', requireAuth, async (req, res) => {
   try {
@@ -1782,7 +1806,144 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
     const results = [];
     let created = 0, skipped = 0, errored = 0;
 
+    // Currency-tolerant parse — shared between the flat and variant paths.
+    // Spreadsheet exports commonly hand us "$40", "$1,299.00", "€ 12,50", etc.
+    // parseFloat by itself returns NaN on any of these.
+    const parseMoney = v => {
+      if (v == null) return NaN;
+      const s = String(v).replace(/[^\d.\-]/g, '');   // digits, dot, minus
+      return parseFloat(s);
+    };
+
+    // ── Pass 1: group rows-with-options by product name, and create one
+    // variant product per group. Rows consumed here are skipped by pass 2. ──
+    const consumed = new Set();
+    const groups   = new Map();       // lowercased-name -> [{raw, rowNum}]
     for (let i = 0; i < rows.length; i++) {
+      const raw = rows[i] || {};
+      if (!rowHasOptions(raw)) continue;
+      const nameKey = String(raw.name || '').trim().toLowerCase();
+      if (!nameKey) continue;         // no name → let pass 2 error it out
+      if (!groups.has(nameKey)) groups.set(nameKey, []);
+      groups.get(nameKey).push({ raw, rowNum: i + 1 });
+      consumed.add(i);
+    }
+
+    for (const [, groupRows] of groups) {
+      const first   = groupRows[0].raw;
+      const rowNums = groupRows.map(r => r.rowNum);
+      const rowLabel = rowNums.length === 1 ? `row ${rowNums[0]}` : `rows ${rowNums.join(', ')}`;
+      const recordGroup = (status, reason, sku) => {
+        // One combined result covers the whole group so the seller sees it as
+        // one product decision, not N confusing per-row messages.
+        results.push({
+          row:    rowNums[0],
+          rows:   rowNums,
+          name:   String(first.name || '').trim(),
+          sku:    sku || (first.sku || '').toString().trim(),
+          status,
+          reason,
+        });
+        if (status === 'created') created++; else if (status === 'skipped') skipped++; else errored++;
+      };
+
+      const name     = String(first.name || '').trim();
+      const category = String(first.category || '').trim();
+      let   sku      = String(first.sku || '').trim();
+      if (!category) { recordGroup('error', `Category is blank for "${name}" (${rowLabel}). Pick a Default category or set one in the spreadsheet.`); continue; }
+
+      // Assemble options: collect distinct values in the order they first appear
+      // so "S,M,L" stays "S,M,L" and doesn't sort itself into "L,M,S".
+      const optionMap = new Map();     // name -> [values]
+      for (const { raw } of groupRows) {
+        for (const { name: n, val } of rowOptionPairs(raw)) {
+          if (!optionMap.has(n)) optionMap.set(n, []);
+          const vals = optionMap.get(n);
+          if (!vals.includes(val)) vals.push(val);
+        }
+      }
+      const options = [...optionMap.entries()].map(([n, vals]) => ({ name: n, values: vals }));
+
+      // Auto-mint a product SKU if the group has none — reuse the same
+      // CAT-NAME-#### shape the manual form uses.
+      if (!sku) {
+        const catPart  = (category || 'PRD').replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'PRD';
+        const namePart = (name     || 'ITEM').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'ITEM';
+        for (let tries = 0; tries < 8; tries++) {
+          const candidate = `${catPart}-${namePart}-${Math.floor(1000 + Math.random() * 9000)}`;
+          if (!existing.has(candidate.toLowerCase())) { sku = candidate; break; }
+        }
+        if (!sku) { recordGroup('error', 'Could not generate a unique product SKU after several tries.'); continue; }
+      }
+      if (existing.has(sku.toLowerCase())) {
+        recordGroup('skipped', `SKU "${sku}" is already used on another product — this group was skipped so nothing was overwritten.`, sku);
+        continue;
+      }
+      if (count >= limit) {
+        recordGroup('skipped', `Your ${req.seller.plan || 'starter'} plan holds up to ${limit} products; this variant group was skipped after the cap was hit.`, sku);
+        continue;
+      }
+
+      // Build one variant per row. If a row has a blank variant SKU we mint
+      // one from the parent SKU + option values (e.g. TEE-M-Black) so the
+      // seller doesn't have to fill 24 SKUs by hand.
+      const variants = groupRows.map(({ raw }) => {
+        const rowOpts = rowOptionPairs(raw);
+        const optionsMap = {};
+        rowOpts.forEach(o => { optionsMap[o.name] = o.val; });
+        let vSku = String(raw.sku || '').trim();
+        if (!vSku || vSku.toLowerCase() === sku.toLowerCase()) {
+          const suffix = rowOpts.map(o => o.val.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)).join('-');
+          vSku = suffix ? `${sku}-${suffix}` : sku;
+        }
+        const price = parseMoney(raw.price);
+        return {
+          options: optionsMap,
+          price:   Number.isFinite(price) && price > 0 ? price : parseMoney(first.price) || 0,
+          sku:     vSku,
+          quantity: Math.max(0, parseInt(raw.quantity, 10) || 0),
+        };
+      });
+
+      const num = (v) => { const n = parseMoney(v); return Number.isFinite(n) ? n : null; };
+      const imageUrls = String(first.imageUrls || first.images || '')
+        .split(/[\s|,]+/).map(s => s.trim())
+        .filter(u => /^https?:\/\//i.test(u))
+        .slice(0, 8);
+
+      try {
+        await db.createProduct({
+          sellerId:       req.seller.sellerId,
+          name,
+          description:    String(first.description || '').trim(),
+          category,
+          brand:          String(first.brand || '').trim() || null,
+          price:          Math.min(...variants.map(v => v.price)),   // storefront shows lowest
+          compareAtPrice: num(first.compareAtPrice),
+          costPerItem:    num(first.costPerItem),
+          sku,
+          quantity:       variants.reduce((s, v) => s + v.quantity, 0),
+          weight:         num(first.weight),
+          length:         num(first.length),
+          width:          num(first.width),
+          height:         num(first.height),
+          options,
+          variants,
+          status:         String(first.status || '').trim().toLowerCase() === 'draft' ? 'draft' : 'active',
+          imageUrls,
+        });
+        existing.add(sku.toLowerCase());
+        count++;
+        recordGroup('created', `Created "${name}" with ${variants.length} variant${variants.length === 1 ? '' : 's'} from ${rowLabel}.`, sku);
+      } catch (err) {
+        console.error(`Import variant group "${name}" failed:`, err);
+        recordGroup('error', 'Server rejected this variant group (' + (err.message || 'unknown error').slice(0, 120) + ').', sku);
+      }
+    }
+
+    // ── Pass 2: existing per-row loop for simple (non-variant) rows ──
+    for (let i = 0; i < rows.length; i++) {
+      if (consumed.has(i)) continue;
       const raw = rows[i] || {};
       const rowNum = i + 1;
       const record = (status, reason, sku) => {
@@ -1794,15 +1955,6 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
           reason,
         });
         if (status === 'created') created++; else if (status === 'skipped') skipped++; else errored++;
-      };
-
-      // Strip currency symbols, thousands commas, and stray whitespace before
-      // parsing — spreadsheet exports commonly hand us "$40", "$1,299.00",
-      // "€ 12,50", etc. parseFloat by itself returns NaN on any of these.
-      const parseMoney = v => {
-        if (v == null) return NaN;
-        const s = String(v).replace(/[^\d.\-]/g, '');   // digits, dot, minus
-        return parseFloat(s);
       };
       const name     = String(raw.name || '').trim();
       const category = String(raw.category || '').trim();
