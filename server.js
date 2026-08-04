@@ -1682,6 +1682,60 @@ function inlineImageError(imageUrls) {
        + 'This page is out of date — press Ctrl+Shift+R to reload it, then add the photos again.';
 }
 
+/* Fetch an external image URL and rehost it under /img/<id>. Used by the CSV
+   import path so a seller migrating from Shopify/Etsy doesn't leave their photos
+   pointed at someone else's CDN — those URLs rot when the source shop closes,
+   when the CDN rotates a signed path, or when the export gets stale.
+
+   Returns the new /img/ path on success, or null on any failure — the caller
+   drops that URL and moves on. Deliberately conservative:
+    - http/https only (no file:, no data:, no ftp:)
+    - 15s timeout so a stuck host can't wedge the whole import
+    - content-length AND actual buffer size checked against MAX_UPLOAD_BYTES
+    - mime must be in IMAGE_MIMES (blocks SVG, since those can carry script). */
+const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+
+async function rehostExternalImage(url, sellerId) {
+  try {
+    if (typeof url !== 'string') return null;
+    const trimmed = url.trim();
+    if (!/^https?:\/\//i.test(trimmed)) return null;
+
+    const res = await fetch(trimmed, {
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+      redirect: 'follow',
+      headers: { 'User-Agent': 'ShopSell-Import/1.0' },
+    });
+    if (!res.ok) return null;
+
+    const clen = res.headers.get('content-length');
+    if (clen && parseInt(clen, 10) > MAX_UPLOAD_BYTES) return null;
+
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > MAX_UPLOAD_BYTES) return null;
+
+    const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!db.IMAGE_MIMES.includes(mime)) return null;
+
+    const img = await db.createImage({ sellerId, mime, buffer: buf });
+    return img.path;
+  } catch {
+    return null;
+  }
+}
+
+// Bulk rehost — takes an array of URLs, returns an array of new /img/ paths
+// (skipping any that failed). Serial: image imports aren't hot enough to bother
+// parallelizing, and serial keeps memory + outbound-connection use bounded.
+async function rehostImageList(urls, sellerId) {
+  const out = [];
+  for (const u of urls) {
+    const path = await rehostExternalImage(u, sellerId);
+    if (path) out.push(path);
+  }
+  return out;
+}
+
 app.post('/api/seller/products', requireAuth, async (req, res) => {
   try {
     const {
@@ -1906,10 +1960,23 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
       });
 
       const num = (v) => { const n = parseMoney(v); return Number.isFinite(n) ? n : null; };
-      const imageUrls = String(first.imageUrls || first.images || '')
+      // Accept http/https (external URLs, rehosted below) AND /img/<id> (paths
+      // the dashboard already uploaded via Step 4's photo dropper). data: URIs
+      // are still refused — they'd get rejected downstream by inlineImageError.
+      const rawImageUrls = String(first.imageUrls || first.images || '')
         .split(/[\s|,]+/).map(s => s.trim())
-        .filter(u => /^https?:\/\//i.test(u))
+        .filter(u => /^https?:\/\//i.test(u) || /^\/img\//i.test(u))
         .slice(0, 8);
+      // Fetch each external URL and rehost it under /img/ so the photos survive
+      // the source shop going away. Any that fail (404, timeout, wrong mime)
+      // are silently dropped — better a product with fewer photos than one that
+      // renders broken images. Our own /img/ paths are passed through as-is.
+      const imageUrls = [];
+      for (const u of rawImageUrls){
+        if (/^\/img\//i.test(u)) { imageUrls.push(u); continue; }
+        const rehosted = await rehostExternalImage(u, req.seller.sellerId);
+        if (rehosted) imageUrls.push(rehosted);
+      }
 
       try {
         await db.createProduct({
@@ -1997,10 +2064,19 @@ app.post('/api/seller/products/import', requireAuth, async (req, res) => {
       // Optional numeric fields — blank/invalid become null (or 0 for quantity).
       // Same currency-tolerant parse as price above.
       const num = (v) => { const n = parseMoney(v); return Number.isFinite(n) ? n : null; };
-      const imageUrls = String(raw.imageUrls || raw.images || '')
+      // See rehostExternalImage — external URLs get pulled to /img/ so they
+      // don't rot when the source shop closes / the CDN rotates the path.
+      // Our own /img/ paths (added by Step 4's photo dropper) pass through as-is.
+      const rawImageUrls = String(raw.imageUrls || raw.images || '')
         .split(/[\s|,]+/).map(s => s.trim())
-        .filter(u => /^https?:\/\//i.test(u))
+        .filter(u => /^https?:\/\//i.test(u) || /^\/img\//i.test(u))
         .slice(0, 8);
+      const imageUrls = [];
+      for (const u of rawImageUrls){
+        if (/^\/img\//i.test(u)) { imageUrls.push(u); continue; }
+        const rehosted = await rehostExternalImage(u, req.seller.sellerId);
+        if (rehosted) imageUrls.push(rehosted);
+      }
 
       try {
         await db.createProduct({

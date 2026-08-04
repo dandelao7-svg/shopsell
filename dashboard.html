@@ -1861,7 +1861,7 @@ tr:hover td{background:#fafaf7}
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Optional — any CSV works, since you'll match columns in Step 3. Template columns: <code>name, description, category, price, sku, quantity, compareAtPrice, brand, weight, imageUrls, status</code>. Only <b>name, category, price</b> are required — SKU is auto-generated when blank.</div>
       <div class="alert info" style="font-size:12px;margin-bottom:8px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-        <div><b>Photos are added as web links, not files.</b> In the <code>imageUrls</code> column paste a public image address (e.g. <code>https://…/photo.jpg</code>) — handy if your products are already on Shopify, eBay, Etsy or a website (right-click a photo → “Copy image address”). Put several in one cell separated by a space or <code>|</code>. Leave it blank to add photos later. To upload photo <i>files</i> from your computer, use the normal <b>Add product</b> screen instead.</div>
+        <div><b>Photos — two ways to include them.</b> Paste public web addresses in an <code>imageUrls</code> column (Shopify / Etsy / eBay exports already have these — we'll download and rehost them), or skip that column and drop the actual photo files after uploading — we'll match them to the right product by SKU in the filename (e.g. <code>TEE-001.jpg</code> → the row with SKU <code>TEE-001</code>).</div>
       </div>
       <button class="btn secondary sm" onclick="downloadCsvTemplate()">Download CSV template</button>
     </div>
@@ -1884,6 +1884,26 @@ tr:hover td{background:#fafaf7}
       <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px">
         <table style="width:100%;border-collapse:collapse;font-size:12px" id="importPreviewTable"></table>
       </div>
+    </div>
+
+    <div id="importPhotos" style="display:none;margin-top:14px">
+      <label style="font-weight:600;font-size:13px">Step 4 — Add photos <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 8px">Drop image files here — we match each one to a product by looking for its SKU in the filename. e.g. <code>TEE-001.jpg</code> attaches to the row with SKU <code>TEE-001</code>. Multiple photos per SKU (<code>TEE-001-back.jpg</code>, <code>TEE-001-2.jpg</code>) become photos 2, 3, … in filename order.</div>
+      <div id="importDrop"
+           ondragover="importDragOver(event)" ondragleave="importDragLeave(event)" ondrop="importDrop(event)"
+           style="border:2px dashed var(--border2);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;background:var(--bg2);transition:background .15s,border-color .15s"
+           onclick="document.getElementById('importPhotoInput').click()">
+        <div style="font-size:26px;margin-bottom:4px">📷</div>
+        <div style="font-size:13px;color:var(--text)">Drop image files here, or click to pick</div>
+        <div style="font-size:11px;margin-top:3px">Photos are resized to 1600px and uploaded when you press Import.</div>
+      </div>
+      <input type="file" id="importPhotoInput" accept="image/*" multiple webkitdirectory="" style="display:none" onchange="importPhotosPicked(event)">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn secondary sm" onclick="importPickFiles()">Pick files</button>
+        <button type="button" class="btn secondary sm" onclick="importPickFolder()">Pick a folder</button>
+        <button type="button" class="btn secondary sm" id="importClearPhotosBtn" onclick="importClearPhotos()" style="margin-left:auto;display:none">Clear photos</button>
+      </div>
+      <div id="importPhotoStatus" style="font-size:12px;margin-top:10px;color:var(--muted)"></div>
     </div>
 
     <div id="importResult" style="display:none;margin-top:14px"></div>
@@ -4163,11 +4183,14 @@ function normHead(s){ return String(s).toLowerCase().replace(/[\s_-]+/g,''); }
 
 function openImportModal(){
   importRows = []; IMPORT_RAW_HEADERS = []; IMPORT_RAW_ROWS = [];
+  importClearPhotos();
   document.getElementById('importFile').value = '';
   document.getElementById('importMapGrid').innerHTML = '';
   document.getElementById('importMapping').style.display = 'none';
   document.getElementById('importMapWarn').style.display = 'none';
   document.getElementById('importPreview').style.display = 'none';
+  const ph = document.getElementById('importPhotos');
+  if (ph) ph.style.display = 'none';
   document.getElementById('importResult').style.display = 'none';
   document.getElementById('importRunBtn').disabled = true;
   document.getElementById('importModal').classList.add('show');
@@ -4371,6 +4394,110 @@ function applyMapping(){
   }
 }
 
+// Photos-per-SKU state for Step 4. Files are matched to product rows by the
+// SKU appearing (with a non-alphanumeric boundary) inside the filename.
+// Kept flat here rather than nested per-row so a re-ordered preview doesn't
+// lose the mapping. Reset on modal open / close.
+let IMPORT_PHOTOS = {};   // { skuLower: [File, ...] }
+let IMPORT_PHOTOS_UNMATCHED = [];
+
+function importResetDropStyle(){
+  const el = document.getElementById('importDrop');
+  if (!el) return;
+  el.style.background = 'var(--bg2)';
+  el.style.borderColor = 'var(--border2)';
+}
+function importDragOver(e){
+  e.preventDefault();
+  const el = document.getElementById('importDrop');
+  if (el){ el.style.background = 'var(--bg3)'; el.style.borderColor = 'var(--accent)'; }
+}
+function importDragLeave(e){ e.preventDefault(); importResetDropStyle(); }
+function importDrop(e){
+  e.preventDefault(); importResetDropStyle();
+  const files = [...(e.dataTransfer && e.dataTransfer.files || [])].filter(f => /^image\//.test(f.type));
+  if (files.length) importAssignFilesToRows(files);
+}
+function importPhotosPicked(e){
+  const files = [...(e.target.files || [])].filter(f => /^image\//.test(f.type));
+  if (files.length) importAssignFilesToRows(files);
+  e.target.value = '';
+}
+function importPickFiles(){
+  const inp = document.getElementById('importPhotoInput');
+  inp.removeAttribute('webkitdirectory');
+  inp.click();
+}
+function importPickFolder(){
+  const inp = document.getElementById('importPhotoInput');
+  inp.setAttribute('webkitdirectory', '');
+  inp.click();
+}
+function importClearPhotos(){
+  IMPORT_PHOTOS = {};
+  IMPORT_PHOTOS_UNMATCHED = [];
+  const s = document.getElementById('importPhotoStatus');
+  if (s) s.innerHTML = '';
+  const b = document.getElementById('importClearPhotosBtn');
+  if (b) b.style.display = 'none';
+}
+
+// A filename matches a SKU when the SKU appears in the filename bounded on
+// both sides by non-alphanumeric characters (or the string edges). Prevents
+// "TEE-001" from accidentally matching "TEE-0011.jpg".
+function importFilenameMatchesSku(filename, sku){
+  const base = String(filename).replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').toLowerCase();
+  const s = String(sku).toLowerCase();
+  if (!s) return false;
+  const i = base.indexOf(s);
+  if (i < 0) return false;
+  const before = i === 0 ? '' : base[i - 1];
+  if (before && /[a-z0-9]/.test(before)) return false;
+  const after = base[i + s.length];
+  if (after && /[a-z0-9]/.test(after)) return false;
+  return true;
+}
+
+function importAssignFilesToRows(files){
+  const skus = [...new Set(importRows.map(r => (r.sku || '').trim()).filter(Boolean))];
+  for (const f of files){
+    let matchedSku = null;
+    // Try longest SKUs first so "TEE-001-XL" wins over "TEE-001" when both are present.
+    for (const sku of skus.sort((a, b) => b.length - a.length)){
+      if (importFilenameMatchesSku(f.name, sku)){ matchedSku = sku; break; }
+    }
+    if (matchedSku){
+      const key = matchedSku.toLowerCase();
+      (IMPORT_PHOTOS[key] = IMPORT_PHOTOS[key] || []).push(f);
+    } else {
+      IMPORT_PHOTOS_UNMATCHED.push(f);
+    }
+  }
+  // Deterministic order — filename alphabetical, so TEE-001-1.jpg comes before TEE-001-2.jpg.
+  for (const key of Object.keys(IMPORT_PHOTOS)){
+    IMPORT_PHOTOS[key].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  }
+  renderImportPhotoStatus();
+  document.getElementById('importClearPhotosBtn').style.display = '';
+}
+
+function renderImportPhotoStatus(){
+  const s = document.getElementById('importPhotoStatus');
+  if (!s) return;
+  const matchedSkus = Object.keys(IMPORT_PHOTOS);
+  const totalMatched = matchedSkus.reduce((n, k) => n + IMPORT_PHOTOS[k].length, 0);
+  const parts = [];
+  if (totalMatched){
+    parts.push(`<span style="color:var(--text)">✓ ${totalMatched} photo${totalMatched===1?'':'s'} matched to ${matchedSkus.length} product${matchedSkus.length===1?'':'s'}.</span>`);
+  }
+  if (IMPORT_PHOTOS_UNMATCHED.length){
+    const preview = IMPORT_PHOTOS_UNMATCHED.slice(0, 5).map(f => escImport(f.name)).join(', ');
+    const more = IMPORT_PHOTOS_UNMATCHED.length > 5 ? ` and ${IMPORT_PHOTOS_UNMATCHED.length - 5} more` : '';
+    parts.push(`<span style="color:#b58900">⚠ ${IMPORT_PHOTOS_UNMATCHED.length} file${IMPORT_PHOTOS_UNMATCHED.length===1?'':'s'} did not match any SKU: ${preview}${more}.</span>`);
+  }
+  s.innerHTML = parts.join('<br>');
+}
+
 function renderImportPreview(){
   const cols = ['name','category','price','sku','quantity'];
   // Show any option columns that were actually mapped, so the seller can eyeball
@@ -4410,6 +4537,14 @@ function renderImportPreview(){
     : '';
   document.getElementById('importPreviewLabel').textContent = `${products} product${products===1?'':'s'} ready to import${varNote}${extra}`;
   document.getElementById('importPreview').style.display = 'block';
+  document.getElementById('importPhotos').style.display = 'block';
+  // Re-run the matcher against the (possibly re-mapped) SKUs so previously
+  // dropped photos still line up if the seller changed their column mapping.
+  if (Object.keys(IMPORT_PHOTOS).length || IMPORT_PHOTOS_UNMATCHED.length){
+    const all = [...IMPORT_PHOTOS_UNMATCHED, ...Object.values(IMPORT_PHOTOS).flat()];
+    IMPORT_PHOTOS = {}; IMPORT_PHOTOS_UNMATCHED = [];
+    importAssignFilesToRows(all);
+  }
 }
 
 function escImport(s){ return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -4421,6 +4556,41 @@ async function runImport(){
   const btn = document.getElementById('importRunBtn');
   btn.disabled = true; const label = btn.innerHTML; btn.innerHTML = 'Importing…';
   try {
+    // Upload any matched photos FIRST — this can be slow for a folder full of
+    // camera JPEGs, so we show live progress and only send the row payload
+    // once every file has a hosted URL.
+    const totalPhotos = Object.values(IMPORT_PHOTOS).reduce((n, arr) => n + arr.length, 0);
+    const skuUrls = {};       // skuLower -> [/img/… paths]
+    if (totalPhotos){
+      const status = document.getElementById('importPhotoStatus');
+      let done = 0, failed = 0;
+      for (const [key, files] of Object.entries(IMPORT_PHOTOS)){
+        skuUrls[key] = [];
+        for (const f of files){
+          try {
+            const url = await uploadImage(await compressImage(f, 1600, 0.85));
+            skuUrls[key].push(url);
+          } catch (err){
+            console.warn('Photo upload failed for', f.name, err);
+            failed++;
+          }
+          done++;
+          btn.innerHTML = `Uploading photos… ${done}/${totalPhotos}`;
+          if (status) status.innerHTML = `<span style="color:var(--text)">Uploading photos… ${done} of ${totalPhotos}${failed?` (${failed} failed)`:''}</span>`;
+        }
+      }
+      // Splice hosted URLs into each row's imageUrls before sending. Any URLs
+      // the seller had already put in the imageUrls column stay on the front.
+      for (const r of importRows){
+        const key = String(r.sku || '').toLowerCase();
+        const extras = skuUrls[key] || [];
+        if (extras.length){
+          const existing = String(r.imageUrls || '').trim();
+          r.imageUrls = existing ? existing + ' ' + extras.join(' ') : extras.join(' ');
+        }
+      }
+      btn.innerHTML = 'Importing…';
+    }
     const res = await fetch('/api/seller/products/import', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
