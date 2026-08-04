@@ -173,6 +173,8 @@ async function main() {
       status: 'active',
       weight: 1,
       isFeatured: FEATURED.has(p.sku),
+      options:  p.options  || [],
+      variants: p.variants || [],
     };
     const existing = bySku.get(p.sku);
     if (existing) {

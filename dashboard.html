@@ -3246,7 +3246,10 @@ function transformOrder(row){
   const itemsArr = Array.isArray(row.items) ? row.items : [];
   const itemsSummary = itemsArr.length === 0
     ? '—'
-    : itemsArr.map(i => `${i.name}${i.qty > 1 ? ' × ' + i.qty : ''}`).join(', ');
+    : itemsArr.map(i => {
+        const name = i.variantTitle ? `${i.name} (${i.variantTitle})` : i.name;
+        return `${name}${i.qty > 1 ? ' × ' + i.qty : ''}`;
+      }).join(', ');
   const ci = row.customerInfo || {};
   const customer = [ci.firstName, ci.lastName].filter(Boolean).join(' ').trim()
                 || ci.name || row.customerEmail || 'Customer';

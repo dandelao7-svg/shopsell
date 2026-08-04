@@ -15,7 +15,21 @@ const EMAIL = 'demo@nextlao.com';
 // contain no identifiable faces. See public/demo/CREDITS.md before swapping one.
 const PRODUCTS = [
   { sku:'DEMO-SHIRT-01', name:'Linen Shirt',   category:'clothing',    price:68,  compareAtPrice:85, img:'linen-shirt',
-    description:'A breathable European linen shirt cut for everyday wear. Garment-washed so it stays soft from the first day.' },
+    description:'A breathable European linen shirt cut for everyday wear. Garment-washed so it stays soft from the first day.',
+    options: [
+      { name:'Size',  values:['S','M','L','XL'] },
+      { name:'Color', values:['Natural','Navy'] },
+    ],
+    variants: (function(){
+      const sizes = ['S','M','L','XL'], colors = ['Natural','Navy'];
+      const out = [];
+      for (const s of sizes) for (const c of colors) {
+        const delta = s === 'XL' ? 4 : 0;
+        out.push({ options:{Size:s, Color:c}, price: 68 + delta, sku: `DEMO-SHIRT-01-${c[0]}${s}`, quantity: 6 });
+      }
+      return out;
+    })(),
+  },
   { sku:'DEMO-TOTE-01',  name:'Canvas Tote',   category:'accessories', price:34,  compareAtPrice:null, img:'canvas-tote',
     description:'Heavyweight cotton canvas with reinforced handles. Holds a laptop, a market run, or a weekend of nonsense.' },
   { sku:'DEMO-MUG-01',   name:'Ceramic Mug',   category:'home',        price:22,  compareAtPrice:28, img:'ceramic-mug',

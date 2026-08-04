@@ -1956,7 +1956,10 @@ function mapDbOrderToUI(o){
   const customerInfo = o.customerInfo || {};
   const items = Array.isArray(o.items) ? o.items : [];
   const itemsLabel = items.length
-    ? items.map(it => `${it.name||'Item'} × ${it.qty||1}`).join(', ')
+    ? items.map(it => {
+        const name = it.variantTitle ? `${it.name||'Item'} (${it.variantTitle})` : (it.name||'Item');
+        return `${name} × ${it.qty||1}`;
+      }).join(', ')
     : `${items.length || 0} items`;
 
   // Total shipment weight = sum of line-item weights (stored in OUNCES) × qty,
