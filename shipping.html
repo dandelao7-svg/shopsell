@@ -1112,9 +1112,9 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Estimated cost</div>
             <div id="qs-est-cost" style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--text)">—</div>
           </div>
-          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="validateAndShip()" style="justify-content:center;padding:12px 24px;font-size:14px;font-weight:700">
+          <button class="topbar-btn primary" id="qsSubmitBtn" onclick="validateAndShip()" style="justify-content:center;padding:12px 24px;font-size:14px;font-weight:700" title="Process Shipment (F10)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Buy label
+            Process Shipment <span style="opacity:.7;font-weight:500;margin-left:6px;font-size:11px">F10</span>
           </button>
         </div>
       </div>
@@ -5332,6 +5332,18 @@ function qsToggleInsureAmt(val){
 
 // ── QUICK SHIP: Recent recipients dropdown ────────────────────
 // Populates the picker at the top of the Ship To tab from past orders.
+// F10 shortcut for "Process Shipment" — WorldShip parity. Only fires when the
+// Quick Ship page is visible and the button isn't already busy.
+document.addEventListener('keydown', function(e){
+  if (e.key !== 'F10') return;
+  const page = document.getElementById('page-quickship');
+  if (!page || !page.classList.contains('active')) return;
+  const btn = document.getElementById('qsSubmitBtn');
+  if (!btn || btn.disabled) return;
+  e.preventDefault();
+  btn.click();
+});
+
 // Loaded once per Quick Ship page entry (see showPage('quickship')).
 let _qsRecentCache = null;
 async function loadQsRecentRecipients(){
