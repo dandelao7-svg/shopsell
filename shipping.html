@@ -994,26 +994,50 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             </div>
 
             <div class="qs-tab-body" id="qs-tab-options" style="display:none">
-              <div class="form-field">
-                <label>Signature confirmation</label>
-                <select id="qs-confirmation" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option value="none">None (carrier default)</option>
-                  <option value="delivery">Delivery confirmation</option>
-                  <option value="signature">Signature required</option>
-                  <option value="adult">Adult signature (21+)</option>
-                </select>
+              <!-- WorldShip-style two-column split: Shipment Options / Package Options.
+                   We only surface fields the carriers actually honor — no dead checkboxes. -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div style="border:1px solid var(--border);border-radius:9px;padding:12px 14px;background:var(--bg2)">
+                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Shipment options</div>
+                  <div class="form-field" style="margin-bottom:0">
+                    <label>Signature confirmation</label>
+                    <select id="qs-confirmation" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                      <option value="none">None (carrier default)</option>
+                      <option value="delivery">Delivery confirmation</option>
+                      <option value="signature">Signature required</option>
+                      <option value="adult">Adult signature (21+)</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="border:1px solid var(--border);border-radius:9px;padding:12px 14px;background:var(--bg2)">
+                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Package options</div>
+                  <div class="form-field" style="margin-bottom:10px">
+                    <label>Insurance</label>
+                    <select id="qs-insurance" onchange="qsToggleInsureAmt(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
+                      <option value="none">No insurance</option>
+                      <option value="carrier">Carrier default ($100)</option>
+                      <option value="declared">Declared value…</option>
+                    </select>
+                  </div>
+                  <div id="qs-insure-amt-wrap" class="form-field" style="display:none;margin-bottom:0">
+                    <label>Declared value ($)</label>
+                    <input type="number" id="qs-insure-amt" placeholder="0.00" min="0" step="0.01">
+                  </div>
+                </div>
               </div>
-              <div class="form-field">
-                <label>Insurance</label>
-                <select id="qs-insurance" onchange="qsToggleInsureAmt(this.value)" style="background:var(--bg3);color:var(--text);border-color:var(--border)">
-                  <option value="none">No insurance</option>
-                  <option value="carrier">Carrier default ($100)</option>
-                  <option value="declared">Declared value…</option>
-                </select>
-              </div>
-              <div id="qs-insure-amt-wrap" class="form-field" style="display:none">
-                <label>Declared value ($)</label>
-                <input type="number" id="qs-insure-amt" placeholder="0.00" min="0" step="0.01">
+
+              <!-- WorldShip-style cost footer inside the Options tab.
+                   "Detail cost" jumps to the Detail tab where the per-carrier breakdown lives. -->
+              <div style="margin-top:14px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:1px">
+                  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Option cost</span>
+                  <span id="qs-option-cost" style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;color:var(--text)">$0.00</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:1px">
+                  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Total cost</span>
+                  <span id="qs-total-cost" style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;color:var(--text)">$0.00</span>
+                </div>
+                <button type="button" onclick="qsSwitchRightTab('detail')" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:7px 14px;border-radius:8px;font-size:12px;cursor:pointer">Detail cost →</button>
               </div>
 
               <!-- Customs section — only shown for international destinations.
@@ -5725,6 +5749,8 @@ function renderRates({ rates = [], errors = [] }){
   const est = document.getElementById('qs-est-cost');
   if (est) est.innerHTML = '$' + cheapest.toFixed(2)
     + '<div style="font-size:10px;color:var(--muted);font-family:\'Outfit\',sans-serif;font-weight:400;margin-top:2px">cheapest of ' + rates.length + '</div>';
+  const total = document.getElementById('qs-total-cost');
+  if (total) total.textContent = '$' + cheapest.toFixed(2);
   const detail = document.getElementById('qs-cost-breakdown');
   if (detail) detail.innerHTML = '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Rates from ' + rates.length + ' service' + (rates.length===1?'':'s') + '</div>'
     + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
