@@ -1888,7 +1888,7 @@ tr:hover td{background:#fafaf7}
 
     <div id="importPhotos" style="display:none;margin-top:14px">
       <label style="font-weight:600;font-size:13px">Step 4 — Add photos <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-      <div style="font-size:12px;color:var(--muted);margin:4px 0 8px">Drop image files here — we match each one to a product by looking for its SKU in the filename. e.g. <code>TEE-001.jpg</code> attaches to the row with SKU <code>TEE-001</code>. Multiple photos per SKU (<code>TEE-001-back.jpg</code>, <code>TEE-001-2.jpg</code>) become photos 2, 3, … in filename order.</div>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 8px">Drop image files (or a whole folder) — we match each one to a product by looking for its SKU in the filename or folder name. Case, spaces, dashes, underscores and dots don't matter: <code>TEE-001</code> attaches <code>TEE-001.jpg</code>, <code>tee_001.jpg</code>, <code>TEE001.jpg</code>, <code>IMG_1234-TEE-001.jpg</code>, and any file inside a folder called <code>TEE-001/</code>. Multiple photos per SKU become photos 2, 3, … in filename order.</div>
       <div id="importDrop"
            ondragover="importDragOver(event)" ondragleave="importDragLeave(event)" ondrop="importDrop(event)"
            style="border:2px dashed var(--border2);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;background:var(--bg2);transition:background .15s,border-color .15s"
@@ -4442,29 +4442,50 @@ function importClearPhotos(){
   if (b) b.style.display = 'none';
 }
 
-// A filename matches a SKU when the SKU appears in the filename bounded on
-// both sides by non-alphanumeric characters (or the string edges). Prevents
-// "TEE-001" from accidentally matching "TEE-0011.jpg".
+// A filename matches a SKU when the alphanumeric skeleton of the SKU appears
+// in the alphanumeric skeleton of the filename PATH (including any folder
+// segments) at a valid boundary. A boundary is either the string edge, a
+// non-alnum character in the ORIGINAL raw path (space, dash, underscore, dot,
+// slash), or a letter↔digit class transition. That way:
+//
+//   TEE-001  matches  TEE-001.jpg, tee_001.jpg, TEE 001.jpg, TEE001.jpg,
+//                     photos/TEE-001/main.jpg, IMG_1234-TEE-001.jpg,
+//                     TEE-001-back.jpg
+//   TEE-001  does NOT match  TEE-0011.jpg  (digit run keeps extending)
+//   TEE      does NOT match  teenage.jpg   (letter run keeps extending)
 function importFilenameMatchesSku(filename, sku){
-  const base = String(filename).replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').toLowerCase();
-  const s = String(sku).toLowerCase();
+  const s = String(sku).toLowerCase().replace(/[^a-z0-9]+/g, '');
   if (!s) return false;
+  const raw = String(filename || '').replace(/\.[^.]+$/, '').toLowerCase();
+  const norm = []; const posMap = [];       // norm[j] came from raw[posMap[j]]
+  for (let k = 0; k < raw.length; k++){
+    if (/[a-z0-9]/.test(raw[k])){ norm.push(raw[k]); posMap.push(k); }
+  }
+  const base = norm.join('');
   const i = base.indexOf(s);
   if (i < 0) return false;
-  const before = i === 0 ? '' : base[i - 1];
-  if (before && /[a-z0-9]/.test(before)) return false;
-  const after = base[i + s.length];
-  if (after && /[a-z0-9]/.test(after)) return false;
-  return true;
+  const rawStart = posMap[i];
+  const rawEnd   = posMap[i + s.length - 1];
+  const isDigit  = c => /[0-9]/.test(c);
+  const isAlnum  = c => /[a-z0-9]/.test(c);
+  const before   = rawStart > 0 ? raw[rawStart - 1] : '';
+  const after    = rawEnd + 1 < raw.length ? raw[rawEnd + 1] : '';
+  const beforeOK = !before || !isAlnum(before) || isDigit(before) !== isDigit(raw[rawStart]);
+  const afterOK  = !after  || !isAlnum(after)  || isDigit(after)  !== isDigit(raw[rawEnd]);
+  return beforeOK && afterOK;
 }
 
 function importAssignFilesToRows(files){
   const skus = [...new Set(importRows.map(r => (r.sku || '').trim()).filter(Boolean))];
   for (const f of files){
     let matchedSku = null;
+    // Prefer webkitRelativePath so a "Pick a folder" upload keeps its folder
+    // segments — SKU-named folders (photos/TEE-001/main.jpg) are a common
+    // organization pattern and should count as a match.
+    const path = f.webkitRelativePath || f.name || '';
     // Try longest SKUs first so "TEE-001-XL" wins over "TEE-001" when both are present.
     for (const sku of skus.sort((a, b) => b.length - a.length)){
-      if (importFilenameMatchesSku(f.name, sku)){ matchedSku = sku; break; }
+      if (importFilenameMatchesSku(path, sku)){ matchedSku = sku; break; }
     }
     if (matchedSku){
       const key = matchedSku.toLowerCase();
