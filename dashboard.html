@@ -973,8 +973,9 @@ tr:hover td{background:#fafaf7}
         <div class="page-hd-title">Media library</div>
         <div class="page-hd-sub" id="mediaCountLabel">Every image you've ever uploaded, reusable across products, hero images and variant photos.</div>
       </div>
-      <div class="btn-row" style="margin-top:0">
-        <button class="btn secondary sm" onclick="mediaPickToUpload()">Upload images</button>
+      <div class="btn-row" style="margin-top:0;gap:8px">
+        <button class="btn secondary sm" onclick="mediaPickToUpload()">Upload files</button>
+        <button class="btn secondary sm" onclick="mediaPickFolder()">Upload folder</button>
       </div>
     </div>
 
@@ -1974,8 +1975,14 @@ tr:hover td{background:#fafaf7}
       <button class="modal-close" onclick="closeLibraryPicker()" title="Close">×</button>
     </div>
     <div id="importLibraryGrid" style="padding:14px 0;max-height:60vh;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px"></div>
+    <!-- Upload directly into the library without leaving the picker. Newly
+         uploaded items are auto-selected so hitting Add selected sends them
+         straight through to whatever opened the picker. -->
+    <input type="file" id="libraryPickerUploadInput" accept="image/*" multiple style="display:none" onchange="libraryPickerUploadPicked(event)">
     <div class="modal-actions">
       <div id="importLibrarySelCount" style="font-size:12px;color:var(--muted);align-self:center;margin-right:auto">0 selected</div>
+      <button type="button" class="btn secondary sm" onclick="libraryPickerUploadFiles()">Upload files</button>
+      <button type="button" class="btn secondary sm" onclick="libraryPickerUploadFolder()">Upload folder</button>
       <button class="btn secondary sm" onclick="closeLibraryPicker()">Cancel</button>
       <div class="right-group">
         <button class="btn primary sm" id="importLibraryAddBtn" onclick="libraryPickerConfirm()" disabled>Add selected</button>
@@ -3210,7 +3217,16 @@ async function mediaDelete(id){
   }
 }
 
-function mediaPickToUpload(){ document.getElementById('mediaUploadInput').click(); }
+function mediaPickToUpload(){
+  const inp = document.getElementById('mediaUploadInput');
+  inp.removeAttribute('webkitdirectory');
+  inp.click();
+}
+function mediaPickFolder(){
+  const inp = document.getElementById('mediaUploadInput');
+  inp.setAttribute('webkitdirectory', '');
+  inp.click();
+}
 function mediaUploadPicked(e){
   const files = [...(e.target.files || [])].filter(f => /^image\//.test(f.type));
   if (files.length) mediaUploadFiles(files);
@@ -4767,6 +4783,60 @@ function libraryPickerConfirm(){
   const fn = _libraryOnConfirm;
   closeLibraryPicker();
   if (picked.length && fn) fn(picked);
+}
+
+// Upload from inside the picker. Handles both "files" and "folder" modes via
+// the shared hidden input — same webkitdirectory trick the Import step 4 uses.
+// Newly uploaded items are inserted at the top of the grid and auto-selected
+// so hitting Add selected sends them through immediately.
+function libraryPickerUploadFiles(){
+  const inp = document.getElementById('libraryPickerUploadInput');
+  inp.removeAttribute('webkitdirectory');
+  inp.click();
+}
+function libraryPickerUploadFolder(){
+  const inp = document.getElementById('libraryPickerUploadInput');
+  inp.setAttribute('webkitdirectory', '');
+  inp.click();
+}
+async function libraryPickerUploadPicked(e){
+  const files = [...(e.target.files || [])].filter(f => /^image\//.test(f.type));
+  e.target.value = '';
+  if (!files.length) return;
+  const grid = document.getElementById('importLibraryGrid');
+  const total = files.length;
+  let done = 0, failed = 0;
+  const newlyAdded = [];
+  for (const f of files){
+    // Live status banner at the top of the grid — replaces the "Loading…"
+    // affordance so the seller sees progress rather than a stuck spinner.
+    const status = `<div style="grid-column:1/-1;color:var(--muted);padding:8px 4px;font-size:12px">Uploading ${done+1} of ${total}: ${escImport(f.name)}${failed?` (${failed} failed)`:''}</div>`;
+    // Prepend without clobbering already-rendered thumbnails.
+    if (grid.firstChild && grid.firstChild.dataset && grid.firstChild.dataset.uploadStatus){
+      grid.firstChild.outerHTML = status;
+    } else {
+      grid.insertAdjacentHTML('afterbegin', status);
+      grid.firstElementChild.setAttribute('data-upload-status', '1');
+    }
+    try {
+      const url  = await uploadImage(await compressImage(f, 1600, 0.85), f.name);
+      const id   = url.replace(/^\/img\//, '');
+      const item = { id, path: url, originalName: f.name, byteSize: f.size, mime: f.type, createdAt: new Date().toISOString() };
+      _libraryItems.unshift(item);
+      _librarySelected.add(id);     // auto-tick so Add selected fires them off
+      newlyAdded.push(id);
+    } catch(err){
+      console.warn('Library upload failed for', f.name, err);
+      failed++;
+    }
+    done++;
+  }
+  renderLibraryPickerGrid();
+  if (newlyAdded.length && !failed){
+    toast(`${newlyAdded.length} image${newlyAdded.length===1?'':'s'} uploaded and selected`);
+  } else if (failed){
+    toast(`${newlyAdded.length} uploaded, ${failed} failed`);
+  }
 }
 
 // Thin wrappers so callers don't have to know the shared picker exists.
