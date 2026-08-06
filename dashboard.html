@@ -1958,17 +1958,22 @@ tr:hover td{background:#fafaf7}
   </div>
 </div>
 
-<!-- LIBRARY PICKER (opened from Import Products step 4) -->
-<div class="modal-overlay" id="importLibraryOverlay" onclick="closeLibraryPicker(event)">
-  <div class="modal" style="max-width:820px" onclick="event.stopPropagation()">
+<!-- LIBRARY PICKER (opened from Import Products step 4, Add product,
+     Edit product, and variant photo cells). Uses the same modal-backdrop
+     / modal-panel + .show pattern as every other dashboard modal, so the
+     backdrop actually covers the page and z-indexes correctly. Set
+     z-index above the Import modal (1000) so it stacks on top when opened
+     from within Step 4. -->
+<div class="modal-backdrop" id="importLibraryOverlay" onclick="closeLibraryPicker(event)" style="z-index:1100">
+  <div class="modal-panel" style="max-width:820px" onclick="event.stopPropagation()">
     <div class="modal-hd">
       <div>
-        <div style="font-weight:600;font-size:15px">Pick from library</div>
-        <div style="font-size:12px;color:var(--muted)">Select the images you want to add to this import — we'll match them to products by filename, same as file drops.</div>
+        <div class="modal-hd-title">Pick from library</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px" id="importLibrarySubtitle">Select images to add.</div>
       </div>
       <button class="modal-close" onclick="closeLibraryPicker()" title="Close">×</button>
     </div>
-    <div id="importLibraryGrid" style="padding:14px;max-height:60vh;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px"></div>
+    <div id="importLibraryGrid" style="padding:14px 0;max-height:60vh;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px"></div>
     <div class="modal-actions">
       <div id="importLibrarySelCount" style="font-size:12px;color:var(--muted);align-self:center;margin-right:auto">0 selected</div>
       <button class="btn secondary sm" onclick="closeLibraryPicker()">Cancel</button>
@@ -4699,12 +4704,11 @@ async function openLibraryPicker({ onConfirm, multiple = true, title, subtitle }
   _libraryMultiple  = !!multiple;
   _librarySelected.clear();
   // Rewrite modal chrome copy for each caller so the header matches the flow.
-  const hd = document.querySelector('#importLibraryOverlay .modal-hd > div');
-  if (hd){
-    hd.innerHTML = `<div style="font-weight:600;font-size:15px">${escImport(title || 'Pick from library')}</div>`
-                 + `<div style="font-size:12px;color:var(--muted)">${escImport(subtitle || (multiple ? 'Tick any images to add.' : 'Pick one image.'))}</div>`;
-  }
-  document.getElementById('importLibraryOverlay').classList.add('open');
+  const titleEl = document.querySelector('#importLibraryOverlay .modal-hd-title');
+  const subEl   = document.getElementById('importLibrarySubtitle');
+  if (titleEl) titleEl.textContent = title || 'Pick from library';
+  if (subEl)   subEl.textContent   = subtitle || (multiple ? 'Tick any images to add.' : 'Pick one image.');
+  document.getElementById('importLibraryOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
   const grid = document.getElementById('importLibraryGrid');
   grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);padding:24px;font-size:13px">Loading your library…</div>';
@@ -4721,9 +4725,9 @@ async function openLibraryPicker({ onConfirm, multiple = true, title, subtitle }
   }
 }
 function closeLibraryPicker(e){
-  // Only close on the overlay click, not on child clicks.
+  // Only close on the backdrop click, not on child clicks.
   if (e && e.target && e.target.id !== 'importLibraryOverlay' && e.type === 'click') return;
-  document.getElementById('importLibraryOverlay').classList.remove('open');
+  document.getElementById('importLibraryOverlay').classList.remove('show');
   document.body.style.overflow = '';
   _libraryOnConfirm = null;
 }
