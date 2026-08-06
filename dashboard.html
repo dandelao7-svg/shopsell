@@ -2568,7 +2568,7 @@ async function _layoutUploadFile(files){
   if(!file.type.startsWith('image/')){ toast('That file is not an image.'); return null; }
   try {
     // 1600px: section images span the full storefront width, like the hero.
-    return await uploadImage(await compressImage(file, 1600, 0.85));
+    return await uploadImage(await compressImage(file, 1600, 0.85), file.name);
   } catch(err){
     console.error('Layout image upload failed:', err);
     toast('Could not upload that image: ' + err.message);
@@ -2870,7 +2870,7 @@ async function handleHeroImgFile(files){
   const box = document.getElementById('hpHeroImgPreview');
   if(box) box.textContent = 'Uploading…';
   try {
-    hpHeroImg = await uploadImage(await compressImage(file, 1600, 0.85));
+    hpHeroImg = await uploadImage(await compressImage(file, 1600, 0.85), file.name);
   } catch(err){
     console.error('Hero image upload failed:', err);
     toast('Could not upload the hero image: ' + err.message);
@@ -2958,7 +2958,7 @@ async function handleLogoFile(files){
     // Uploaded as-is, NOT through compressImage: logos are usually PNGs with a
     // transparent background, and canvas re-encoding to JPEG would flatten that
     // onto solid black. The 8MB cap above is the only guard.
-    apLogo = await uploadImage(await fileToDataUrl(file));
+    apLogo = await uploadImage(await fileToDataUrl(file), file.name);
   } catch(err){
     console.error('Logo upload failed:', err);
     toast('Could not upload the logo: ' + err.message);
@@ -3832,12 +3832,12 @@ function calcMargin(){
    never be used as OG/social images (a crawler needs a real URL) and they rode
    along on every product payload. Everything that accepts an image now uploads
    first and stores only the returned path. */
-async function uploadImage(dataUrl){
+async function uploadImage(dataUrl, originalName){
   const token = localStorage.getItem('ss_token');
   const res = await fetch('/api/seller/images', {
     method: 'POST',
     headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
-    body: JSON.stringify({ dataUrl }),
+    body: JSON.stringify({ dataUrl, originalName: originalName || null }),
   });
   const data = await res.json().catch(() => ({}));
   if(!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
@@ -3893,7 +3893,7 @@ async function handleFiles(files){
       // Compress first: the upload is the slow part, and 1200px/q0.85 is
       // already what the storefront displays.
       const dataUrl = await compressImage(f);
-      uploadedImages.push(await uploadImage(dataUrl));
+      uploadedImages.push(await uploadImage(dataUrl, f.name));
       renderImgPreviews();
     } catch(err){
       console.error('Image upload failed for', f.name, err);
@@ -4036,7 +4036,7 @@ async function pickVariantImage(i){
   input.onchange = async e => {
     const file = e.target.files && e.target.files[0]; if(!file) return;
     try{
-      const url = await uploadImage(await compressImage(file, 1600, 0.85));
+      const url = await uploadImage(await compressImage(file, 1600, 0.85), file.name);
       (variantData[c.key] = variantData[c.key] || {}).image = url;
       renderVariantsTable();
     }catch(err){ toast(err.message || 'Upload failed'); }
@@ -4737,7 +4737,11 @@ async function runImport(){
         skuUrls[key] = [];
         for (const p of photos){
           try {
-            const url = await uploadImage(await compressImage(p.file, 1600, 0.85));
+            // Skip re-upload for library-sourced photos — they already have a
+            // hosted path. File-sourced photos still go through compress+upload.
+            let url;
+            if (p.path){ url = p.path; }
+            else       { url = await uploadImage(await compressImage(p.file, 1600, 0.85), p.file.name); }
             skuUrls[key].push(url);
           } catch (err){
             console.warn('Photo upload failed for', p.file.name, err);
@@ -5150,7 +5154,7 @@ async function epHandleFiles(files){
     try {
       if(hint) hint.textContent = `Uploading ${f.name}…`;
       const dataUrl = await compressImage(f);
-      editUploadedImages.push(await uploadImage(dataUrl));
+      editUploadedImages.push(await uploadImage(dataUrl, f.name));
       epRenderImgPreviews();
     } catch(err){
       console.error('Image upload failed for', f.name, err);

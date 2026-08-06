@@ -1658,11 +1658,47 @@ app.post('/api/seller/images', requireAuth, async (req, res) => {
       });
     }
 
-    const img = await db.createImage({ sellerId: req.seller.sellerId, mime, buffer });
-    res.status(201).json({ url: img.path, bytes: img.byteSize });
+    const originalName = req.body?.originalName ? String(req.body.originalName) : null;
+    const img = await db.createImage({ sellerId: req.seller.sellerId, mime, buffer, originalName });
+    res.status(201).json({ url: img.path, bytes: img.byteSize, id: img.id, originalName: img.originalName });
   } catch (err) {
     console.error('Image upload failed:', err);
     res.status(500).json({ error: 'Could not save the image.' });
+  }
+});
+
+// Media library — browse everything this seller has ever uploaded. Newest
+// first. Powers the dashboard's Media page and the "Pick from library" flow
+// in the Import Products modal.
+app.get('/api/seller/media', requireAuth, async (req, res) => {
+  try {
+    const limit  = Math.min(500, Math.max(1, parseInt(req.query.limit, 10)  || 200));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const items  = await db.getMediaBySeller(req.seller.sellerId, { limit, offset });
+    res.json({ items });
+  } catch (err) {
+    console.error('GET /api/seller/media failed:', err);
+    res.status(500).json({ error: 'Could not load your media library.' });
+  }
+});
+
+// Delete a media item. Refuses if it's still referenced by a product,
+// variant, or storefront row — the seller has to remove those uses first
+// (returned in `uses`) rather than us silently breaking their storefront.
+app.delete('/api/seller/media/:id', requireAuth, async (req, res) => {
+  try {
+    const result = await db.deleteMedia({ id: req.params.id, sellerId: req.seller.sellerId });
+    if (!result.deleted && result.uses.length) {
+      return res.status(409).json({
+        error: `Used by ${result.uses.length} place${result.uses.length === 1 ? '' : 's'} — remove there first.`,
+        uses:  result.uses,
+      });
+    }
+    if (!result.deleted) return res.status(404).json({ error: 'Not found in your library.' });
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error('DELETE /api/seller/media/:id failed:', err);
+    res.status(500).json({ error: 'Could not delete that image.' });
   }
 });
 
@@ -1717,7 +1753,16 @@ async function rehostExternalImage(url, sellerId) {
     const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (!db.IMAGE_MIMES.includes(mime)) return null;
 
-    const img = await db.createImage({ sellerId, mime, buffer: buf });
+    // Salvage a filename from the URL's path so the Media library shows
+    // something readable instead of just "(unnamed)".
+    let originalName = null;
+    try {
+      const parsed = new URL(trimmed);
+      const seg = parsed.pathname.split('/').pop() || '';
+      if (seg) originalName = decodeURIComponent(seg).slice(0, 200);
+    } catch { /* keep null */ }
+
+    const img = await db.createImage({ sellerId, mime, buffer: buf, originalName });
     return img.path;
   } catch {
     return null;

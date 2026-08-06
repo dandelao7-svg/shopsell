@@ -162,6 +162,11 @@ async function initSchema() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_images_seller ON images (seller_id);`);
+    // Original filename from the user's upload — shown in the Media library so
+    // "sunset-tee.jpg" is what the seller sees, not the random id we assigned.
+    // Nullable: pre-media-library uploads and images uploaded from callers that
+    // don't pass a filename still work; the UI shows a fallback label for those.
+    await client.query(`ALTER TABLE images ADD COLUMN IF NOT EXISTS original_name TEXT;`);
     // Product options (e.g. Size, Color). Variants (already present) hold one
     // priced/stocked entry per option combination.
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS options JSONB DEFAULT '[]'::jsonb;`);
@@ -1738,16 +1743,66 @@ const IMAGE_EXT = {
 // script, and these are served from our own origin.
 const IMAGE_MIMES = Object.keys(IMAGE_EXT);
 
-async function createImage({ sellerId, mime, buffer }) {
+async function createImage({ sellerId, mime, buffer, originalName }) {
   if (!IMAGE_MIMES.includes(mime)) throw new Error(`Unsupported image type: ${mime}`);
   // 24 random bytes: long enough that the URLs aren't enumerable.
   const id = `${crypto.randomBytes(24).toString('hex')}.${IMAGE_EXT[mime]}`;
+  // Truncate the original name to a sane length — it comes from user files.
+  const name = originalName ? String(originalName).slice(0, 200) : null;
   await pool.query(
-    `INSERT INTO images (id, seller_id, mime, bytes, byte_size)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [id, sellerId || null, mime, buffer, buffer.length]
+    `INSERT INTO images (id, seller_id, mime, bytes, byte_size, original_name)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, sellerId || null, mime, buffer, buffer.length, name]
   );
-  return { id, path: `/img/${id}`, byteSize: buffer.length };
+  return { id, path: `/img/${id}`, byteSize: buffer.length, originalName: name };
+}
+
+// Media library listing for one seller. Newest first. Chronological — no
+// search or tag filter yet, just enough for a browsable grid.
+async function getMediaBySeller(sellerId, { limit = 200, offset = 0 } = {}) {
+  const { rows } = await pool.query(
+    `SELECT id, mime, byte_size, original_name, created_at
+       FROM images
+      WHERE seller_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3`,
+    [sellerId, Math.min(500, Math.max(1, limit)), Math.max(0, offset)]
+  );
+  return rows.map(r => ({
+    id:           r.id,
+    path:         `/img/${r.id}`,
+    mime:         r.mime,
+    byteSize:     r.byte_size,
+    originalName: r.original_name,
+    createdAt:    r.created_at,
+  }));
+}
+
+// Delete a media item — only if no product or storefront row references it.
+// The reference check runs against products.image_urls, products.variants (for
+// variant photos), and sellers.storefront_content (for logo/hero). Returns
+// { deleted: true } or { deleted: false, uses: [{kind, name}] }.
+async function deleteMedia({ id, sellerId }) {
+  const path = `/img/${id}`;
+  const usesRes = await pool.query(
+    `SELECT id, name, 'product'::text AS kind
+       FROM products
+      WHERE seller_id = $1
+        AND (image_urls::text LIKE $2 OR variants::text LIKE $2)
+      UNION ALL
+      SELECT id, store_name AS name, 'storefront'::text AS kind
+        FROM sellers
+       WHERE id = $1 AND storefront_content::text LIKE $2`,
+    [sellerId, `%${path}%`]
+  );
+  if (usesRes.rows.length) {
+    return { deleted: false, uses: usesRes.rows.map(r => ({ kind: r.kind, name: r.name })) };
+  }
+  const del = await pool.query(
+    `DELETE FROM images WHERE id = $1 AND seller_id = $2`,
+    [id, sellerId]
+  );
+  return { deleted: del.rowCount > 0, uses: [] };
 }
 
 async function getImage(id) {
@@ -1810,6 +1865,8 @@ module.exports = {
   listProductsWithInlineImages,
   setProductImageUrls,
   listSellersWithInlineStorefrontImages,
+  getMediaBySeller,
+  deleteMedia,
 
   // Sellers
   createSeller,
