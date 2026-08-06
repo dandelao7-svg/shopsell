@@ -938,6 +938,9 @@ tr:hover td{background:#fafaf7}
             <div style="font-size:13px;font-weight:500;margin-bottom:3px">Drop images or click to browse</div>
             <div style="font-size:11px;color:var(--muted)">JPG, PNG, WEBP · up to 6 images</div>
           </div>
+          <div style="margin-top:8px;text-align:center">
+            <button type="button" class="btn secondary sm" onclick="apOpenLibrary()">Or pick from library</button>
+          </div>
           <div class="img-preview-grid" id="imgPreviewGrid"></div>
           <div style="font-size:11px;color:var(--muted);margin-top:8px" id="imgHint">First image is the main listing photo</div>
         </div>
@@ -1774,6 +1777,9 @@ tr:hover td{background:#fafaf7}
         <div style="font-size:13px;font-weight:500;margin-bottom:3px">Drop images or click to browse</div>
         <div style="font-size:11px;color:var(--muted)">JPG, PNG, WEBP · up to 6 images</div>
       </div>
+      <div style="margin-top:8px;text-align:center">
+        <button type="button" class="btn secondary sm" onclick="epOpenLibrary()">Or pick from library</button>
+      </div>
       <div class="img-preview-grid" id="epImgPreviewGrid"></div>
       <div style="font-size:11px;color:var(--muted);margin-top:8px" id="epImgHint"></div>
     </div>
@@ -1953,21 +1959,21 @@ tr:hover td{background:#fafaf7}
 </div>
 
 <!-- LIBRARY PICKER (opened from Import Products step 4) -->
-<div class="modal-overlay" id="importLibraryOverlay" onclick="importCloseLibrary(event)">
+<div class="modal-overlay" id="importLibraryOverlay" onclick="closeLibraryPicker(event)">
   <div class="modal" style="max-width:820px" onclick="event.stopPropagation()">
     <div class="modal-hd">
       <div>
         <div style="font-weight:600;font-size:15px">Pick from library</div>
         <div style="font-size:12px;color:var(--muted)">Select the images you want to add to this import — we'll match them to products by filename, same as file drops.</div>
       </div>
-      <button class="modal-close" onclick="importCloseLibrary()" title="Close">×</button>
+      <button class="modal-close" onclick="closeLibraryPicker()" title="Close">×</button>
     </div>
     <div id="importLibraryGrid" style="padding:14px;max-height:60vh;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px"></div>
     <div class="modal-actions">
       <div id="importLibrarySelCount" style="font-size:12px;color:var(--muted);align-self:center;margin-right:auto">0 selected</div>
-      <button class="btn secondary sm" onclick="importCloseLibrary()">Cancel</button>
+      <button class="btn secondary sm" onclick="closeLibraryPicker()">Cancel</button>
       <div class="right-group">
-        <button class="btn primary sm" id="importLibraryAddBtn" onclick="importLibraryAddSelected()" disabled>Add to import</button>
+        <button class="btn primary sm" id="importLibraryAddBtn" onclick="libraryPickerConfirm()" disabled>Add selected</button>
       </div>
     </div>
   </div>
@@ -4214,7 +4220,10 @@ function renderVariantsTable(){
     const d = variantData[c.key] || {};
     const thumb = d.image
       ? `<img src="${vEsc(d.image)}" alt="" style="width:36px;height:36px;object-fit:cover;border-radius:6px;display:block;cursor:pointer" title="Click to remove" onclick="clearVariantImage(${i})">`
-      : `<button type="button" onclick="pickVariantImage(${i})" style="width:36px;height:36px;border:1px dashed var(--border2);background:var(--bg2);color:var(--muted);border-radius:6px;font-size:16px;cursor:pointer;padding:0" title="Add a photo for this variant">+</button>`;
+      : `<div style="display:flex;gap:4px">
+           <button type="button" onclick="pickVariantImage(${i})" style="width:36px;height:36px;border:1px dashed var(--border2);background:var(--bg2);color:var(--muted);border-radius:6px;font-size:16px;cursor:pointer;padding:0" title="Upload a photo for this variant">+</button>
+           <button type="button" onclick="pickVariantImageFromLibrary(${i})" style="width:36px;height:36px;border:1px dashed var(--border2);background:var(--bg2);color:var(--muted);border-radius:6px;font-size:12px;cursor:pointer;padding:0" title="Pick a variant photo from your library">📚</button>
+         </div>`;
     return `<tr>
       ${c.vals.map(v=>`<td style="padding:6px 8px;font-weight:600">${vEsc(v)}</td>`).join('')}
       <td style="padding:6px 8px">${thumb}</td>
@@ -4241,6 +4250,19 @@ async function pickVariantImage(i){
     }catch(err){ toast(err.message || 'Upload failed'); }
   };
   input.click();
+}
+function pickVariantImageFromLibrary(i){
+  const c = currentCombos[i]; if(!c) return;
+  openLibraryPicker({
+    multiple: false,
+    title: 'Pick a variant photo',
+    subtitle: 'Pick one image from your library.',
+    onConfirm: items => {
+      if (!items.length) return;
+      (variantData[c.key] = variantData[c.key] || {}).image = items[0].path;
+      renderVariantsTable();
+    },
+  });
 }
 function clearVariantImage(i){
   const c = currentCombos[i]; if(!c) return;
@@ -4662,16 +4684,28 @@ function importPickFolder(){
   inp.click();
 }
 
-// ── Library picker inside the Import Products modal ─────────────────────
-// Fetches everything in the seller's media library and lets them tick which
-// items get added to this import — matched by filename against product SKUs,
-// same as file drops. Selected items skip upload at Import time (see runImport).
-let _importLibraryItems = [];
-let _importLibrarySelected = new Set();
-async function importOpenLibrary(){
+// ── Library picker (shared across Import Products + product edit forms) ────
+// One modal, many entry points. Each caller registers a onConfirm(items) via
+// openLibraryPicker; the modal displays a checkbox grid of every /api/seller/media
+// item and hands the selected items back on Add. Picker respects a per-open
+// `multiple` flag so single-slot pickers can restrict to one selection.
+let _libraryItems = [];
+let _librarySelected = new Set();
+let _libraryOnConfirm = null;
+let _libraryMultiple = true;
+
+async function openLibraryPicker({ onConfirm, multiple = true, title, subtitle } = {}){
+  _libraryOnConfirm = typeof onConfirm === 'function' ? onConfirm : null;
+  _libraryMultiple  = !!multiple;
+  _librarySelected.clear();
+  // Rewrite modal chrome copy for each caller so the header matches the flow.
+  const hd = document.querySelector('#importLibraryOverlay .modal-hd > div');
+  if (hd){
+    hd.innerHTML = `<div style="font-weight:600;font-size:15px">${escImport(title || 'Pick from library')}</div>`
+                 + `<div style="font-size:12px;color:var(--muted)">${escImport(subtitle || (multiple ? 'Tick any images to add.' : 'Pick one image.'))}</div>`;
+  }
   document.getElementById('importLibraryOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
-  _importLibrarySelected.clear();
   const grid = document.getElementById('importLibraryGrid');
   grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);padding:24px;font-size:13px">Loading your library…</div>';
   const token = localStorage.getItem('ss_token');
@@ -4679,55 +4713,97 @@ async function importOpenLibrary(){
     const res = await fetch('/api/seller/media', { headers: { 'Authorization':'Bearer '+token } });
     const data = await res.json().catch(() => ({}));
     if(!res.ok){ grid.innerHTML = `<div style="grid-column:1/-1;color:#c0392b;padding:12px">${escImport(data.error || 'Could not load library')}</div>`; return; }
-    _importLibraryItems = data.items || [];
-    renderImportLibraryGrid();
+    _libraryItems = data.items || [];
+    renderLibraryPickerGrid();
   } catch(err){
-    console.error('importOpenLibrary failed:', err);
+    console.error('openLibraryPicker failed:', err);
     grid.innerHTML = '<div style="grid-column:1/-1;color:#c0392b;padding:12px">Could not reach the server.</div>';
   }
 }
-function importCloseLibrary(e){
+function closeLibraryPicker(e){
   // Only close on the overlay click, not on child clicks.
   if (e && e.target && e.target.id !== 'importLibraryOverlay' && e.type === 'click') return;
   document.getElementById('importLibraryOverlay').classList.remove('open');
   document.body.style.overflow = '';
+  _libraryOnConfirm = null;
 }
-function renderImportLibraryGrid(){
+function renderLibraryPickerGrid(){
   const grid = document.getElementById('importLibraryGrid');
-  if (!_importLibraryItems.length){
+  if (!_libraryItems.length){
     grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);padding:36px 12px;text-align:center;font-size:13px">Your library is empty. Uploads from any product page — or from the Media tab — will appear here.</div>';
-    updateImportLibrarySelCount(); return;
+    updateLibraryPickerCount(); return;
   }
-  grid.innerHTML = _importLibraryItems.map(m => {
+  grid.innerHTML = _libraryItems.map(m => {
     const name = escImport(m.originalName || '(unnamed)');
-    const selected = _importLibrarySelected.has(m.id);
+    const selected = _librarySelected.has(m.id);
     return `
-      <div onclick="toggleImportLibrarySelect('${m.id}')" style="border:2px solid ${selected?'var(--accent)':'var(--border)'};border-radius:8px;overflow:hidden;cursor:pointer;background:var(--card);position:relative;user-select:none">
+      <div onclick="toggleLibraryPickerSelect('${m.id}')" style="border:2px solid ${selected?'var(--accent)':'var(--border)'};border-radius:8px;overflow:hidden;cursor:pointer;background:var(--card);position:relative;user-select:none">
         <div style="aspect-ratio:1/1;background:var(--bg3)"><img src="${m.path}" alt="${name}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"></div>
         <div style="padding:6px 8px;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${name}">${name}</div>
         ${selected ? '<div style="position:absolute;top:6px;right:6px;background:var(--accent);color:#fff;border-radius:50%;width:22px;height:22px;font-size:14px;line-height:22px;text-align:center">✓</div>' : ''}
       </div>`;
   }).join('');
-  updateImportLibrarySelCount();
+  updateLibraryPickerCount();
 }
-function toggleImportLibrarySelect(id){
-  if (_importLibrarySelected.has(id)) _importLibrarySelected.delete(id);
-  else _importLibrarySelected.add(id);
-  renderImportLibraryGrid();
+function toggleLibraryPickerSelect(id){
+  if (_librarySelected.has(id)) _librarySelected.delete(id);
+  else {
+    if (!_libraryMultiple) _librarySelected.clear();   // single-select flavor
+    _librarySelected.add(id);
+  }
+  renderLibraryPickerGrid();
 }
-function updateImportLibrarySelCount(){
-  const n = _importLibrarySelected.size;
+function updateLibraryPickerCount(){
+  const n = _librarySelected.size;
   document.getElementById('importLibrarySelCount').textContent = `${n} selected`;
   document.getElementById('importLibraryAddBtn').disabled = n === 0;
 }
-function importLibraryAddSelected(){
-  const picked = _importLibraryItems.filter(m => _importLibrarySelected.has(m.id));
-  if (!picked.length) return;
-  importAssignLibraryItemsToRows(picked);
-  importCloseLibrary();
-  // If the photos step wasn't already visible (e.g. seller went straight to
-  // library before dropping anything), show it now.
-  document.getElementById('importPhotos').style.display = 'block';
+function libraryPickerConfirm(){
+  const picked = _libraryItems.filter(m => _librarySelected.has(m.id));
+  const fn = _libraryOnConfirm;
+  closeLibraryPicker();
+  if (picked.length && fn) fn(picked);
+}
+
+// Thin wrappers so callers don't have to know the shared picker exists.
+function importOpenLibrary(){
+  openLibraryPicker({
+    onConfirm: items => {
+      importAssignLibraryItemsToRows(items);
+      // If the photos step wasn't already visible, show it now.
+      document.getElementById('importPhotos').style.display = 'block';
+    },
+    title: 'Pick from library',
+    subtitle: "Select images to add to this import. We'll match them to products by filename, same as file drops.",
+  });
+}
+// Add-product / edit-product forms use their existing image arrays; picker
+// just pushes the /img/ paths and re-renders the previews.
+function apOpenLibrary(){
+  openLibraryPicker({
+    onConfirm: items => {
+      const room = 6 - uploadedImages.length;
+      const paths = items.slice(0, Math.max(0, room)).map(m => m.path);
+      uploadedImages.push(...paths);
+      renderImgPreviews();
+      if (paths.length < items.length) toast('Product photos are capped at 6.');
+    },
+    title: 'Pick from library',
+    subtitle: 'Adds them as photos on this product.',
+  });
+}
+function epOpenLibrary(){
+  openLibraryPicker({
+    onConfirm: items => {
+      const room = 6 - editUploadedImages.length;
+      const paths = items.slice(0, Math.max(0, room)).map(m => m.path);
+      editUploadedImages.push(...paths);
+      epRenderImgPreviews();
+      if (paths.length < items.length) toast('Product photos are capped at 6.');
+    },
+    title: 'Pick from library',
+    subtitle: 'Adds them as photos on this product.',
+  });
 }
 function _revokeIfBlob(p){ if (p.url && p.url.startsWith('blob:')) URL.revokeObjectURL(p.url); }
 function importClearPhotos(){
