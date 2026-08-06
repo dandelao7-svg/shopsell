@@ -456,6 +456,10 @@ tr:hover td{background:#fafaf7}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
       Add product
     </a>
+    <a class="nav-item" onclick="showDash('media')" id="nav-media">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      Media
+    </a>
     <a class="nav-item" onclick="showDash('customers')" id="nav-customers">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       Customers
@@ -955,6 +959,33 @@ tr:hover td{background:#fafaf7}
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       MEDIA LIBRARY PAGE
+  ═══════════════════════════════════════ -->
+  <div class="page-content" id="dash-media">
+    <div class="page-hd">
+      <div>
+        <div class="page-hd-title">Media library</div>
+        <div class="page-hd-sub" id="mediaCountLabel">Every image you've ever uploaded, reusable across products, hero images and variant photos.</div>
+      </div>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn secondary sm" onclick="mediaPickToUpload()">Upload images</button>
+      </div>
+    </div>
+
+    <div id="mediaDropzone"
+         ondragover="mediaDragOver(event)" ondragleave="mediaDragLeave(event)" ondrop="mediaDrop(event)"
+         style="border:2px dashed var(--border2);border-radius:12px;padding:22px;text-align:center;color:var(--muted);background:var(--bg2);margin-bottom:16px;cursor:pointer;transition:background .15s,border-color .15s"
+         onclick="mediaPickToUpload()">
+      <div style="font-size:26px;margin-bottom:4px">🖼️</div>
+      <div style="font-size:13px;color:var(--text)">Drop image files here to add them to your library</div>
+      <div style="font-size:11px;margin-top:3px">JPEG, PNG, WebP, GIF or AVIF — up to 8 MB each. Resized to 1600px.</div>
+    </div>
+    <input type="file" id="mediaUploadInput" accept="image/*" multiple style="display:none" onchange="mediaUploadPicked(event)">
+
+    <div id="mediaGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px"></div>
   </div>
 
   <!-- ═══════════════════════════════════════
@@ -3046,6 +3077,151 @@ if(document.readyState === 'loading'){
 }
 
 // ── CUSTOMERS ──
+// ── MEDIA LIBRARY ────────────────────────────────────────────
+// Persistent, seller-scoped image library. Every /api/seller/images upload
+// (product photos, variant photos, hero, logo, import step 4, URL rehost)
+// ends up here — this page just surfaces it.
+let MEDIA_LIST = [];
+
+async function loadMediaLibrary(){
+  const token = localStorage.getItem('ss_token');
+  if(!token) return;
+  const grid = document.getElementById('mediaGrid');
+  const label = document.getElementById('mediaCountLabel');
+  grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);padding:24px 12px;font-size:13px">Loading your media…</div>';
+  try {
+    const res = await fetch('/api/seller/media', { headers: { 'Authorization':'Bearer '+token } });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ grid.innerHTML = `<div style="grid-column:1/-1;color:#c0392b;padding:12px">${escImport(data.error || 'Could not load media')}</div>`; return; }
+    MEDIA_LIST = data.items || [];
+    renderMediaGrid();
+    if(label) label.textContent = MEDIA_LIST.length
+      ? `${MEDIA_LIST.length} image${MEDIA_LIST.length===1?'':'s'} · reusable across products, hero images and variant photos.`
+      : 'Every image you upload here can be reused across products, hero images and variant photos.';
+  } catch(err){
+    console.error('loadMediaLibrary failed:', err);
+    grid.innerHTML = '<div style="grid-column:1/-1;color:#c0392b;padding:12px">Could not reach the server.</div>';
+  }
+}
+
+function _mediaSize(bytes){
+  if (!bytes) return '';
+  if (bytes < 1024)     return bytes + ' B';
+  if (bytes < 1048576)  return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+function _mediaDate(iso){
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}); }
+  catch { return ''; }
+}
+
+function renderMediaGrid(){
+  const grid = document.getElementById('mediaGrid');
+  if(!grid) return;
+  if(!MEDIA_LIST.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);padding:36px 12px;text-align:center;font-size:13px">Your library is empty. Drop images above (or upload from any product page) — they land here automatically for reuse.</div>';
+    return;
+  }
+  grid.innerHTML = MEDIA_LIST.map(m => {
+    const name = escImport(m.originalName || '(unnamed)');
+    const meta = [_mediaSize(m.byteSize), _mediaDate(m.createdAt)].filter(Boolean).join(' · ');
+    return `
+      <div style="border:1px solid var(--border);border-radius:9px;overflow:hidden;background:var(--card);display:flex;flex-direction:column">
+        <div style="aspect-ratio:1/1;background:var(--bg3);position:relative">
+          <img src="${m.path}" alt="${name}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">
+        </div>
+        <div style="padding:8px 10px;flex:1;display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${name}">${name}</div>
+          <div style="font-size:10px;color:var(--muted)">${escImport(meta)}</div>
+        </div>
+        <div style="display:flex;gap:6px;padding:6px 10px;border-top:1px solid var(--border)">
+          <button type="button" class="btn secondary sm" style="flex:1;padding:5px 8px;font-size:11px" onclick="mediaCopyPath('${m.path}')">Copy URL</button>
+          <button type="button" class="btn secondary sm" style="padding:5px 8px;font-size:11px" onclick="mediaDelete('${m.id}')" title="Delete from library">×</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function mediaCopyPath(path){
+  if (!navigator.clipboard){ toast('Clipboard unavailable in this browser'); return; }
+  navigator.clipboard.writeText(path).then(
+    () => toast('URL copied'),
+    () => toast('Could not copy')
+  );
+}
+
+async function mediaDelete(id){
+  const item = MEDIA_LIST.find(m => m.id === id);
+  const label = item?.originalName || 'this image';
+  if(!confirm(`Delete "${label}" from your library?\n\nIt won't be deleted if any product, variant or storefront is still using it.`)) return;
+  const token = localStorage.getItem('ss_token');
+  try {
+    const res = await fetch('/api/seller/media/'+encodeURIComponent(id), {
+      method:'DELETE',
+      headers:{ 'Authorization':'Bearer '+token }
+    });
+    const data = await res.json().catch(() => ({}));
+    if(res.status === 409 && data.uses){
+      const use = data.uses[0];
+      toast(`In use by ${use.kind} "${use.name}"${data.uses.length>1?` (+${data.uses.length-1} more)`:''} — remove there first.`);
+      return;
+    }
+    if(!res.ok){ toast(data.error || 'Could not delete'); return; }
+    MEDIA_LIST = MEDIA_LIST.filter(m => m.id !== id);
+    renderMediaGrid();
+    toast('Deleted');
+  } catch(err){
+    console.error('mediaDelete failed:', err);
+    toast('Network error');
+  }
+}
+
+function mediaPickToUpload(){ document.getElementById('mediaUploadInput').click(); }
+function mediaUploadPicked(e){
+  const files = [...(e.target.files || [])].filter(f => /^image\//.test(f.type));
+  if (files.length) mediaUploadFiles(files);
+  e.target.value = '';
+}
+function mediaDragOver(e){
+  e.preventDefault();
+  const el = document.getElementById('mediaDropzone');
+  if (el){ el.style.background = 'var(--bg3)'; el.style.borderColor = 'var(--accent)'; }
+}
+function mediaDragLeave(e){
+  e.preventDefault();
+  const el = document.getElementById('mediaDropzone');
+  if (el){ el.style.background = 'var(--bg2)'; el.style.borderColor = 'var(--border2)'; }
+}
+async function mediaDrop(e){
+  e.preventDefault();
+  mediaDragLeave(e);
+  const files = [...(e.dataTransfer && e.dataTransfer.files || [])].filter(f => /^image\//.test(f.type));
+  if (files.length) mediaUploadFiles(files);
+}
+async function mediaUploadFiles(files){
+  const label = document.getElementById('mediaCountLabel');
+  let done = 0, failed = 0;
+  for (const f of files){
+    if (label) label.textContent = `Uploading ${done+1} of ${files.length}: ${f.name}`;
+    try {
+      const url = await uploadImage(await compressImage(f, 1600, 0.85), f.name);
+      // Optimistic insert at the top — matches "newest first" from the server.
+      MEDIA_LIST.unshift({ id: url.replace(/^\/img\//,''), path:url, originalName:f.name, byteSize:f.size, mime:f.type, createdAt:new Date().toISOString() });
+    } catch(err){
+      console.warn('Media upload failed for', f.name, err);
+      failed++;
+    }
+    done++;
+  }
+  renderMediaGrid();
+  if (label){
+    label.textContent = failed
+      ? `${done - failed} uploaded, ${failed} failed — try again on failed files.`
+      : `${MEDIA_LIST.length} image${MEDIA_LIST.length===1?'':'s'} · reusable across products, hero images and variant photos.`;
+  }
+}
+
 async function loadCustomers(){
   const token = localStorage.getItem('ss_token');
   if(!token) return;
@@ -3363,7 +3539,7 @@ function showDash(name){
   if(navEl) navEl.classList.add('active');
   const titles = {
     overview:'Overview', orders:'Orders', products:'Products',
-    'add-product':'Add product', customers:'Customers',
+    'add-product':'Add product', media:'Media library', customers:'Customers',
     storefront:'Storefront pages', discounts:'Discount codes', domain:'Domain',
     stripe:'Stripe payment setup', payouts:'Payouts',
     modules:'Add-on modules', settings:'Settings', billing:'My subscription'
@@ -3379,6 +3555,7 @@ function showDash(name){
   if(name === 'stripe') loadStripeConfig();
   if(name === 'discounts') loadDiscounts();
   if(name === 'add-product') initVariantEditor(ADD_VAR_CTX);
+  if(name === 'media') loadMediaLibrary();
   if(name === 'overview'){ loadAnalytics(); loadOnboarding(); }
   if(name === 'customers') loadCustomers();
   if(name === 'domain') loadDomain();
