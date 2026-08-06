@@ -281,6 +281,8 @@ tr:hover td{background:#fafaf7}
 .alert.success{background:var(--green-light);border:1px solid var(--green-border);color:var(--green)}
 .alert.warning{background:var(--amber-bg);border:1px solid #f5c475;color:var(--amber)}
 .alert.info{background:var(--blue-bg);border:1px solid #bfdbfe;color:var(--blue)}
+.import-drop-row.import-drop-hover{background:var(--blue-bg) !important;outline:2px dashed var(--accent);outline-offset:-2px}
+.import-drop-row [draggable="true"]:active{cursor:grabbing}
 .alert.error{background:var(--red-bg);border:1px solid #fecaca;color:var(--red)}
 .alert-icon{flex-shrink:0;margin-top:1px}
 
@@ -1888,7 +1890,7 @@ tr:hover td{background:#fafaf7}
 
     <div id="importPhotos" style="display:none;margin-top:14px">
       <label style="font-weight:600;font-size:13px">Step 4 — Add photos <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-      <div style="font-size:12px;color:var(--muted);margin:4px 0 8px">Drop image files (or a whole folder) — we match each one to a product by looking for its SKU in the filename or folder name. Case, spaces, dashes, underscores and dots don't matter: <code>TEE-001</code> attaches <code>TEE-001.jpg</code>, <code>tee_001.jpg</code>, <code>TEE001.jpg</code>, <code>IMG_1234-TEE-001.jpg</code>, and any file inside a folder called <code>TEE-001/</code>. Multiple photos per SKU become photos 2, 3, … in filename order.</div>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 8px">Drop image files (or a whole folder) — we try to match each one to a product by SKU in the filename (case + separators don't matter), then show them below so you can drag anything that landed in the wrong place. Reorder within a product by dragging.</div>
       <div id="importDrop"
            ondragover="importDragOver(event)" ondragleave="importDragLeave(event)" ondrop="importDrop(event)"
            style="border:2px dashed var(--border2);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;background:var(--bg2);transition:background .15s,border-color .15s"
@@ -1904,6 +1906,7 @@ tr:hover td{background:#fafaf7}
         <button type="button" class="btn secondary sm" id="importClearPhotosBtn" onclick="importClearPhotos()" style="margin-left:auto;display:none">Clear photos</button>
       </div>
       <div id="importPhotoStatus" style="font-size:12px;margin-top:10px;color:var(--muted)"></div>
+      <div id="importPhotoGrid" style="margin-top:10px;display:none;border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
     </div>
 
     <div id="importResult" style="display:none;margin-top:14px"></div>
@@ -4394,12 +4397,19 @@ function applyMapping(){
   }
 }
 
-// Photos-per-SKU state for Step 4. Files are matched to product rows by the
-// SKU appearing (with a non-alphanumeric boundary) inside the filename.
-// Kept flat here rather than nested per-row so a re-ordered preview doesn't
-// lose the mapping. Reset on modal open / close.
-let IMPORT_PHOTOS = {};   // { skuLower: [File, ...] }
+// Photos-per-SKU state for Step 4. Each entry is a wrapped photo object:
+//   { id, file, url }
+// where id is a stable local id used as the drag payload, file is the original
+// File (uploaded on Import), and url is a blob URL for the thumbnail preview.
+// Two buckets: matched (grouped by SKU) and unmatched (Canva-style pool).
+// Filename matcher runs once as a smart-first-pass; drag/drop reassigns.
+// Reset on modal open / close (blob URLs revoked).
+let IMPORT_PHOTOS = {};   // { skuLower: [ {id, file, url}, ... ] }
 let IMPORT_PHOTOS_UNMATCHED = [];
+let _photoIdCounter = 0;
+function wrapPhoto(file){
+  return { id: 'ph_' + (++_photoIdCounter), file, url: URL.createObjectURL(file) };
+}
 
 function importResetDropStyle(){
   const el = document.getElementById('importDrop');
@@ -4434,10 +4444,15 @@ function importPickFolder(){
   inp.click();
 }
 function importClearPhotos(){
+  // Revoke every blob URL so we don't leak memory across repeated opens.
+  for (const arr of Object.values(IMPORT_PHOTOS)) for (const p of arr) URL.revokeObjectURL(p.url);
+  for (const p of IMPORT_PHOTOS_UNMATCHED) URL.revokeObjectURL(p.url);
   IMPORT_PHOTOS = {};
   IMPORT_PHOTOS_UNMATCHED = [];
   const s = document.getElementById('importPhotoStatus');
   if (s) s.innerHTML = '';
+  const g = document.getElementById('importPhotoGrid');
+  if (g) { g.innerHTML = ''; g.style.display = 'none'; }
   const b = document.getElementById('importClearPhotosBtn');
   if (b) b.style.display = 'none';
 }
@@ -4477,29 +4492,155 @@ function importFilenameMatchesSku(filename, sku){
 
 function importAssignFilesToRows(files){
   const skus = [...new Set(importRows.map(r => (r.sku || '').trim()).filter(Boolean))];
+  const sortedSkus = skus.sort((a, b) => b.length - a.length);   // longest first: TEE-001-XL beats TEE-001
   for (const f of files){
     let matchedSku = null;
     // Prefer webkitRelativePath so a "Pick a folder" upload keeps its folder
     // segments — SKU-named folders (photos/TEE-001/main.jpg) are a common
     // organization pattern and should count as a match.
     const path = f.webkitRelativePath || f.name || '';
-    // Try longest SKUs first so "TEE-001-XL" wins over "TEE-001" when both are present.
-    for (const sku of skus.sort((a, b) => b.length - a.length)){
+    for (const sku of sortedSkus){
       if (importFilenameMatchesSku(path, sku)){ matchedSku = sku; break; }
     }
+    const wrapped = wrapPhoto(f);
     if (matchedSku){
       const key = matchedSku.toLowerCase();
-      (IMPORT_PHOTOS[key] = IMPORT_PHOTOS[key] || []).push(f);
+      (IMPORT_PHOTOS[key] = IMPORT_PHOTOS[key] || []).push(wrapped);
     } else {
-      IMPORT_PHOTOS_UNMATCHED.push(f);
+      IMPORT_PHOTOS_UNMATCHED.push(wrapped);
     }
   }
-  // Deterministic order — filename alphabetical, so TEE-001-1.jpg comes before TEE-001-2.jpg.
+  // Deterministic first-pass order — filename alphabetical (numeric-aware), so
+  // TEE-001-1.jpg comes before TEE-001-2.jpg. Drag-drop later can reorder.
   for (const key of Object.keys(IMPORT_PHOTOS)){
-    IMPORT_PHOTOS[key].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    IMPORT_PHOTOS[key].sort((a, b) => a.file.name.localeCompare(b.file.name, undefined, { numeric: true }));
   }
   renderImportPhotoStatus();
+  renderImportPhotoGrid();
   document.getElementById('importClearPhotosBtn').style.display = '';
+}
+
+// ── Drag-and-drop grid (Canva-style) — reassign photos after the fact. ──
+// Each thumbnail is draggable and carries its stable id as the drag payload.
+// Each product row (plus the "Not yet matched" pool) is a drop target.
+function findPhotoById(id){
+  for (const [key, arr] of Object.entries(IMPORT_PHOTOS)){
+    const i = arr.findIndex(p => p.id === id);
+    if (i >= 0) return { bucket: key, idx: i, photo: arr[i] };
+  }
+  const i = IMPORT_PHOTOS_UNMATCHED.findIndex(p => p.id === id);
+  if (i >= 0) return { bucket: '_unmatched', idx: i, photo: IMPORT_PHOTOS_UNMATCHED[i] };
+  return null;
+}
+function removePhotoAt(bucket, idx){
+  if (bucket === '_unmatched') return IMPORT_PHOTOS_UNMATCHED.splice(idx, 1)[0];
+  const arr = IMPORT_PHOTOS[bucket];
+  const removed = arr.splice(idx, 1)[0];
+  if (arr.length === 0) delete IMPORT_PHOTOS[bucket];
+  return removed;
+}
+function addPhotoTo(bucket, photo){
+  if (bucket === '_unmatched') IMPORT_PHOTOS_UNMATCHED.push(photo);
+  else (IMPORT_PHOTOS[bucket] = IMPORT_PHOTOS[bucket] || []).push(photo);
+}
+function movePhotoTo(id, toBucket){
+  const found = findPhotoById(id);
+  if (!found) return;
+  if (found.bucket === toBucket) return;
+  removePhotoAt(found.bucket, found.idx);
+  addPhotoTo(toBucket, found.photo);
+  renderImportPhotoStatus();
+  renderImportPhotoGrid();
+}
+function deletePhotoById(id){
+  const found = findPhotoById(id);
+  if (!found) return;
+  URL.revokeObjectURL(found.photo.url);
+  removePhotoAt(found.bucket, found.idx);
+  renderImportPhotoStatus();
+  renderImportPhotoGrid();
+}
+
+function importThumbDragStart(e, id){
+  e.dataTransfer.setData('text/plain', id);
+  e.dataTransfer.effectAllowed = 'move';
+}
+function importGridDragOver(e){
+  e.preventDefault();
+  e.currentTarget.classList.add('import-drop-hover');
+}
+function importGridDragLeave(e){
+  // relatedTarget = where the cursor is now. If still inside this row, ignore.
+  if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+  e.currentTarget.classList.remove('import-drop-hover');
+}
+function importGridDrop(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('import-drop-hover');
+  const bucket = e.currentTarget.getAttribute('data-bucket');
+  const id = e.dataTransfer.getData('text/plain');
+  if (id && bucket) movePhotoTo(id, bucket);
+}
+
+function _photoThumb(p){
+  const nameEsc = escImport(p.file.name);
+  return `<div draggable="true" data-id="${p.id}" ondragstart="importThumbDragStart(event,'${p.id}')" title="${nameEsc}" style="position:relative;width:56px;height:56px;border-radius:6px;overflow:hidden;border:1px solid var(--border);cursor:grab;background:var(--bg3);flex-shrink:0">
+    <img src="${p.url}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none">
+    <button type="button" onclick="deletePhotoById('${p.id}')" title="Remove photo" style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,0.65);color:#fff;border:0;width:16px;height:16px;border-radius:50%;font-size:11px;line-height:14px;cursor:pointer;padding:0">×</button>
+  </div>`;
+}
+function renderImportPhotoGrid(){
+  const el = document.getElementById('importPhotoGrid');
+  if (!el) return;
+  const totalPhotos = Object.values(IMPORT_PHOTOS).reduce((n, a) => n + a.length, 0) + IMPORT_PHOTOS_UNMATCHED.length;
+  if (!totalPhotos){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+
+  // Product order = order in the CSV; dedupe on SKU. Names come from the first
+  // row that had that SKU (variant groups collapse into one row visually here).
+  const seen = new Set();
+  const products = [];
+  for (const r of importRows){
+    const sku = String(r.sku || '').trim();
+    if (!sku) continue;
+    const key = sku.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    products.push({ sku, key, name: r.name || sku });
+  }
+
+  const rowStyle = 'padding:10px 12px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;transition:background .12s';
+  const rowsHtml = products.map(p => {
+    const photos = IMPORT_PHOTOS[p.key] || [];
+    return `
+      <div class="import-drop-row" data-bucket="${escImport(p.key)}"
+           ondragover="importGridDragOver(event)" ondragleave="importGridDragLeave(event)" ondrop="importGridDrop(event)"
+           style="${rowStyle}">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escImport(p.name)}</div>
+          <div style="font-size:11px;color:var(--muted)">SKU ${escImport(p.sku)} · ${photos.length} photo${photos.length===1?'':'s'}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-height:56px;align-items:center">
+          ${photos.length ? photos.map(_photoThumb).join('') : `<span style="font-size:11px;color:var(--muted);font-style:italic">drop photos here</span>`}
+        </div>
+      </div>`;
+  }).join('');
+
+  const um = IMPORT_PHOTOS_UNMATCHED;
+  const umHtml = um.length ? `
+    <div class="import-drop-row import-drop-unmatched" data-bucket="_unmatched"
+         ondragover="importGridDragOver(event)" ondragleave="importGridDragLeave(event)" ondrop="importGridDrop(event)"
+         style="${rowStyle};background:#fbf6e3;border-top:2px solid #e8d78a;border-bottom:none">
+      <div style="min-width:0">
+        <div style="font-weight:600;font-size:13px;color:#8a6d1c">⚠ Not yet matched (${um.length})</div>
+        <div style="font-size:11px;color:#8a6d1c">Drag onto a product row above to assign.</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        ${um.map(_photoThumb).join('')}
+      </div>
+    </div>` : '';
+
+  el.innerHTML = rowsHtml + umHtml;
 }
 
 function renderImportPhotoStatus(){
@@ -4561,10 +4702,17 @@ function renderImportPreview(){
   document.getElementById('importPhotos').style.display = 'block';
   // Re-run the matcher against the (possibly re-mapped) SKUs so previously
   // dropped photos still line up if the seller changed their column mapping.
+  // Unwrap to raw Files, revoke the stale blob URLs, then feed them back through
+  // importAssignFilesToRows which will wrap again — cleaner than trying to
+  // move wrapped photos between buckets in place.
   if (Object.keys(IMPORT_PHOTOS).length || IMPORT_PHOTOS_UNMATCHED.length){
-    const all = [...IMPORT_PHOTOS_UNMATCHED, ...Object.values(IMPORT_PHOTOS).flat()];
+    const wrapped = [...IMPORT_PHOTOS_UNMATCHED, ...Object.values(IMPORT_PHOTOS).flat()];
+    const rawFiles = wrapped.map(p => p.file);
+    for (const p of wrapped) URL.revokeObjectURL(p.url);
     IMPORT_PHOTOS = {}; IMPORT_PHOTOS_UNMATCHED = [];
-    importAssignFilesToRows(all);
+    importAssignFilesToRows(rawFiles);
+  } else {
+    renderImportPhotoGrid();
   }
 }
 
@@ -4585,14 +4733,14 @@ async function runImport(){
     if (totalPhotos){
       const status = document.getElementById('importPhotoStatus');
       let done = 0, failed = 0;
-      for (const [key, files] of Object.entries(IMPORT_PHOTOS)){
+      for (const [key, photos] of Object.entries(IMPORT_PHOTOS)){
         skuUrls[key] = [];
-        for (const f of files){
+        for (const p of photos){
           try {
-            const url = await uploadImage(await compressImage(f, 1600, 0.85));
+            const url = await uploadImage(await compressImage(p.file, 1600, 0.85));
             skuUrls[key].push(url);
           } catch (err){
-            console.warn('Photo upload failed for', f.name, err);
+            console.warn('Photo upload failed for', p.file.name, err);
             failed++;
           }
           done++;
