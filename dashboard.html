@@ -4653,7 +4653,7 @@ function renderImportPhotoStatus(){
     parts.push(`<span style="color:var(--text)">✓ ${totalMatched} photo${totalMatched===1?'':'s'} matched to ${matchedSkus.length} product${matchedSkus.length===1?'':'s'}.</span>`);
   }
   if (IMPORT_PHOTOS_UNMATCHED.length){
-    const preview = IMPORT_PHOTOS_UNMATCHED.slice(0, 5).map(f => escImport(f.name)).join(', ');
+    const preview = IMPORT_PHOTOS_UNMATCHED.slice(0, 5).map(p => escImport(p.file.name)).join(', ');
     const more = IMPORT_PHOTOS_UNMATCHED.length > 5 ? ` and ${IMPORT_PHOTOS_UNMATCHED.length - 5} more` : '';
     parts.push(`<span style="color:#b58900">⚠ ${IMPORT_PHOTOS_UNMATCHED.length} file${IMPORT_PHOTOS_UNMATCHED.length===1?'':'s'} did not match any SKU: ${preview}${more}.</span>`);
   }
