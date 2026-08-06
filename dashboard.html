@@ -1931,9 +1931,10 @@ tr:hover td{background:#fafaf7}
         <div style="font-size:11px;margin-top:3px">Photos are resized to 1600px and uploaded when you press Import.</div>
       </div>
       <input type="file" id="importPhotoInput" accept="image/*" multiple webkitdirectory="" style="display:none" onchange="importPhotosPicked(event)">
-      <div style="display:flex;gap:8px;margin-top:8px">
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
         <button type="button" class="btn secondary sm" onclick="importPickFiles()">Pick files</button>
         <button type="button" class="btn secondary sm" onclick="importPickFolder()">Pick a folder</button>
+        <button type="button" class="btn secondary sm" onclick="importOpenLibrary()">Pick from library</button>
         <button type="button" class="btn secondary sm" id="importClearPhotosBtn" onclick="importClearPhotos()" style="margin-left:auto;display:none">Clear photos</button>
       </div>
       <div id="importPhotoStatus" style="font-size:12px;margin-top:10px;color:var(--muted)"></div>
@@ -1946,6 +1947,27 @@ tr:hover td{background:#fafaf7}
       <button class="btn secondary sm" onclick="closeImportModal()">Cancel</button>
       <div class="right-group">
         <button class="btn primary sm" id="importRunBtn" onclick="runImport()" disabled>Import products</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LIBRARY PICKER (opened from Import Products step 4) -->
+<div class="modal-overlay" id="importLibraryOverlay" onclick="importCloseLibrary(event)">
+  <div class="modal" style="max-width:820px" onclick="event.stopPropagation()">
+    <div class="modal-hd">
+      <div>
+        <div style="font-weight:600;font-size:15px">Pick from library</div>
+        <div style="font-size:12px;color:var(--muted)">Select the images you want to add to this import — we'll match them to products by filename, same as file drops.</div>
+      </div>
+      <button class="modal-close" onclick="importCloseLibrary()" title="Close">×</button>
+    </div>
+    <div id="importLibraryGrid" style="padding:14px;max-height:60vh;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px"></div>
+    <div class="modal-actions">
+      <div id="importLibrarySelCount" style="font-size:12px;color:var(--muted);align-self:center;margin-right:auto">0 selected</div>
+      <button class="btn secondary sm" onclick="importCloseLibrary()">Cancel</button>
+      <div class="right-group">
+        <button class="btn primary sm" id="importLibraryAddBtn" onclick="importLibraryAddSelected()" disabled>Add to import</button>
       </div>
     </div>
   </div>
@@ -4585,8 +4607,27 @@ let IMPORT_PHOTOS = {};   // { skuLower: [ {id, file, url}, ... ] }
 let IMPORT_PHOTOS_UNMATCHED = [];
 let _photoIdCounter = 0;
 function wrapPhoto(file){
-  return { id: 'ph_' + (++_photoIdCounter), file, url: URL.createObjectURL(file) };
+  // Local file — needs upload at Import time. matchName includes the folder
+  // segments (webkitRelativePath) so `photos/TEE-001/main.jpg` matches SKU TEE-001.
+  return {
+    id: 'ph_' + (++_photoIdCounter),
+    file, url: URL.createObjectURL(file),
+    name: file.name,
+    matchName: file.webkitRelativePath || file.name,
+  };
 }
+function wrapLibraryPhoto(item){
+  // Library item — already hosted. `path` short-circuits the upload loop in
+  // runImport (no re-upload needed). url = path so the thumb renders straight
+  // from /img/<id>.
+  const name = item.originalName || (item.path || '').split('/').pop() || 'photo';
+  return {
+    id: 'ph_' + (++_photoIdCounter),
+    path: item.path, url: item.path,
+    name, matchName: name,
+  };
+}
+function photoDisplayName(p){ return p.file ? p.file.name : (p.name || 'photo'); }
 
 function importResetDropStyle(){
   const el = document.getElementById('importDrop');
@@ -4620,10 +4661,80 @@ function importPickFolder(){
   inp.setAttribute('webkitdirectory', '');
   inp.click();
 }
+
+// ── Library picker inside the Import Products modal ─────────────────────
+// Fetches everything in the seller's media library and lets them tick which
+// items get added to this import — matched by filename against product SKUs,
+// same as file drops. Selected items skip upload at Import time (see runImport).
+let _importLibraryItems = [];
+let _importLibrarySelected = new Set();
+async function importOpenLibrary(){
+  document.getElementById('importLibraryOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  _importLibrarySelected.clear();
+  const grid = document.getElementById('importLibraryGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);padding:24px;font-size:13px">Loading your library…</div>';
+  const token = localStorage.getItem('ss_token');
+  try {
+    const res = await fetch('/api/seller/media', { headers: { 'Authorization':'Bearer '+token } });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ grid.innerHTML = `<div style="grid-column:1/-1;color:#c0392b;padding:12px">${escImport(data.error || 'Could not load library')}</div>`; return; }
+    _importLibraryItems = data.items || [];
+    renderImportLibraryGrid();
+  } catch(err){
+    console.error('importOpenLibrary failed:', err);
+    grid.innerHTML = '<div style="grid-column:1/-1;color:#c0392b;padding:12px">Could not reach the server.</div>';
+  }
+}
+function importCloseLibrary(e){
+  // Only close on the overlay click, not on child clicks.
+  if (e && e.target && e.target.id !== 'importLibraryOverlay' && e.type === 'click') return;
+  document.getElementById('importLibraryOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function renderImportLibraryGrid(){
+  const grid = document.getElementById('importLibraryGrid');
+  if (!_importLibraryItems.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);padding:36px 12px;text-align:center;font-size:13px">Your library is empty. Uploads from any product page — or from the Media tab — will appear here.</div>';
+    updateImportLibrarySelCount(); return;
+  }
+  grid.innerHTML = _importLibraryItems.map(m => {
+    const name = escImport(m.originalName || '(unnamed)');
+    const selected = _importLibrarySelected.has(m.id);
+    return `
+      <div onclick="toggleImportLibrarySelect('${m.id}')" style="border:2px solid ${selected?'var(--accent)':'var(--border)'};border-radius:8px;overflow:hidden;cursor:pointer;background:var(--card);position:relative;user-select:none">
+        <div style="aspect-ratio:1/1;background:var(--bg3)"><img src="${m.path}" alt="${name}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"></div>
+        <div style="padding:6px 8px;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${name}">${name}</div>
+        ${selected ? '<div style="position:absolute;top:6px;right:6px;background:var(--accent);color:#fff;border-radius:50%;width:22px;height:22px;font-size:14px;line-height:22px;text-align:center">✓</div>' : ''}
+      </div>`;
+  }).join('');
+  updateImportLibrarySelCount();
+}
+function toggleImportLibrarySelect(id){
+  if (_importLibrarySelected.has(id)) _importLibrarySelected.delete(id);
+  else _importLibrarySelected.add(id);
+  renderImportLibraryGrid();
+}
+function updateImportLibrarySelCount(){
+  const n = _importLibrarySelected.size;
+  document.getElementById('importLibrarySelCount').textContent = `${n} selected`;
+  document.getElementById('importLibraryAddBtn').disabled = n === 0;
+}
+function importLibraryAddSelected(){
+  const picked = _importLibraryItems.filter(m => _importLibrarySelected.has(m.id));
+  if (!picked.length) return;
+  importAssignLibraryItemsToRows(picked);
+  importCloseLibrary();
+  // If the photos step wasn't already visible (e.g. seller went straight to
+  // library before dropping anything), show it now.
+  document.getElementById('importPhotos').style.display = 'block';
+}
+function _revokeIfBlob(p){ if (p.url && p.url.startsWith('blob:')) URL.revokeObjectURL(p.url); }
 function importClearPhotos(){
   // Revoke every blob URL so we don't leak memory across repeated opens.
-  for (const arr of Object.values(IMPORT_PHOTOS)) for (const p of arr) URL.revokeObjectURL(p.url);
-  for (const p of IMPORT_PHOTOS_UNMATCHED) URL.revokeObjectURL(p.url);
+  // Library-sourced photos have /img/ URLs — safe to skip.
+  for (const arr of Object.values(IMPORT_PHOTOS)) for (const p of arr) _revokeIfBlob(p);
+  for (const p of IMPORT_PHOTOS_UNMATCHED) _revokeIfBlob(p);
   IMPORT_PHOTOS = {};
   IMPORT_PHOTOS_UNMATCHED = [];
   const s = document.getElementById('importPhotoStatus');
@@ -4667,19 +4778,18 @@ function importFilenameMatchesSku(filename, sku){
   return beforeOK && afterOK;
 }
 
-function importAssignFilesToRows(files){
+// Shared bucketing routine — takes already-wrapped photo objects (either from
+// File drops via wrapPhoto or from the media library via wrapLibraryPhoto) and
+// distributes them into IMPORT_PHOTOS / IMPORT_PHOTOS_UNMATCHED using each
+// object's `matchName` against every product SKU in the current importRows.
+function importAssignPhotoObjects(wrappedPhotos){
   const skus = [...new Set(importRows.map(r => (r.sku || '').trim()).filter(Boolean))];
   const sortedSkus = skus.sort((a, b) => b.length - a.length);   // longest first: TEE-001-XL beats TEE-001
-  for (const f of files){
+  for (const wrapped of wrappedPhotos){
     let matchedSku = null;
-    // Prefer webkitRelativePath so a "Pick a folder" upload keeps its folder
-    // segments — SKU-named folders (photos/TEE-001/main.jpg) are a common
-    // organization pattern and should count as a match.
-    const path = f.webkitRelativePath || f.name || '';
     for (const sku of sortedSkus){
-      if (importFilenameMatchesSku(path, sku)){ matchedSku = sku; break; }
+      if (importFilenameMatchesSku(wrapped.matchName || '', sku)){ matchedSku = sku; break; }
     }
-    const wrapped = wrapPhoto(f);
     if (matchedSku){
       const key = matchedSku.toLowerCase();
       (IMPORT_PHOTOS[key] = IMPORT_PHOTOS[key] || []).push(wrapped);
@@ -4690,11 +4800,18 @@ function importAssignFilesToRows(files){
   // Deterministic first-pass order — filename alphabetical (numeric-aware), so
   // TEE-001-1.jpg comes before TEE-001-2.jpg. Drag-drop later can reorder.
   for (const key of Object.keys(IMPORT_PHOTOS)){
-    IMPORT_PHOTOS[key].sort((a, b) => a.file.name.localeCompare(b.file.name, undefined, { numeric: true }));
+    IMPORT_PHOTOS[key].sort((a, b) => photoDisplayName(a).localeCompare(photoDisplayName(b), undefined, { numeric: true }));
   }
   renderImportPhotoStatus();
   renderImportPhotoGrid();
   document.getElementById('importClearPhotosBtn').style.display = '';
+}
+
+function importAssignFilesToRows(files){
+  importAssignPhotoObjects(files.map(wrapPhoto));
+}
+function importAssignLibraryItemsToRows(items){
+  importAssignPhotoObjects(items.map(wrapLibraryPhoto));
 }
 
 // ── Drag-and-drop grid (Canva-style) — reassign photos after the fact. ──
@@ -4760,7 +4877,7 @@ function importGridDrop(e){
 }
 
 function _photoThumb(p){
-  const nameEsc = escImport(p.file.name);
+  const nameEsc = escImport(photoDisplayName(p));
   return `<div draggable="true" data-id="${p.id}" ondragstart="importThumbDragStart(event,'${p.id}')" title="${nameEsc}" style="position:relative;width:56px;height:56px;border-radius:6px;overflow:hidden;border:1px solid var(--border);cursor:grab;background:var(--bg3);flex-shrink:0">
     <img src="${p.url}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none">
     <button type="button" onclick="deletePhotoById('${p.id}')" title="Remove photo" style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,0.65);color:#fff;border:0;width:16px;height:16px;border-radius:50%;font-size:11px;line-height:14px;cursor:pointer;padding:0">×</button>
@@ -4830,7 +4947,7 @@ function renderImportPhotoStatus(){
     parts.push(`<span style="color:var(--text)">✓ ${totalMatched} photo${totalMatched===1?'':'s'} matched to ${matchedSkus.length} product${matchedSkus.length===1?'':'s'}.</span>`);
   }
   if (IMPORT_PHOTOS_UNMATCHED.length){
-    const preview = IMPORT_PHOTOS_UNMATCHED.slice(0, 5).map(p => escImport(p.file.name)).join(', ');
+    const preview = IMPORT_PHOTOS_UNMATCHED.slice(0, 5).map(p => escImport(photoDisplayName(p))).join(', ');
     const more = IMPORT_PHOTOS_UNMATCHED.length > 5 ? ` and ${IMPORT_PHOTOS_UNMATCHED.length - 5} more` : '';
     parts.push(`<span style="color:#b58900">⚠ ${IMPORT_PHOTOS_UNMATCHED.length} file${IMPORT_PHOTOS_UNMATCHED.length===1?'':'s'} did not match any SKU: ${preview}${more}.</span>`);
   }
@@ -4878,16 +4995,13 @@ function renderImportPreview(){
   document.getElementById('importPreview').style.display = 'block';
   document.getElementById('importPhotos').style.display = 'block';
   // Re-run the matcher against the (possibly re-mapped) SKUs so previously
-  // dropped photos still line up if the seller changed their column mapping.
-  // Unwrap to raw Files, revoke the stale blob URLs, then feed them back through
-  // importAssignFilesToRows which will wrap again — cleaner than trying to
-  // move wrapped photos between buckets in place.
+  // added photos still line up if the seller changed their column mapping.
+  // Photos are re-bucketed in place — we don't re-wrap, so blob URLs stay
+  // valid and library-sourced photos (no File, just a path) keep working.
   if (Object.keys(IMPORT_PHOTOS).length || IMPORT_PHOTOS_UNMATCHED.length){
     const wrapped = [...IMPORT_PHOTOS_UNMATCHED, ...Object.values(IMPORT_PHOTOS).flat()];
-    const rawFiles = wrapped.map(p => p.file);
-    for (const p of wrapped) URL.revokeObjectURL(p.url);
     IMPORT_PHOTOS = {}; IMPORT_PHOTOS_UNMATCHED = [];
-    importAssignFilesToRows(rawFiles);
+    importAssignPhotoObjects(wrapped);
   } else {
     renderImportPhotoGrid();
   }
@@ -4921,7 +5035,7 @@ async function runImport(){
             else       { url = await uploadImage(await compressImage(p.file, 1600, 0.85), p.file.name); }
             skuUrls[key].push(url);
           } catch (err){
-            console.warn('Photo upload failed for', p.file.name, err);
+            console.warn('Photo upload failed for', photoDisplayName(p), err);
             failed++;
           }
           done++;
