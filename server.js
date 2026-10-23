@@ -6904,7 +6904,11 @@ app.use((err, req, res, next) => {
 // tables. If schema init fails, exit non-zero and let the platform restart us
 // with backoff rather than run in a broken state.
 db.schemaReady
-  .then(() => {
+  .then(async () => {
+    // Key rotation: while ENCRYPTION_KEY_OLD is set, move every stored secret
+    // to the new key before serving. A failure is logged, never fatal —
+    // decrypt() still reads old-key values while both keys are set.
+    try { await require('./lib/rekey').rekeyAll(db.pool); } catch (e) { console.error('[rekey] failed:', e.message); }
     app.listen(PORT, () => {
       console.log(`
 ╔══════════════════════════════════════════╗
