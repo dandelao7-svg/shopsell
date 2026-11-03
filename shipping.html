@@ -73,6 +73,9 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
   --card:#ffffff; --card2:#faf9f5;
   --border:#e5e5e0; --border2:#d5d5cc;
   --text:#0f0f1a; --text2:#5a5a70; --text3:#8a8a9a; --muted:#6b7280;
+  /* Status colors tuned for the dark theme wash out on white; deeper shades
+     of the same hues keep "On time", "Confirmed", "Active" readable. */
+  --green:#047857; --amber:#b45309; --blue:#1d4ed8; --ups-gold:#a16207;
 }
 
 /* ── LAYOUT ── */
@@ -358,7 +361,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 </head>
 <body>
 <!-- Theme preload — set data-theme BEFORE anything renders so there's no flash. -->
-<script>(function(){try{var t=localStorage.getItem('ss_theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<!-- Light is the default (like the dashboard); dark only if the seller chose it. -->
+<script>(function(){var t=null;try{t=localStorage.getItem('ss_theme');}catch(e){}document.documentElement.dataset.theme=t==='dark'?'dark':'light';})();</script>
 
 <div class="app">
 
@@ -1847,7 +1851,7 @@ function logout(){
 // 'light' (defined via :root[data-theme="light"] overrides at the top of
 // this file's CSS). Preload script in <body> reads localStorage before
 // paint so there's no flash on refresh.
-function currentTheme(){ return document.documentElement.dataset.theme || 'dark'; }
+function currentTheme(){ return document.documentElement.dataset.theme || 'light'; }
 function toggleTheme(){
   const next = currentTheme() === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
