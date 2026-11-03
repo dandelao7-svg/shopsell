@@ -162,6 +162,38 @@ footer{border-top:1px solid var(--border);padding:48px 0 40px;color:var(--muted)
   .hero{padding:56px 0 40px}
 }
 .brand-mark{background:#1b3a6b!important;color:#c9a227!important;box-shadow:inset 0 0 0 1px rgba(201,162,39,.55)}
+/* Hero: headline left, product picture right, so the product shows above the
+   fold (stacks and centers on phones). */
+.hero{text-align:left;padding:72px 0 64px}
+.hero-grid{display:grid;grid-template-columns:1fr 1.05fr;gap:48px;align-items:center}
+.hero h1{margin:16px 0 0}
+.hero .lede{margin:18px 0 0;max-width:42ch}
+.hero-cta{justify-content:flex-start}
+.hero .mock{margin:0}
+.hero .mock-body{grid-template-columns:1fr}
+.hero .mock-col+.mock-col{border-left:none;border-top:1px solid var(--border)}
+.ticks{list-style:none;display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;padding:0;font-size:14px;color:var(--text2)}
+.ticks li::before{content:'✓';color:var(--gold-text);font-weight:700;margin-right:7px}
+/* Numbers row */
+.numbers{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg3)}
+.numbers-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding-top:34px;padding-bottom:34px}
+.numbers-grid b{display:block;font-family:'Syne',sans-serif;font-size:2rem;color:var(--accent);line-height:1.1}
+.numbers-grid span{display:block;margin-top:6px;font-size:14px;color:var(--text2)}
+/* FAQ */
+.faq-wrap{max-width:780px}
+.faq{border-bottom:1px solid var(--border);padding:4px 0}
+.faq summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;font-weight:600;font-size:1.05rem;color:var(--text)}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:'+';font-size:1.4rem;color:var(--gold-text);flex-shrink:0}
+.faq[open] summary::after{content:'–'}
+.faq p{color:var(--text2);padding:0 0 18px;max-width:68ch}
+@media(max-width:860px){
+  .hero{text-align:center}
+  .hero-grid{grid-template-columns:1fr;gap:40px}
+  .hero h1,.hero .lede{margin-left:auto;margin-right:auto}
+  .hero-cta,.ticks{justify-content:center}
+  .numbers-grid{grid-template-columns:1fr 1fr}
+}
 /* Navy top bar with white text. Its "Start free trial" button is gold, since
    a navy button would disappear into the navy bar. */
 .nav{background:#14284b;border-bottom-color:#14284b;color:#fff}
@@ -193,6 +225,7 @@ footer{border-top:1px solid var(--border);padding:48px 0 40px;color:var(--muted)
            served from shopsell.nextlao.com, the demo from its own subdomain. -->
       <a class="link" href="https://demo.nextlao.com" target="_blank" rel="noopener">Live demo</a>
       <a class="link" href="#pricing">Pricing</a>
+      <a class="link" href="#faq">FAQ</a>
       <a class="link" href="/login">Log in</a>
       <a class="btn btn-primary" href="/signup">Start free trial</a>
     </div>
@@ -205,6 +238,7 @@ footer{border-top:1px solid var(--border);padding:48px 0 40px;color:var(--muted)
     <a href="#how">How it works</a>
     <a href="https://demo.nextlao.com" target="_blank" rel="noopener">Live demo</a>
     <a href="#pricing">Pricing</a>
+    <a href="#faq">FAQ</a>
     <a href="/login">Log in</a>
     <a href="/signup" style="color:var(--accent);font-weight:600;border-bottom:none">Start free trial →</a>
   </div>
@@ -212,16 +246,21 @@ footer{border-top:1px solid var(--border);padding:48px 0 40px;color:var(--muted)
 
 <!-- HERO -->
 <header class="hero">
-  <div class="wrap">
+  <div class="wrap hero-grid">
+   <div class="hero-text">
     <span class="eyebrow">Storefront + multichannel OMS + shipping</span>
     <h1>Sell where the buyers already are.</h1>
-    <p class="lede">A store on your own domain starts at zero traffic. The buyers are on eBay, Etsy, Shopify and the marketplaces — showing up ready to spend. ShopSell gets you on all of them, then pulls every order into one dashboard to pick, pack, and ship — with your own store, your own Stripe, and your own carrier rates.</p>
+    <p class="lede">Your store, your marketplaces and your shipping in one dashboard — on your own Stripe and carrier accounts, with nothing added to your labels.</p>
     <div class="hero-cta">
       <a class="btn btn-primary" href="/signup">Start your 14-day free trial</a>
       <a class="btn btn-ghost" href="https://demo.nextlao.com" target="_blank" rel="noopener">See a live store</a>
-      <a class="btn btn-ghost" href="#pricing">See pricing</a>
     </div>
-    <div class="trust">No credit card required · Cancel anytime</div>
+    <ul class="ticks">
+      <li>No credit card required</li>
+      <li>Cancel anytime</li>
+      <li>$0 added to labels</li>
+    </ul>
+   </div>
 
     <!-- MOCK DASHBOARD -->
     <div class="mock" aria-hidden="true">
@@ -245,6 +284,16 @@ footer{border-top:1px solid var(--border);padding:48px 0 40px;color:var(--muted)
     </div>
   </div>
 </header>
+
+<!-- STATS — only true, checkable numbers. No customer counts or ratings until they exist. -->
+<section class="numbers">
+  <div class="wrap numbers-grid">
+    <div><b>5</b><span>marketplaces — Shopify, Amazon, eBay, Etsy and TikTok Shop</span></div>
+    <div><b>3</b><span>carriers — UPS, FedEx and USPS, rate-shopped side by side</span></div>
+    <div><b>$0</b><span>added to your labels — you pay your carrier's own price</span></div>
+    <div><b>14 days</b><span>free trial, no credit card to start</span></div>
+  </div>
+</section>
 
 <!-- CHANNELS STRIP -->
 <section class="strip">
@@ -394,6 +443,53 @@ footer{border-top:1px solid var(--border);padding:48px 0 40px;color:var(--muted)
 </section>
 
 <!-- CTA BAND -->
+<!-- CUSTOMER QUOTES — intentionally not shown until real sellers give us one.
+     To turn it on: remove `hidden`, and fill each card with a real quote, the
+     person's name and store (with their permission). Never placeholder text.
+<section class="section" id="stories" hidden>
+  <div class="wrap">
+    <div class="section-head"><span class="eyebrow">From our sellers</span><h2>What sellers say</h2></div>
+    <div class="quotes">
+      <figure class="quote"><blockquote>“…”</blockquote><figcaption>Name · Store</figcaption></figure>
+    </div>
+  </div>
+</section>
+-->
+
+<!-- FAQ -->
+<section class="section" id="faq">
+  <div class="wrap faq-wrap">
+    <div class="section-head">
+      <span class="eyebrow">Questions</span>
+      <h2>Frequently asked questions</h2>
+    </div>
+    <details class="faq">
+      <summary>Do I need my own Stripe account?</summary>
+      <p>Yes. Your buyers pay you directly through your own Stripe account, so the money goes straight to you and ShopSell never holds it. You connect it in your dashboard under Stripe setup; it takes a few minutes.</p>
+    </details>
+    <details class="faq">
+      <summary>Do I need my own UPS, FedEx or USPS accounts?</summary>
+      <p>To print labels, yes: you connect your own carrier accounts (USPS connects through a free Shippo account). Labels are charged to those accounts at your own rates, including any discounts you've negotiated, and ShopSell adds nothing on top.</p>
+    </details>
+    <details class="faq">
+      <summary>Can I keep selling on Shopify, eBay, Etsy and the others?</summary>
+      <p>Yes, that's the point. Keep your listings where they are. ShopSell brings the orders from those channels into one list, and when you buy a label the tracking number is sent back to the channel automatically.</p>
+    </details>
+    <details class="faq">
+      <summary>What happens when the 14-day trial ends?</summary>
+      <p>You're never charged during the trial, and you don't need a card to start. To keep your plan after 14 days, add a card under My subscription in your dashboard. You can cancel anytime.</p>
+    </details>
+    <details class="faq">
+      <summary>Can I use my own web address?</summary>
+      <p>Your store goes live right away at <em>your-store</em>.nextlao.com. On the Growth and Pro plans you can also connect a domain you own, with the security certificate (SSL) set up for you.</p>
+    </details>
+    <details class="faq">
+      <summary>How long does it take to get set up?</summary>
+      <p>Your storefront is live as soon as you sign up. Connecting Stripe and each marketplace takes a few minutes. Carriers depend on the carrier: if you don't already have API access with UPS or FedEx, their approval can take a few days, and you can sell in the meantime.</p>
+    </details>
+  </div>
+</section>
+
 <section class="cta-band wrap">
   <h2>Start selling in minutes</h2>
   <p>Launch your storefront, connect your channels, and ship your first order today.</p>
@@ -412,6 +508,7 @@ footer{border-top:1px solid var(--border);padding:48px 0 40px;color:var(--muted)
         <h4>Product</h4>
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
         <a href="https://demo.nextlao.com" target="_blank" rel="noopener">Live demo store</a>
         <a href="/login">Log in</a>
         <a href="/signup">Start free trial</a>
