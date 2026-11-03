@@ -1280,7 +1280,7 @@ tr:hover td{background:#fafaf7}
           <label>Theme preset</label>
           <div class="theme-picker" id="themePicker">
             <button type="button" class="theme-opt" data-theme="classic" onclick="selectTheme('classic')">
-              <span class="theme-sw" style="background:#0f0f1a"><i style="background:#e63946"></i></span>Department
+              <span class="theme-sw" style="background:#14284b"><i style="background:#c9a227"></i></span>Department
             </button>
             <button type="button" class="theme-opt" data-theme="boutique" onclick="selectTheme('boutique')">
               <span class="theme-sw" style="background:#4a2c3a"><i style="background:#b76e79"></i></span>Boutique
@@ -1294,7 +1294,7 @@ tr:hover td{background:#fafaf7}
         <div class="field">
           <label>Accent color</label>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <input type="color" id="apAccent" value="#e63946" oninput="onAccentInput()" style="width:48px;height:34px;padding:2px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+            <input type="color" id="apAccent" value="#1f4e9c" oninput="onAccentInput()" style="width:48px;height:34px;padding:2px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
             <button type="button" class="btn secondary" onclick="resetAccent()" style="padding:6px 12px;font-size:12px">Use theme default</button>
             <span id="apAccentNote" style="font-size:11px;color:var(--muted)"></span>
           </div>
@@ -3000,7 +3000,7 @@ async function saveHomepage(){
 
 // ── APPEARANCE (theme presets + accent color + logo) ──
 const AP_THEMES = ['classic','boutique','minimal'];
-const AP_THEME_ACCENT = { classic:'#e63946', boutique:'#b76e79', minimal:'#111111' };
+const AP_THEME_ACCENT = { classic:'#1f4e9c', boutique:'#b76e79', minimal:'#111111' };
 let apTheme = 'classic';
 let apLogo = '';            // data URL or existing URL, '' = none
 let apAccentCustom = false; // false = follow the theme default

@@ -35,9 +35,9 @@
    with the zoom factor above. */
 :root{--vh:calc(100vh / 1.12)}
 :root{
-  --brand:#0f0f1a;--accent:#e63946;--gold:#c9a84c;
-  --light:#f7f7f2;--light2:#efefea;--card:#fff;
-  --text:#0f0f1a;--muted:#6b7280;--border:#e5e5e0;
+  --brand:#14284b;--accent:#1f4e9c;--gold:#c9a227;
+  --light:#f5f7fb;--light2:#eef2f7;--card:#fff;
+  --text:#0f0f1a;--muted:#6b7280;--border:#e2e7ef;
   --green:#2d6a4f;--green-bg:#d8f3dc;
   --radius:14px;--shadow:0 4px 24px rgba(0,0,0,0.07);
   --shadow-lg:0 12px 48px rgba(0,0,0,0.12);
@@ -121,7 +121,7 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 
 /* HERO */
 .hero{background:var(--brand);color:#fff;padding:3.5rem 1.5rem;text-align:center;position:relative;overflow:hidden}
-.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,rgba(230,57,70,0.15),transparent 60%);pointer-events:none}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 60%);pointer-events:none}
 .hero-eyebrow{font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
 .hero h1{font-family:var(--font-head);font-size:2.4rem;font-weight:700;line-height:1.15;margin-bottom:16px}
 .hero h1 em{font-style:italic;color:#ff6b6b}
@@ -129,7 +129,9 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .hero-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;position:relative;z-index:1}
 .btn-hero{padding:12px 26px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;border:none}
 .btn-hero.primary{background:var(--accent);color:#fff}
-.btn-hero.primary:hover{background:#c1121f}
+.btn-hero.primary:hover{filter:brightness(1.12)}
+body:not(.theme-boutique):not(.theme-minimal):not([style*="--accent"]) .btn-hero.primary{background:var(--gold);color:var(--brand)}
+body:not(.theme-boutique):not(.theme-minimal) .hero h1 em{color:var(--gold)}
 .btn-hero.secondary{background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2)}
 .hero-stats{display:flex;gap:24px;justify-content:center;margin-top:32px;flex-wrap:wrap}
 .hero-stat-val{font-family:var(--font-head);font-size:1.6rem;font-weight:700}
@@ -270,7 +272,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .modal-var-label{font-size:12px;font-weight:600;margin-bottom:8px}
 .variant-opts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .variant-btn{border:1.5px solid var(--border);background:var(--card);padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all 0.2s}
-.variant-btn:hover,.variant-btn.active{border-color:var(--accent);color:var(--accent);background:#fff5f5}
+.variant-btn:hover,.variant-btn.active{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .modal-qty-row{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .modal-qty-label{font-size:12px;font-weight:600}
 .qty-ctrl{display:flex;align-items:center;border:1.5px solid var(--border);border-radius:9px;overflow:hidden}
@@ -279,7 +281,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .qty-ctrl span{width:36px;text-align:center;font-size:14px;font-weight:600}
 .free-ship-note{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--green);font-weight:500;margin-bottom:14px}
 .modal-add-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:14px;border-radius:11px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer}
-.modal-add-btn:hover{background:#c1121f}
+.modal-add-btn:hover{filter:brightness(1.15)}
 
 /* Buyer auth (sign-in / sign-up on the account page) */
 .buyer-auth-tabs{display:flex;gap:0;margin-bottom:1.25rem;border-bottom:1px solid var(--border)}
@@ -301,7 +303,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .buyer-auth-form .pw-reqs li.met::before{content:'✓'}
 .buyer-auth-form .two-col{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
 .buyer-auth-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:13px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:.5rem;transition:background .15s}
-.buyer-auth-btn:hover{background:#c1121f}
+.buyer-auth-btn:hover{filter:brightness(1.15)}
 .buyer-auth-btn:disabled{opacity:.6;cursor:wait}
 .buyer-auth-msg{padding:.75rem 1rem;border-radius:8px;font-size:13px;margin-bottom:1rem;line-height:1.5}
 .buyer-auth-msg.error{background:#fde2e2;color:#9b1c1c;border:1px solid #f5c2c2}
@@ -361,7 +363,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .cart-total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:600;margin-bottom:14px;padding-top:10px;border-top:1px solid var(--border)}
 .cart-total-amt{font-family:var(--font-head);font-size:1.15rem;color:var(--accent)}
 .checkout-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:14px;border-radius:11px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px}
-.checkout-btn:hover{background:#c1121f}
+.checkout-btn:hover{filter:brightness(1.15)}
 .continue-btn{width:100%;background:none;border:1.5px solid var(--border);padding:11px;border-radius:11px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;color:var(--muted)}
 .continue-btn:hover{border-color:var(--text)}
 
@@ -377,7 +379,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .pay-methods{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .pay-method{flex:1;min-width:80px;border:1.5px solid var(--border);border-radius:9px;padding:10px 6px;text-align:center;cursor:pointer;font-size:12px;font-weight:500;color:var(--muted)}
-.pay-method.active{border-color:var(--accent);color:var(--accent);background:#fff5f5}
+.pay-method.active{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .card-wrap{border:1.5px solid var(--border);border-radius:9px;overflow:hidden;margin-bottom:10px}
 .card-num-row{display:flex;align-items:center;padding:10px 13px;border-bottom:1px solid var(--border)}
 .card-num-row input{flex:1;border:none;font-family:monospace;font-size:13px;outline:none;letter-spacing:1px;background:transparent}
@@ -387,7 +389,7 @@ a.ss-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .card-btm input{padding:10px 13px;border:none;border-right:1px solid var(--border);font-family:'Outfit',sans-serif;font-size:13px;outline:none;background:transparent}
 .card-btm input:last-child{border-right:none}
 .place-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:15px;border-radius:11px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px}
-.place-btn:hover{background:#c1121f}
+.place-btn:hover{filter:brightness(1.15)}
 .secure-note{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-size:11px;color:var(--muted)}
 .order-sidebar{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;position:sticky;top:80px}
 .os-title{font-family:var(--font-head);font-size:1rem;font-weight:700;margin-bottom:1rem;padding-bottom:8px;border-bottom:1px solid var(--border)}
@@ -2178,7 +2180,7 @@ async function setupStripeCheckout(){
       clientSecret: data.clientSecret,
       appearance: {
         theme: 'stripe',
-        variables: { fontFamily: 'Outfit, sans-serif', colorPrimary: '#e63946', borderRadius: '10px' },
+        variables: { fontFamily: 'Outfit, sans-serif', colorPrimary: (getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#1f4e9c'), borderRadius: '10px' },
       },
     });
     const paymentElement = stripeElements.create('payment', {
