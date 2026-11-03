@@ -9,12 +9,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#f7f7f2; --bg2:#ffffff; --bg3:#f2f2ee;
-  --card:#ffffff; --border:#e5e5e0; --border2:#d5d5cc;
+  --bg:#f5f7fb; --bg2:#ffffff; --bg3:#eef2f7;
+  --card:#ffffff; --border:#e2e7ef; --border2:#d1d9e4;
   --text:#0f0f1a; --text2:#5a5a70; --muted:#6b7280;
-  --accent:#e63946; --accent-hover:#d32a37;
+  --accent:#1b3a6b; --accent-hover:#132b52; --gold-text:#8a6d1a;
   --green:#047857; --red:#e63946;
-  --ups-gold:#a16207;
+  --ups-gold:#c9a227;
   --radius:14px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -33,8 +33,8 @@ body{
   align-items:center;
   justify-content:center;
   padding:2rem;
-  background-image:radial-gradient(circle at 20% 30%, rgba(230,57,70,0.06), transparent 40%),
-                   radial-gradient(circle at 80% 70%, rgba(255,181,0,0.04), transparent 40%);
+  background-image:radial-gradient(circle at 20% 30%, rgba(27,58,107,0.06), transparent 40%),
+                   radial-gradient(circle at 80% 70%, rgba(201,162,39,0.04), transparent 40%);
 }
 .brand-wrap{
   position:absolute;
@@ -150,7 +150,7 @@ h1{
 .plan-opt:hover{border-color:var(--border2)}
 .plan-opt.selected{
   border-color:var(--accent);
-  background:rgba(230,57,70,0.06);
+  background:rgba(27,58,107,0.06);
 }
 .plan-opt .name{
   font-weight:600;
@@ -197,9 +197,9 @@ button.submit:disabled{opacity:0.5;cursor:not-allowed}
 }
 .error.show{display:block}
 .trial-note{
-  background:rgba(0,200,150,0.08);
-  border:1px solid rgba(0,200,150,0.25);
-  color:#047857;
+  background:rgba(201,162,39,0.10);
+  border:1px solid rgba(201,162,39,0.35);
+  color:#6b5414;
   padding:8px 10px;
   border-radius:6px;
   font-size:11px;
@@ -226,6 +226,7 @@ button.submit:disabled{opacity:0.5;cursor:not-allowed}
   .pw-reqs{display:none}
   .field:focus-within .pw-reqs{display:grid}
 }
+.brand-mark{background:#1b3a6b!important;color:#c9a227!important;box-shadow:inset 0 0 0 1px rgba(201,162,39,.55)}
 </style>
 </head>
 <body>
