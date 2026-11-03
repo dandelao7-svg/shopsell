@@ -396,6 +396,24 @@ tr:hover td{background:#fafaf7}
   .charts-grid{grid-template-columns:1fr}
   .modules-grid{grid-template-columns:1fr 1fr}
 }
+
+/* Navy top bar with white text (matches the marketing site). Colors are
+   re-pointed by redefining the theme variables on the bar's own controls, so
+   inline-styled buttons follow too. The primary button turns gold so it
+   doesn't vanish into the navy. */
+.topbar{background:#14284b!important;border-bottom-color:#14284b!important;box-shadow:none}
+.topbar .page-title{color:#fff}
+.topbar-left, .topbar-right > :not(#shipperSwitcherWrap), #shipperSwitcherWrap > button{
+  --card:rgba(255,255,255,.08); --bg3:rgba(255,255,255,.08); --bg2:rgba(255,255,255,.08);
+  --border:rgba(255,255,255,.22); --border2:rgba(255,255,255,.22);
+  --text:#fff; --text2:rgba(255,255,255,.88); --muted:rgba(255,255,255,.7);
+}
+.topbar-btn, .menu-btn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);color:#fff}
+.topbar-btn:hover{border-color:#fff;color:#fff;background:rgba(255,255,255,.14)}
+.topbar-btn.primary{background:var(--gold);border-color:var(--gold);color:#14284b}
+.topbar-btn.primary:hover{background:#d8b33a;border-color:#d8b33a;color:#14284b}
+.mode-toggle{border-color:rgba(255,255,255,.22)}
+.mode-btn:not(.active){color:rgba(255,255,255,.7)}
 </style>
 <!-- Shared section registry — the same file the storefront renders from, so the
      Page layout editor's forms can never drift from what actually renders. -->
