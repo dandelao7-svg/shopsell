@@ -206,6 +206,26 @@ button.submit:disabled{opacity:0.5;cursor:not-allowed}
   margin-bottom:1rem;
   text-align:center;
 }
+.reveal{background:none;border:none;color:var(--muted);font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;padding:0;margin:0 0 0.85rem;text-decoration:underline}
+.reveal:hover{color:var(--text2)}
+/* Phones: the card fills the width, the brand sits above it instead of
+   floating over it, and spacing tightens so "Create my store" is reached
+   with far less scrolling. Inputs go to 16px — anything smaller makes iOS
+   Safari zoom the page in when a field is tapped. */
+@media(max-width:560px){
+  body{padding:12px;align-items:flex-start;flex-direction:column;justify-content:flex-start}
+  .brand-wrap{position:static;margin:4px 4px 12px}
+  .card{padding:1.25rem 1rem;box-shadow:none}
+  h1{font-size:20px}
+  .subtitle{margin-bottom:1rem}
+  .trial-note{display:none}
+  .field{margin-bottom:0.7rem}
+  .field input, .field select{font-size:16px;padding:8px 10px}
+  .row{gap:8px}
+  .plan-opt{padding:8px 4px}
+  .pw-reqs{display:none}
+  .field:focus-within .pw-reqs{display:grid}
+}
 </style>
 </head>
 <body>
@@ -241,7 +261,7 @@ button.submit:disabled{opacity:0.5;cursor:not-allowed}
     </div>
 
     <div class="field">
-      <label>Phone</label>
+      <label>Phone <span style="color:var(--muted,#94a3b8);font-weight:400">(optional)</span></label>
       <input type="tel" id="phone" autocomplete="tel" placeholder="+1 555 123 4567">
     </div>
 
@@ -289,7 +309,8 @@ button.submit:disabled{opacity:0.5;cursor:not-allowed}
       </div>
     </div>
 
-    <div class="field">
+    <button type="button" class="reveal" id="compReveal" onclick="this.remove();document.getElementById('compField').hidden=false;document.getElementById('compCode').focus()">Have an invite code?</button>
+    <div class="field" id="compField" hidden>
       <label>Invite code <span style="color:var(--muted,#94a3b8);font-weight:400">(optional)</span></label>
       <input type="text" id="compCode" placeholder="Have a beta invite code?" autocomplete="off">
       <div class="hint">If you were given an invite code, enter it to waive your subscription.</div>
