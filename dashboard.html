@@ -18,16 +18,16 @@
    @media screen so it never affects any print output. */
 @media screen{html{zoom:1.12}}
 :root{
-  --brand:#0f0f1a;
+  --brand:#14284b;
   --brand2:#1a1a2e;
-  --accent:#e63946;
-  --gold:#c9a84c;
-  --light:#f7f7f2;
-  --light2:#efefea;
+  --accent:#1b3a6b;
+  --gold:#c9a227;
+  --light:#f5f7fb;
+  --light2:#eef2f7;
   --card:#ffffff;
   --text:#0f0f1a;
   --muted:#6b7280;
-  --border:#e5e5e0;
+  --border:#e2e7ef;
   --green:#2d6a4f;
   --green-bg:#d8f3dc;
   --green-light:#eaf3de;
@@ -60,6 +60,7 @@
    neutral vars swap; --brand keeps its very-dark navy in both themes
    because the sidebar was always dark. */
 :root[data-theme="dark"]{
+  --accent:#3b6bc4;
   --light:#0a0a0f; --light2:#111118;
   --card:#1c1c24;
   --text:#f0f0f5;
@@ -91,7 +92,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--te
 .sidebar{width:var(--sidebar-w);background:var(--brand);position:fixed;top:0;bottom:0;left:0;display:flex;flex-direction:column;z-index:100;transition:transform 0.3s}
 .sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.08)}
 .logo{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;color:#fff}
-.logo em{color:var(--accent);font-style:normal}
+.logo em{color:var(--gold);font-style:normal}
 .logo-sub{font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;letter-spacing:1px;text-transform:uppercase}
 .sidebar-plan{margin:12px 16px;background:rgba(255,255,255,0.08);border-radius:9px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
 .plan-name{font-size:12px;font-weight:600;color:#fff}
@@ -100,9 +101,9 @@ html,body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--te
 .nav-section-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.3);padding:14px 8px 6px}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;color:rgba(255,255,255,0.6);font-size:13px;font-weight:500;transition:all 0.18s;margin-bottom:2px;text-decoration:none}
 .nav-item:hover{background:rgba(255,255,255,0.08);color:#fff}
-.nav-item.active{background:rgba(230,57,70,0.18);color:#fff}
-.nav-item.active svg{color:var(--accent)}
-.nav-item .nav-badge{margin-left:auto;background:var(--accent);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px}
+.nav-item.active{background:rgba(201,162,39,0.18);color:#fff}
+.nav-item.active svg{color:var(--gold)}
+.nav-item .nav-badge{margin-left:auto;background:var(--gold);color:var(--brand);border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px}
 .nav-item.locked{opacity:0.4;cursor:not-allowed}
 .nav-item.locked:hover{background:none;color:rgba(255,255,255,0.6)}
 .lock-icon{margin-left:auto;font-size:11px;opacity:0.6}
@@ -145,7 +146,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--te
 .stat-card.green::before{background:var(--green)}
 .stat-card.blue::before{background:var(--stripe)}
 .stat-card.amber::before{background:#f59e0b}
-.stat-card.red::before{background:var(--accent)}
+.stat-card.red::before{background:var(--red)}
 .stat-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
 .stat-icon.green{background:var(--green-light)}
 .stat-icon.blue{background:var(--stripe-light)}
@@ -155,7 +156,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--te
 .stat-label{font-size:12px;color:var(--muted);margin-bottom:6px}
 .stat-change{font-size:11px;font-weight:600;display:flex;align-items:center;gap:3px}
 .stat-change.up{color:var(--green)}
-.stat-change.down{color:var(--accent)}
+.stat-change.down{color:var(--red)}
 
 /* ── CHARTS ── */
 .charts-grid{display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1.5rem}
@@ -249,7 +250,7 @@ tr:hover td{background:#fafaf7}
 
 /* ── IMAGE UPLOAD ── */
 .img-upload{border:2px dashed var(--border);border-radius:11px;padding:2rem;text-align:center;cursor:pointer;transition:all 0.2s;background:#fafaf7;position:relative;overflow:hidden}
-.img-upload:hover,.img-upload.drag{border-color:var(--accent);background:#fff5f5}
+.img-upload:hover,.img-upload.drag{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .img-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .img-upload-icon{width:44px;height:44px;border-radius:11px;background:var(--light2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
 .img-preview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
@@ -323,14 +324,14 @@ tr:hover td{background:#fafaf7}
 .featured-rail-ctl .toggle-desc{max-width:640px}
 .theme-picker{display:flex;gap:10px;flex-wrap:wrap}
 .theme-opt{display:flex;align-items:center;gap:8px;padding:9px 14px;border:1.5px solid var(--border);background:var(--card);border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);font-family:'Outfit',sans-serif;transition:all .2s}
-.theme-opt.active{border-color:var(--accent);color:var(--text);box-shadow:0 0 0 2px #fff5f5 inset}
+.theme-opt.active{border-color:var(--accent);color:var(--text);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 8%,transparent) inset}
 .theme-opt:hover{border-color:var(--accent)}
 .theme-sw{width:40px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding:4px;flex-shrink:0}
 .theme-sw i{width:11px;height:11px;border-radius:50%;display:block}
 .ap-logo-preview{min-width:120px;height:44px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);background:var(--light);padding:4px;overflow:hidden}
 .ap-logo-preview img{max-height:36px;max-width:150px;object-fit:contain}
 .filter-pill{border:1.5px solid var(--border);background:var(--card);padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--muted);transition:all 0.2s}
-.filter-pill.active,.filter-pill:hover{border-color:var(--accent);color:var(--accent);background:#fff5f5}
+.filter-pill.active,.filter-pill:hover{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .search-input{flex:1;max-width:280px;padding:7px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Outfit',sans-serif;font-size:13px;outline:none;transition:border-color 0.2s}
 .search-input:focus{border-color:var(--accent)}
 
@@ -1196,7 +1197,7 @@ tr:hover td{background:#fafaf7}
 
     <div class="modules-grid">
       <div class="module-card">
-        <div class="module-icon" style="background:#fff5f5">📦</div>
+        <div class="module-icon" style="background:color-mix(in srgb,var(--accent) 6%,transparent)">📦</div>
         <div class="module-name">Shipping Module</div>
         <div class="module-desc">ShipStation integration, print shipping labels, real-time rate shopping across UPS, FedEx, and USPS. Includes your shipping refund tool.</div>
         <div class="module-price">+$29/month</div>

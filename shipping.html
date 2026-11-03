@@ -26,8 +26,9 @@
   --text2:#a0a0b8;
   --text3:#6060780;
   --muted:#60607a;
-  --accent:#e63946;
-  --accent2:#ff6b6b;
+  --accent:#3b6bc4;
+  --accent2:#5b86d6;
+  --gold:#c9a227;
   --ups:#340a00;
   --ups-light:#8b1a00;
   --ups-gold:#ffb500;
@@ -69,13 +70,14 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
    (ss_theme). Only the neutral vars change — accent/carrier brand colors
    keep their identity in both themes. Sidebar stays its own bg2/border. */
 :root[data-theme="light"]{
-  --bg:#f7f7f2; --bg2:#ffffff; --bg3:#f2f2ee;
-  --card:#ffffff; --card2:#faf9f5;
-  --border:#e5e5e0; --border2:#d5d5cc;
+  --bg:#f5f7fb; --bg2:#ffffff; --bg3:#eef2f7;
+  --card:#ffffff; --card2:#f9fafc;
+  --border:#e2e7ef; --border2:#d1d9e4;
   --text:#0f0f1a; --text2:#5a5a70; --text3:#8a8a9a; --muted:#6b7280;
   /* Status colors tuned for the dark theme wash out on white; deeper shades
      of the same hues keep "On time", "Confirmed", "Active" readable. */
-  --green:#047857; --amber:#b45309; --blue:#1d4ed8; --ups-gold:#a16207;
+  --green:#047857; --amber:#b45309; --blue:#1d4ed8; --ups-gold:#8a6d1a;
+  --accent:#1b3a6b; --accent2:#2c5491;
 }
 
 /* ── LAYOUT ── */
@@ -88,7 +90,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
    Checkout button. Insets are in the zoomed coordinate space and stay correct. */
 .sidebar{width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);position:fixed;top:0;bottom:0;left:0;display:flex;flex-direction:column;z-index:100}
 .sidebar-logo{padding:18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
-.logo-mark{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#fff;flex-shrink:0}
+.logo-mark{width:32px;height:32px;background:#1b3a6b;color:var(--gold)!important;box-shadow:inset 0 0 0 1px rgba(201,162,39,.55);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#fff;flex-shrink:0}
 .logo-text{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;color:var(--text)}
 .logo-text span{color:var(--ups-gold)}
 .logo-sub{font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:1px}
@@ -97,7 +99,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
 .nav-section{font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 8px 6px}
 .nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--text2);font-size:13px;font-weight:500;transition:all 0.15s;margin-bottom:1px;position:relative;text-decoration:none}
 .nav-item:hover{background:var(--bg3);color:var(--text)}
-.nav-item.active{background:rgba(230,57,70,0.12);color:var(--accent)}
+.nav-item.active{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
 .nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:20px;background:var(--accent);border-radius:0 3px 3px 0}
 .nav-item svg{width:15px;height:15px;flex-shrink:0}
 .nav-badge{margin-left:auto;background:var(--accent);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center}
@@ -144,7 +146,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
 .stat-card.gold::after{background:var(--ups-gold)}
 .stat-card.green::after{background:var(--green)}
 .stat-card.blue::after{background:var(--blue)}
-.stat-card.red::after{background:var(--accent)}
+.stat-card.red::after{background:var(--red)}
 .stat-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
 .stat-icon.gold{background:rgba(255,181,0,0.12)}
 .stat-icon.green{background:var(--green-bg)}
@@ -154,7 +156,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
 .stat-label{font-size:11px;color:var(--muted);margin-bottom:5px}
 .stat-change{font-size:11px;font-weight:600}
 .stat-change.up{color:var(--green)}
-.stat-change.down{color:var(--accent)}
+.stat-change.down{color:var(--red)}
 
 /* ── ORDERS TABLE ── */
 .table-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;margin-bottom:1.5rem}
@@ -168,7 +170,7 @@ html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)
 .filter-tab:hover{color:var(--text)}
 .filter-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .filter-tab .ct{background:var(--bg3);color:var(--text2);border-radius:10px;font-size:10px;font-weight:600;padding:1px 6px}
-.filter-tab.active .ct{background:rgba(230,57,70,0.15);color:var(--accent)}
+.filter-tab.active .ct{background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent)}
 
 /* SEARCH BAR */
 .search-bar{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;gap:8px;min-width:220px}
@@ -185,7 +187,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 /* ORDER SPECIFIC */
 .order-num{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)}
 .channel-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
-.channel-badge.nextlao{background:rgba(230,57,70,0.12);color:var(--accent)}
+.channel-badge.nextlao{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
 .channel-badge.amazon{background:rgba(255,153,0,0.12);color:#ff9900}
 .channel-badge.ebay{background:rgba(0,100,210,0.12);color:#0064d2}
 .channel-badge.etsy{background:rgba(240,81,35,0.12);color:#f05123}
@@ -195,7 +197,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .status-pill.printed{background:var(--blue-bg);color:var(--blue)}
 .status-pill.shipped{background:var(--green-bg);color:var(--green)}
 .status-pill.delivered{background:rgba(0,200,150,0.06);color:var(--green)}
-.status-pill.exception{background:var(--red-bg);color:var(--accent)}
+.status-pill.exception{background:var(--red-bg);color:var(--red)}
 .status-pill.return{background:rgba(139,26,0,0.15);color:#ff6b35}
 .carrier-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:0.3px}
 .carrier-pill.ups{background:rgba(255,181,0,0.12);color:var(--ups-gold)}
@@ -203,8 +205,8 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .carrier-pill.usps{background:rgba(0,80,200,0.12);color:var(--usps-light)}
 .action-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:11px;font-weight:500;transition:all 0.2s;white-space:nowrap}
 .action-btn:hover{border-color:var(--accent);color:var(--accent)}
-.action-btn.primary{background:rgba(230,57,70,0.1);border-color:rgba(230,57,70,0.3);color:var(--accent)}
-.action-btn.primary:hover{background:rgba(230,57,70,0.2)}
+.action-btn.primary{background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 30%,transparent);color:var(--accent)}
+.action-btn.primary:hover{background:color-mix(in srgb,var(--accent) 20%,transparent)}
 .action-btn.ups{background:rgba(255,181,0,0.08);border-color:rgba(255,181,0,0.25);color:var(--ups-gold)}
 .checkbox-cell input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
 
@@ -266,7 +268,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .tl-item:not(:last-child)::after{content:'';position:absolute;left:10px;top:36px;bottom:0;width:1px;background:var(--border)}
 .tl-dot{width:21px;height:21px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:2px;z-index:1}
 .tl-dot.done{background:var(--green);border:2px solid var(--green)}
-.tl-dot.current{background:var(--accent);border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(230,57,70,0.15)}
+.tl-dot.current{background:var(--accent);border:2px solid var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 15%,transparent)}
 .tl-dot.pending{background:var(--bg3);border:2px solid var(--border2)}
 .tl-label{font-size:13px;font-weight:600;margin-bottom:2px}
 .tl-desc{font-size:12px;color:var(--muted)}
@@ -317,7 +319,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .mini-chart{display:flex;align-items:flex-end;gap:4px;height:48px;margin-top:8px}
 .mini-bar{flex:1;border-radius:3px 3px 0 0;background:rgba(255,181,0,0.2);transition:background 0.2s;cursor:pointer;min-height:4px}
 .mini-bar:hover{background:var(--ups-gold)}
-.mini-bar.accent{background:rgba(230,57,70,0.3)}
+.mini-bar.accent{background:color-mix(in srgb,var(--accent) 30%,transparent)}
 .mini-bar.accent:hover{background:var(--accent)}
 
 /* ── ROW ACTION MENU ── */
@@ -327,7 +329,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
 .row-action-menu .item{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:12px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border)}
 .row-action-menu .item:last-child{border-bottom:none}
 .row-action-menu .item:hover{background:var(--bg3)}
-.row-action-menu .item.danger{color:var(--accent)}
+.row-action-menu .item.danger{color:var(--red)}
 .row-action-menu .item.disabled{color:var(--muted);cursor:not-allowed}
 .row-action-menu .item.disabled:hover{background:none}
 .row-action-menu .item svg{width:13px;height:13px;flex-shrink:0}
@@ -621,7 +623,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
           <div class="filter-tab" onclick="filterStatus('awaiting',this)">Awaiting label <span class="ct" id="ordCount-awaiting">0</span></div>
           <div class="filter-tab" onclick="filterStatus('printed',this)">Label printed <span class="ct" id="ordCount-printed">0</span></div>
           <div class="filter-tab" onclick="filterStatus('shipped',this)">Shipped <span class="ct" id="ordCount-shipped">0</span></div>
-          <div class="filter-tab" onclick="filterStatus('exception',this)">Exception <span class="ct" id="ordCount-exception" style="background:rgba(230,57,70,0.15);color:var(--accent)">0</span></div>
+          <div class="filter-tab" onclick="filterStatus('exception',this)">Exception <span class="ct" id="ordCount-exception" style="background:rgba(230,57,70,0.15);color:var(--red)">0</span></div>
         </div>
 
         <table>
@@ -685,7 +687,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 Email
               </button>
-              <button id="sb-void-btn" onclick="sidebarVoid()" style="flex:1;min-width:70px;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
+              <button id="sb-void-btn" onclick="sidebarVoid()" style="flex:1;min-width:70px;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--red);padding:6px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                 <span id="sb-void-btn-label">Void</span>
               </button>
@@ -852,7 +854,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             Print customs invoice
           </button>
-          <button id="qsVoidBtn" onclick="confirmVoidLabel()" style="flex:1;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;justify-content:center">
+          <button id="qsVoidBtn" onclick="confirmVoidLabel()" style="flex:1;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--red);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;justify-content:center">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
             Void label
           </button>
@@ -1247,7 +1249,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
             Copy tracking link
           </button>
-          <button id="trackingVoidBtn" onclick="voidFromTrackingPage()" style="display:none;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--accent);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:none;align-items:center;gap:6px">
+          <button id="trackingVoidBtn" onclick="voidFromTrackingPage()" style="display:none;background:rgba(230,57,70,0.08);border:1px solid rgba(230,57,70,0.3);color:var(--red);padding:6px 14px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:none;align-items:center;gap:6px">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
             <span id="trackingVoidBtnLabel">Void label</span>
           </button>
@@ -1776,7 +1778,7 @@ tr:hover td{background:rgba(255,255,255,0.02);cursor:pointer}
     </div>
     <div class="modal-footer">
       <button class="topbar-btn" onclick="closeVoidModal()">Cancel</button>
-      <button class="topbar-btn primary" id="voidModalConfirmBtn" onclick="executeVoidLabel()" style="background:var(--accent);border-color:var(--accent)">
+      <button class="topbar-btn primary" id="voidModalConfirmBtn" onclick="executeVoidLabel()" style="background:var(--red);border-color:var(--red)">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
         <span id="voidModalConfirmText">Yes, void it</span>
       </button>
@@ -2907,7 +2909,7 @@ async function renderAmazonBody(forceForm){
         <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
           Seller Central → register as a developer → create a <strong>private SP-API app</strong> with the Orders role (and restricted PII access to read shipping addresses) → self-authorize to get a <strong>refresh token</strong>. Paste the app's LWA client id/secret + that refresh token.
         </div>
-        <div style="margin-top:8px;color:var(--accent)">Shipping addresses require Amazon PII/restricted-data approval; without it, orders import but have no address.</div>
+        <div style="margin-top:8px;color:var(--red)">Shipping addresses require Amazon PII/restricted-data approval; without it, orders import but have no address.</div>
       </div>
       <div class="form-field"><label>LWA client ID</label><input type="text" id="amazon-clientid" placeholder="amzn1.application-oa2-client.…"></div>
       <div class="form-field"><label>LWA client secret</label><input type="password" id="amazon-secret" placeholder="amzn1.oa2-cs.v1.…"></div>
@@ -2930,15 +2932,15 @@ async function connectAmazon(){
     region:       document.getElementById('amazon-region').value,
   };
   const msg = document.getElementById('amazonConnectMsg');
-  if(!payload.clientId || !payload.clientSecret || !payload.refreshToken){ msg.style.color='var(--accent)'; msg.textContent='Fill in client id, client secret, and refresh token.'; return; }
+  if(!payload.clientId || !payload.clientSecret || !payload.refreshToken){ msg.style.color='var(--red)'; msg.textContent='Fill in client id, client secret, and refresh token.'; return; }
   const btn = document.getElementById('amazonConnectBtn'); btn.disabled=true; btn.textContent='Verifying…';
   try {
     const res = await fetch('/api/seller/channels/amazon', { method:'POST', headers:authHeaders(), body:JSON.stringify(payload) });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
     toast(data.message || 'Amazon connected','success');
     await renderAmazonBody();
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
 }
 
 async function syncAmazon(){
@@ -2947,15 +2949,15 @@ async function syncAmazon(){
   try {
     const res = await fetch('/api/seller/channels/amazon/sync', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Sync failed.'; }
     else {
       msg.style.color='var(--green)';
       msg.innerHTML = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unshipped).`
-        + (data.noAddress ? ` <span style="color:var(--accent)">${data.noAddress} without an address — needs PII approval.</span>` : '');
+        + (data.noAddress ? ` <span style="color:var(--red)">${data.noAddress} without an address — needs PII approval.</span>` : '');
       if(data.imported>0){ ordersLoaded=false; renderOrders(); }
       await refreshChannels();
     }
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; }
   finally { if(btn){ btn.disabled=false; btn.textContent='Sync unshipped orders now'; } }
 }
 
@@ -3033,14 +3035,14 @@ async function renderShopifyBody(forceForm){
 async function installShopify(){
   const shopDomain = document.getElementById('shopify-domain').value.trim();
   const msg = document.getElementById('shopifyConnectMsg');
-  if(!shopDomain){ msg.style.color='var(--accent)'; msg.textContent='Enter your store domain.'; return; }
+  if(!shopDomain){ msg.style.color='var(--red)'; msg.textContent='Enter your store domain.'; return; }
   const btn = document.getElementById('shopifyConnectBtn'); btn.disabled=true; btn.textContent='Redirecting to Shopify…';
   try {
     const res = await fetch('/api/seller/channels/shopify/install', { method:'POST', headers:authHeaders(), body:JSON.stringify({ shopDomain }) });
     const data = await res.json();
-    if(!res.ok || !data.url){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect Shopify'; return; }
+    if(!res.ok || !data.url){ msg.style.color='var(--red)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect Shopify'; return; }
     window.location.href = data.url;
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect Shopify'; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect Shopify'; }
 }
 
 async function syncShopify(){
@@ -3049,14 +3051,14 @@ async function syncShopify(){
   try {
     const res = await fetch('/api/seller/channels/shopify/sync', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Sync failed.'; }
     else {
       msg.style.color='var(--green)';
       msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unfulfilled on Shopify).`;
       if(data.imported>0){ ordersLoaded=false; renderOrders(); }
       await refreshChannels();
     }
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; }
   finally { if(btn){ btn.disabled=false; btn.textContent='Sync unfulfilled orders now'; } }
 }
 
@@ -3133,9 +3135,9 @@ async function installEbay(){
   try {
     const res = await fetch('/api/seller/channels/ebay/install', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok || !data.url){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect eBay'; return; }
+    if(!res.ok || !data.url){ msg.style.color='var(--red)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect eBay'; return; }
     window.location.href = data.url;
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect eBay'; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect eBay'; }
 }
 
 async function syncEbay(){
@@ -3144,14 +3146,14 @@ async function syncEbay(){
   try {
     const res = await fetch('/api/seller/channels/ebay/sync', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Sync failed.'; }
     else {
       msg.style.color='var(--green)';
       msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unfulfilled on eBay).`;
       if(data.imported>0){ ordersLoaded=false; renderOrders(); }
       await refreshChannels();
     }
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; }
   finally { if(btn){ btn.disabled=false; btn.textContent='Sync unfulfilled orders now'; } }
 }
 
@@ -3228,9 +3230,9 @@ async function installEtsy(){
   try {
     const res = await fetch('/api/seller/channels/etsy/install', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok || !data.url){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect Etsy'; return; }
+    if(!res.ok || !data.url){ msg.style.color='var(--red)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect Etsy'; return; }
     window.location.href = data.url;
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect Etsy'; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect Etsy'; }
 }
 
 async function syncEtsy(){
@@ -3239,14 +3241,14 @@ async function syncEtsy(){
   try {
     const res = await fetch('/api/seller/channels/etsy/sync', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Sync failed.'; }
     else {
       msg.style.color='var(--green)';
       msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unshipped on Etsy).`;
       if(data.imported>0){ ordersLoaded=false; renderOrders(); }
       await refreshChannels();
     }
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; }
   finally { if(btn){ btn.disabled=false; btn.textContent='Sync unshipped orders now'; } }
 }
 
@@ -3323,9 +3325,9 @@ async function installTiktok(){
   try {
     const res = await fetch('/api/seller/channels/tiktok/install', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok || !data.url){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect TikTok Shop'; return; }
+    if(!res.ok || !data.url){ msg.style.color='var(--red)'; msg.textContent=data.error||'Could not start install.'; btn.disabled=false; btn.innerHTML='Connect TikTok Shop'; return; }
     window.location.href = data.url;
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect TikTok Shop'; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.innerHTML='Connect TikTok Shop'; }
 }
 
 async function syncTiktok(){
@@ -3334,14 +3336,14 @@ async function syncTiktok(){
   try {
     const res = await fetch('/api/seller/channels/tiktok/sync', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Sync failed.'; }
     else {
       msg.style.color='var(--green)';
       msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unfulfilled on TikTok).`;
       if(data.imported>0){ ordersLoaded=false; renderOrders(); }
       await refreshChannels();
     }
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; }
   finally { if(btn){ btn.disabled=false; btn.textContent='Sync unfulfilled orders now'; } }
 }
 
@@ -3414,15 +3416,15 @@ async function connectWalmart(){
     clientSecret: document.getElementById('walmart-secret').value.trim(),
   };
   const msg = document.getElementById('walmartConnectMsg');
-  if(!payload.clientId || !payload.clientSecret){ msg.style.color='var(--accent)'; msg.textContent='Enter your Client ID and Client Secret.'; return; }
+  if(!payload.clientId || !payload.clientSecret){ msg.style.color='var(--red)'; msg.textContent='Enter your Client ID and Client Secret.'; return; }
   const btn = document.getElementById('walmartConnectBtn'); btn.disabled=true; btn.textContent='Verifying…';
   try {
     const res = await fetch('/api/seller/channels/walmart', { method:'POST', headers:authHeaders(), body:JSON.stringify(payload) });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Could not connect.'; btn.disabled=false; btn.textContent='Connect & verify'; return; }
     toast(data.message || 'Walmart connected','success');
     await renderWalmartBody();
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; btn.disabled=false; btn.textContent='Connect & verify'; }
 }
 
 async function syncWalmart(){
@@ -3431,14 +3433,14 @@ async function syncWalmart(){
   try {
     const res = await fetch('/api/seller/channels/walmart/sync', { method:'POST', headers:authHeaders() });
     const data = await res.json();
-    if(!res.ok){ msg.style.color='var(--accent)'; msg.textContent=data.error||'Sync failed.'; }
+    if(!res.ok){ msg.style.color='var(--red)'; msg.textContent=data.error||'Sync failed.'; }
     else {
       msg.style.color='var(--green)';
       msg.textContent = `Imported ${data.imported} new order${data.imported===1?'':'s'} (${data.skipped} already here, ${data.total} unshipped on Walmart).`;
       if(data.imported>0){ ordersLoaded=false; renderOrders(); }
       await refreshChannels();
     }
-  } catch(e){ msg.style.color='var(--accent)'; msg.textContent='Network error: '+e.message; }
+  } catch(e){ msg.style.color='var(--red)'; msg.textContent='Network error: '+e.message; }
   finally { if(btn){ btn.disabled=false; btn.textContent='Sync unshipped orders now'; } }
 }
 
@@ -3585,10 +3587,10 @@ async function runBatch(){
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if(!res.ok){ body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Batch failed.'}</div>`; btn.style.display='none'; return; }
+    if(!res.ok){ body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--red);font-size:12px">${data.error||'Batch failed.'}</div>`; btn.style.display='none'; return; }
     renderBatchResults(data);
   } catch(err){
-    body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border-radius:9px;color:var(--accent);font-size:12px">Network error: ${err.message}</div>`;
+    body.innerHTML = `<div style="padding:14px;background:var(--red-bg);border-radius:9px;color:var(--red);font-size:12px">Network error: ${err.message}</div>`;
   }
 }
 
@@ -3613,8 +3615,8 @@ function renderBatchResults(data){
       </div>`;
     }
     return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid rgba(230,57,70,0.25);border-radius:8px;margin-bottom:6px;background:var(--red-bg)">
-      <span style="color:var(--accent)">✗</span>
-      <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · <span style="color:var(--accent)">${r.error||'Failed'}</span></div>
+      <span style="color:var(--red)">✗</span>
+      <div style="flex:1;font-size:12px"><strong>#SS-${r.orderId}</strong> · <span style="color:var(--red)">${r.error||'Failed'}</span></div>
     </div>`;
   }).join('');
 
@@ -3622,7 +3624,7 @@ function renderBatchResults(data){
     <div style="display:flex;gap:12px;margin-bottom:14px">
       <div style="flex:1;background:var(--green-bg);border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--green)">${summary.succeeded||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Bought</div></div>
       <div style="flex:1;background:var(--bg2);border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--text)">$${summary.totalSpend||'0.00'}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total spend</div></div>
-      <div style="flex:1;background:${(summary.failed||0)?'var(--red-bg)':'var(--bg2)'};border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:${(summary.failed||0)?'var(--accent)':'var(--muted)'}">${summary.failed||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Failed</div></div>
+      <div style="flex:1;background:${(summary.failed||0)?'var(--red-bg)':'var(--bg2)'};border-radius:9px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:${(summary.failed||0)?'var(--red)':'var(--muted)'}">${summary.failed||0}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Failed</div></div>
     </div>
     ${rows}
     ${results.some(r=>r.success && r.weightSource==='default') ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">* weight fell back to the batch default (no product weight set)</div>' : ''}`;
@@ -3700,7 +3702,7 @@ async function loadAutomationRules(){
   try {
     const res = await fetch('/api/seller/automation-rules', { headers: authHeaders() });
     const data = await res.json();
-    if(!res.ok){ box.innerHTML = `<div style="padding:14px;background:var(--red-bg);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Failed to load rules'}</div>`; return; }
+    if(!res.ok){ box.innerHTML = `<div style="padding:14px;background:var(--red-bg);border-radius:9px;color:var(--red);font-size:12px">${data.error||'Failed to load rules'}</div>`; return; }
     automationRules = data.rules || [];
     renderRulesList();
   } catch(e){
@@ -4140,7 +4142,7 @@ async function loadReturns(){
     returnsCache = data.returns || [];
     renderReturns();
   } catch(err){
-    body.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">Couldn't load returns. <span style="color:var(--accent);cursor:pointer" onclick="loadReturns()">Retry</span></td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">Couldn't load returns. <span style="color:var(--red);cursor:pointer" onclick="loadReturns()">Retry</span></td></tr>`;
   }
 }
 
@@ -5003,7 +5005,7 @@ function showZipMsg(type, msg, suggestion){
   const colors = {
     success: 'var(--green)',
     warning: 'var(--amber)',
-    error:   'var(--accent)',
+    error:   'var(--red)',
     checking:'var(--muted)',
   };
   msgEl.style.display = 'flex';
@@ -5067,7 +5069,7 @@ async function detectZebraPrinter(){
 
       if(!devices || devices.length === 0){
         result.style.display = 'block';
-        result.innerHTML = `<div style="color:var(--accent)">✗ No Zebra printers found. Make sure your printer is on and Browser Print is running.</div>`;
+        result.innerHTML = `<div style="color:var(--red)">✗ No Zebra printers found. Make sure your printer is on and Browser Print is running.</div>`;
         return;
       }
 
@@ -5093,7 +5095,7 @@ async function detectZebraPrinter(){
       btn.disabled    = false;
       btn.textContent = 'Detect Zebra printer';
       result.style.display = 'block';
-      result.innerHTML = `<div style="color:var(--accent)">✗ Could not connect to Browser Print. Is it installed and running?</div>`;
+      result.innerHTML = `<div style="color:var(--red)">✗ Could not connect to Browser Print. Is it installed and running?</div>`;
     }, 'printer');
 
   } catch(err){
@@ -5101,7 +5103,7 @@ async function detectZebraPrinter(){
     btn.textContent = 'Detect Zebra printer';
     result.style.display = 'block';
     result.innerHTML = `
-      <div style="color:var(--accent);font-weight:600;margin-bottom:6px">✗ Zebra Browser Print not found</div>
+      <div style="color:var(--red);font-weight:600;margin-bottom:6px">✗ Zebra Browser Print not found</div>
       <div style="color:var(--muted)">Please download and install Browser Print from Zebra's website, then try again.</div>
     `;
   }
@@ -5450,7 +5452,7 @@ function showAddrValidResult(type, msg, detail, suggestion){
       icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c896" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' },
     warning: { bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.25)', color:'var(--amber)',
       icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' },
-    error: { bg:'rgba(230,57,70,0.08)', border:'rgba(230,57,70,0.25)', color:'var(--accent)',
+    error: { bg:'rgba(230,57,70,0.08)', border:'rgba(230,57,70,0.25)', color:'var(--red)',
       icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e63946" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
   };
 
@@ -5756,12 +5758,12 @@ async function compareRates(){
     const data = await res.json();
 
     if(!res.ok){
-      box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">${data.error||'Could not fetch rates.'}</div>`;
+      box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--red);font-size:12px">${data.error||'Could not fetch rates.'}</div>`;
       return;
     }
     renderRates(data);
   } catch(err){
-    box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--accent);font-size:12px">Network error: ${err.message}</div>`;
+    box.innerHTML = `<div style="padding:12px 14px;background:var(--red-bg);border:1px solid rgba(230,57,70,0.3);border-radius:9px;color:var(--red);font-size:12px">Network error: ${err.message}</div>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = btnHtml;
