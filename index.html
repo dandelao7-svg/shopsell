@@ -132,6 +132,24 @@ body{font-family:'Outfit',sans-serif;background:var(--light);color:var(--text);m
 .btn-hero.primary:hover{filter:brightness(1.12)}
 body:not(.theme-boutique):not(.theme-minimal):not([style*="--accent"]) .btn-hero.primary{background:var(--gold);color:var(--brand)}
 body:not(.theme-boutique):not(.theme-minimal) .hero h1 em{color:var(--gold)}
+/* Classic theme: navy header with white text (matches the ShopSell app). An
+   uploaded logo gets a white backing so a dark logo doesn't vanish on navy. */
+body:not(.theme-boutique):not(.theme-minimal) .site-header{background:var(--brand);border-bottom-color:var(--brand);box-shadow:0 1px 12px rgba(0,0,0,.18)}
+body:not(.theme-boutique):not(.theme-minimal) .logo{color:#fff}
+body:not(.theme-boutique):not(.theme-minimal) .logo em{color:var(--gold)}
+body:not(.theme-boutique):not(.theme-minimal) .logo-img{background:#fff;padding:4px 8px;border-radius:8px;box-sizing:content-box}
+body:not(.theme-boutique):not(.theme-minimal) .nav-link{color:rgba(255,255,255,.78)}
+body:not(.theme-boutique):not(.theme-minimal) .nav-link:hover{color:#fff;background:rgba(255,255,255,.08)}
+body:not(.theme-boutique):not(.theme-minimal) .nav-link.active{color:var(--gold)}
+body:not(.theme-boutique):not(.theme-minimal) .icon-btn{color:rgba(255,255,255,.82)}
+body:not(.theme-boutique):not(.theme-minimal) .icon-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+body:not(.theme-boutique):not(.theme-minimal) .cart-badge{background:var(--gold);color:var(--brand)}
+body:not(.theme-boutique):not(.theme-minimal) .hamburger{color:#fff}
+body:not(.theme-boutique):not(.theme-minimal) .search-wrap{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.22)}
+body:not(.theme-boutique):not(.theme-minimal) .search-wrap:focus-within{background:rgba(255,255,255,.16);border-color:var(--gold)}
+body:not(.theme-boutique):not(.theme-minimal) .search-wrap svg{stroke:rgba(255,255,255,.7)}
+body:not(.theme-boutique):not(.theme-minimal) .search-wrap input{color:#fff}
+body:not(.theme-boutique):not(.theme-minimal) .search-wrap input::placeholder{color:rgba(255,255,255,.6)}
 .btn-hero.secondary{background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2)}
 .hero-stats{display:flex;gap:24px;justify-content:center;margin-top:32px;flex-wrap:wrap}
 .hero-stat-val{font-family:var(--font-head);font-size:1.6rem;font-weight:700}
