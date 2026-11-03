@@ -26,11 +26,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0a0a0f; --bg2:#13131a; --bg3:#1c1c27;
-  --card:#16161e; --border:#24242f; --border2:#2f2f3d;
-  --text:#e8e8f0; --text2:#b8b8c8; --muted:#7a7a90;
+  --bg:#f7f7f2; --bg2:#ffffff; --bg3:#f2f2ee;
+  --card:#ffffff; --border:#e5e5e0; --border2:#d5d5cc;
+  --text:#0f0f1a; --text2:#5a5a70; --muted:#6b7280;
   --accent:#e63946; --accent-hover:#d32a37;
-  --green:#00c896; --gold:#ffb500;
+  --green:#047857; --gold:#a16207;
   --radius:14px; --maxw:1140px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -54,7 +54,7 @@ h1,h2,h3{font-family:'Syne',sans-serif;font-weight:700;line-height:1.1;letter-sp
 .btn-ghost:hover{border-color:var(--muted);background:var(--bg3)}
 
 /* NAV */
-.nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(10,10,15,0.72);border-bottom:1px solid var(--border)}
+.nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(255,255,255,0.85);border-bottom:1px solid var(--border)}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px}
 .brand{display:flex;align-items:center;gap:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:18px}
 .brand-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--gold));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px}
@@ -75,7 +75,7 @@ h1,h2,h3{font-family:'Syne',sans-serif;font-weight:700;line-height:1.1;letter-sp
 .trust{margin-top:18px;font-size:13px;color:var(--muted);font-family:'DM Mono',monospace}
 
 /* HERO MOCK */
-.mock{max-width:900px;margin:56px auto 0;background:var(--card);border:1px solid var(--border2);border-radius:16px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.5)}
+.mock{max-width:900px;margin:56px auto 0;background:var(--card);border:1px solid var(--border2);border-radius:16px;overflow:hidden;box-shadow:0 30px 80px rgba(15,15,26,.12)}
 .mock-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg2)}
 .mock-bar i{width:11px;height:11px;border-radius:50%;background:var(--border2)}
 .mock-body{display:grid;grid-template-columns:1.2fr 1fr;gap:0}
@@ -84,8 +84,8 @@ h1,h2,h3{font-family:'Syne',sans-serif;font-weight:700;line-height:1.1;letter-sp
 .mock-h{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:14px}
 .mock-order{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;white-space:nowrap}
-.chip.shopify{background:rgba(149,191,64,.15);color:#8fbf40}
-.chip.amazon{background:rgba(255,153,0,.15);color:#ff9900}
+.chip.shopify{background:rgba(149,191,64,.15);color:#4d7a1f}
+.chip.amazon{background:rgba(255,153,0,.15);color:#b45309}
 .chip.ebay{background:rgba(0,100,210,.15);color:#4b8fe6}
 .chip.etsy{background:rgba(241,100,30,.15);color:#f1641e}
 .chip.tiktok{background:rgba(254,44,85,.15);color:#fe2c55}
